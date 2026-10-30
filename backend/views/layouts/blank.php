@@ -1,0 +1,35 @@
+<?php
+
+/** @var yii\web\View $this */
+/** @var string $content */
+
+use backend\assets\AppAsset;
+use yii\helpers\Html;
+
+AppAsset::register($this);
+?>
+<?php $this->beginPage() ?>
+<!DOCTYPE html>
+<html lang="<?= Yii::$app->language ?>" class="h-100">
+<head>
+    <meta charset="<?= Yii::$app->charset ?>">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <?php $this->registerCsrfMetaTags() ?>
+    <title><?= Html::encode($this->title) ?></title>
+    <link rel="icon" type="image/png" href="<?= Yii::$app->request->baseUrl ?>/images/favicon.png">
+    <link rel="apple-touch-icon" href="<?= Yii::$app->request->baseUrl ?>/images/favicon.png">
+    <link rel="shortcut icon" href="<?= Yii::$app->request->baseUrl ?>/images/favicon.png">
+    <?php $this->head() ?>
+    <style>
+        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+    </style>
+</head>
+<body class="h-100">
+<?php $this->beginBody() ?>
+
+<?= $content ?>
+
+<?php $this->endBody() ?>
+</body>
+</html>
+<?php $this->endPage();

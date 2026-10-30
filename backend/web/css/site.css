@@ -1,0 +1,639 @@
+main > .container {
+    padding: 70px 15px 20px;
+}
+
+.footer {
+    background-color: #f5f5f5;
+    font-size: .9em;
+    height: 60px;
+}
+
+.footer > .container {
+    padding-right: 15px;
+    padding-left: 15px;
+}
+
+.not-set {
+    color: #c55;
+    font-style: italic;
+}
+
+/* add sorting icons to gridview sort links */
+a.asc:after, a.desc:after {
+    content: '';
+    left: 3px;
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border: solid 5px transparent;
+    margin: 4px 4px 2px 4px;
+    background: transparent;
+}
+
+a.asc:after {
+    border-bottom: solid 7px #212529;
+    border-top-width: 0;
+}
+
+a.desc:after {
+    border-top: solid 7px #212529;
+    border-bottom-width: 0;
+}
+
+.grid-view th,
+.grid-view td:last-child {
+    white-space: nowrap;
+}
+
+.grid-view .filters input,
+.grid-view .filters select {
+    min-width: 50px;
+}
+
+.hint-block {
+    display: block;
+    margin-top: 5px;
+    color: #999;
+}
+
+/* Hide green success tick on validated form fields globally */
+.has-success .form-control,
+.has-success .form-select,
+.is-valid,
+.form-control.is-valid,
+.form-select.is-valid {
+    border-color: #dee2e6 !important;
+    background-image: none !important;
+    padding-right: .75rem !important;
+    box-shadow: none !important;
+}
+
+.error-summary {
+    color: #a94442;
+    background: #fdf7f7;
+    border-left: 3px solid #eed3d7;
+    padding: 10px 20px;
+    margin: 0 0 15px 0;
+}
+
+/* align the logout "link" (button in form) of the navbar */
+.nav li > form > button.logout {
+    padding-top: 7px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+@media(max-width:767px) {
+    .nav li > form > button.logout {
+        display:block;
+        text-align: left;
+        width: 100%;
+        padding: 10px 0;
+    }
+}
+
+.nav > li > form > button.logout:focus,
+.nav > li > form > button.logout:hover {
+    text-decoration: none;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.nav > li > form > button.logout:focus {
+    outline: none;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UNIFIED BASELINE — Tables + Forms + Cards + Filters
+   Globally loaded via AppAsset. Makes every list/index/form/edit view
+   share the same visual language without per-view CSS edits.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+    --app-accent:        #0d9488;
+    --app-accent-hover:  #0f766e;
+    --app-accent-soft:   #ccfbf1;
+    --app-text:          #334155;
+    --app-text-strong:   #0f172a;
+    --app-text-muted:    #64748b;
+    --app-label:         #475569;
+    --app-border:        #e2e8f0;
+    --app-border-soft:   #eef1f5;
+    --app-row-hover:     #f8fafc;
+    --app-head-bg:       #f8fafc;
+    --app-card-bg:       #ffffff;
+    --app-danger:        #dc2626;
+    --app-danger-soft:   #fef2f2;
+    --app-success:       #16a34a;
+    --app-warning:       #ea580c;
+    --app-radius:        10px;
+    --app-radius-sm:     6px;
+    --app-shadow:        0 1px 2px rgba(15, 23, 42, .04), 0 1px 3px rgba(15, 23, 42, .04);
+}
+
+body {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--app-text);
+    font-size: .9rem;
+}
+
+/* ── Page title (h1/h2 before a card) ─────────────────────────────── */
+#main-content > h1,
+#main-content > h2,
+#main-content > .page-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--app-text-strong);
+    margin: .25rem 0 1rem;
+    letter-spacing: .1px;
+}
+
+/* ── Card (wrapper for every table and every form) ────────────────── */
+#main-content .card,
+.card.border-0.shadow-sm {
+    background: var(--app-card-bg);
+    border: 1px solid var(--app-border) !important;
+    border-radius: var(--app-radius) !important;
+    box-shadow: var(--app-shadow) !important;
+}
+#main-content .card > .card-header,
+.card > .card-header {
+    background: #ffffff;
+    border-bottom: 1px solid var(--app-border);
+    padding: .85rem 1.15rem;
+    font-weight: 600;
+    color: var(--app-text-strong);
+    border-top-left-radius: var(--app-radius) !important;
+    border-top-right-radius: var(--app-radius) !important;
+}
+#main-content .card > .card-body {
+    padding: 1.1rem 1.15rem;
+}
+
+/* ── Tables: every table inside a card, .list-table, .client-table, .dev-table, GridView ── */
+#main-content table,
+.table,
+.list-table,
+.client-table,
+.dev-table,
+.grid-view table {
+    width: 100%;
+    margin-bottom: 0;
+    color: var(--app-text);
+    font-size: .86rem;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+#main-content table thead th,
+.table thead th,
+.list-table thead th,
+.client-table thead th,
+.dev-table thead th,
+.grid-view thead th {
+    background: var(--app-head-bg) !important;
+    color: var(--app-text-muted) !important;
+    font-size: .72rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    padding: .325rem .45rem !important;
+    border-top: 1px solid var(--app-border) !important;
+    border-bottom: 1px solid var(--app-border) !important;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+#main-content table tbody td,
+.table tbody td,
+.list-table tbody td,
+.client-table tbody td,
+.dev-table tbody td,
+.grid-view tbody td {
+    padding: .325rem .45rem !important;
+    vertical-align: middle !important;
+    border-top: 1px solid var(--app-border-soft) !important;
+    border-bottom: 0 !important;
+    color: var(--app-text);
+}
+
+#main-content table tbody tr:first-child td,
+.table tbody tr:first-child td,
+.list-table tbody tr:first-child td,
+.client-table tbody tr:first-child td,
+.dev-table tbody tr:first-child td,
+.grid-view tbody tr:first-child td {
+    border-top-color: var(--app-border) !important;
+}
+
+#main-content table tbody tr:hover td,
+.table tbody tr:hover td,
+.list-table tbody tr:hover td,
+.client-table tbody tr:hover td,
+.dev-table tbody tr:hover td,
+.grid-view tbody tr:hover td {
+    background: var(--app-row-hover) !important;
+}
+
+/* table wrapper corners — if table sits directly in a .card, round bottom */
+.card > .table-responsive,
+.card > .grid-view {
+    border-bottom-left-radius: var(--app-radius);
+    border-bottom-right-radius: var(--app-radius);
+    overflow: hidden;
+}
+.card > .table-responsive > table,
+.card > .grid-view table {
+    margin-bottom: 0;
+}
+
+/* Action-column buttons (&#8942;, view/edit/delete) */
+.act-btn,
+.table .btn-sm,
+.list-table .btn-sm,
+.grid-view .btn-sm {
+    padding: .22rem .5rem !important;
+    font-size: .78rem !important;
+    line-height: 1.25 !important;
+    border-radius: var(--app-radius-sm);
+}
+.act-btn:hover { filter: brightness(.96); }
+
+/* Last right-aligned column (Actions) — shrink to content across all tables */
+.table th.text-end:last-child,
+.table td.text-end:last-child,
+.list-table th.text-end:last-child,
+.list-table td.text-end:last-child,
+.grid-view table th.text-end:last-child,
+.grid-view table td.text-end:last-child {
+    width: 1%;
+    white-space: nowrap;
+}
+/* Inline action button spacing inside action column */
+.table td.text-end:last-child .btn + .btn,
+.list-table td.text-end:last-child .btn + .btn,
+.grid-view td.text-end:last-child .btn + .btn {
+    margin-left: 3px;
+}
+
+/* Row colorings (domain expired/expiring etc) — keep tint subtle */
+.row-expired   td { background: #fef2f2 !important; }
+.row-expiring  td { background: #fffbeb !important; }
+
+/* ── Pagination (GridView + custom) ──────────────────────────────── */
+.pagination,
+.grid-view .pagination {
+    --bs-pagination-font-size: .82rem;
+    --bs-pagination-color: var(--app-text);
+    --bs-pagination-hover-color: var(--app-accent-hover);
+    --bs-pagination-active-bg: var(--app-accent);
+    --bs-pagination-active-border-color: var(--app-accent);
+    --bs-pagination-focus-box-shadow: 0 0 0 .2rem rgba(13, 148, 136, .15);
+    margin: 1rem 1.15rem;
+    gap: 2px;
+}
+.pagination .page-link,
+.grid-view .pagination .page-link {
+    border: 1px solid var(--app-border) !important;
+    border-radius: var(--app-radius-sm) !important;
+    margin: 0 1px;
+    color: var(--app-text);
+    padding: .3rem .6rem;
+}
+.pagination .page-item.active .page-link,
+.grid-view .pagination .page-item.active .page-link {
+    background: var(--app-accent);
+    border-color: var(--app-accent);
+    color: #fff;
+}
+
+/* GridView summary line */
+.grid-view .summary { font-size: .8rem; color: var(--app-text-muted); padding: .75rem 1.15rem; }
+
+/* ── Filter bar (row of inputs above a table) ────────────────────── */
+.filter-form,
+.card form[data-pjax],
+.card > .card-body > form:first-child {
+    margin-bottom: .85rem;
+}
+.form-label,
+.form-label-sm {
+    font-size: .75rem !important;
+    font-weight: 600 !important;
+    color: var(--app-label) !important;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: .3rem !important;
+}
+
+/* ── Form inputs (inputs, selects, textareas) ─────────────────────── */
+.form-control,
+.form-select {
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-sm);
+    color: var(--app-text-strong);
+    background-color: #fff;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.form-control-sm,
+.form-select-sm {
+    font-size: .83rem;
+    padding: .38rem .6rem;
+    border-radius: var(--app-radius-sm);
+    min-height: 34px;
+}
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--app-accent) !important;
+    box-shadow: 0 0 0 .18rem rgba(13, 148, 136, .14) !important;
+    outline: none;
+}
+.form-control::placeholder { color: #94a3b8; opacity: 1; }
+textarea.form-control { min-height: 72px; }
+
+/* Disabled/readonly */
+.form-control:disabled,
+.form-control[readonly],
+.form-select:disabled {
+    background-color: #f8fafc;
+    color: var(--app-text-muted);
+}
+
+/* ── Select2 — match .form-select-sm sizing & teal focus ──────────── */
+.select2-container--krajee-bs5 .select2-selection--single,
+.select2-container--krajee-bs5 .select2-selection--multiple,
+.select2-container--default .select2-selection--single,
+.select2-container--default .select2-selection--multiple {
+    min-height: 34px !important;
+    border: 1px solid var(--app-border) !important;
+    border-radius: var(--app-radius-sm) !important;
+    font-size: .83rem;
+}
+.select2-container--krajee-bs5.select2-container--focus .select2-selection,
+.select2-container--krajee-bs5.select2-container--open .select2-selection,
+.select2-container--default.select2-container--focus .select2-selection,
+.select2-container--default.select2-container--open .select2-selection {
+    border-color: var(--app-accent) !important;
+    box-shadow: 0 0 0 .18rem rgba(13, 148, 136, .14) !important;
+}
+.select2-container--krajee-bs5 .select2-selection__rendered,
+.select2-container--default .select2-selection__rendered {
+    padding: .25rem .5rem !important;
+    line-height: 1.4 !important;
+    color: var(--app-text-strong) !important;
+}
+.select2-dropdown {
+    border: 1px solid var(--app-border) !important;
+    border-radius: var(--app-radius-sm) !important;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, .08);
+}
+.select2-results__option--highlighted[aria-selected] {
+    background: var(--app-accent) !important;
+}
+
+/* ── DatePicker (krajee) — match .form-control-sm ────────────────── */
+.kv-datepicker .input-group-text,
+.datepicker-input-group .input-group-text {
+    background: #f8fafc;
+    border-color: var(--app-border);
+    color: var(--app-text-muted);
+}
+/* The datepicker dropdown was rendering behind the sticky page header;
+   bump it above the navbar (z-index 1030) and modal backdrop. */
+.datepicker.dropdown-menu,
+.datepicker-dropdown,
+.bootstrap-datetimepicker-widget {
+    z-index: 2050 !important;
+}
+
+/* ── Required-field asterisk ─────────────────────────────────────── */
+.form-label .text-danger,
+label .text-danger {
+    color: var(--app-danger) !important;
+    font-weight: 700;
+    margin-left: 2px;
+}
+
+/* ── Validation / error messages ─────────────────────────────────── */
+.invalid-feedback,
+.help-block-error,
+.field-error .help-block,
+div.error-block {
+    color: var(--app-danger) !important;
+    font-size: .76rem;
+    margin-top: .25rem;
+    display: block;
+}
+.has-error .form-control,
+.has-error .form-select,
+.field-error .form-control,
+.field-error .form-select {
+    border-color: var(--app-danger) !important;
+}
+.error-summary {
+    color: #991b1b;
+    background: var(--app-danger-soft);
+    border: 1px solid #fecaca;
+    border-left: 4px solid var(--app-danger);
+    padding: .7rem 1rem;
+    border-radius: var(--app-radius-sm);
+    margin: 0 0 1rem 0;
+    font-size: .85rem;
+}
+.error-summary p { margin-bottom: .25rem; font-weight: 600; }
+.error-summary ul { margin-bottom: 0; padding-left: 1.1rem; }
+
+/* ── Form section titles (h3/h4/h5 inside a card) ─────────────────── */
+.card > .card-body > h3,
+.card > .card-body > h4,
+.card > .card-body > h5,
+.card > .card-body > h6,
+.form-section-title {
+    font-size: .95rem !important;
+    font-weight: 600 !important;
+    color: var(--app-text-strong) !important;
+    margin: .25rem 0 .9rem !important;
+    padding-bottom: .55rem;
+    border-bottom: 1px solid var(--app-border-soft);
+    letter-spacing: .1px;
+}
+.card > .card-body > h3:not(:first-child),
+.card > .card-body > h4:not(:first-child),
+.card > .card-body > h5:not(:first-child),
+.card > .card-body > h6:not(:first-child) {
+    margin-top: 1.4rem !important;
+}
+
+/* ── Buttons — sizes & spacing consistency ───────────────────────── */
+.btn {
+    border-radius: var(--app-radius-sm);
+    font-weight: 500;
+    transition: background .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.btn-sm {
+    font-size: .82rem;
+    padding: .35rem .7rem;
+}
+.btn-primary {
+    --bs-btn-bg: var(--app-accent);
+    --bs-btn-border-color: var(--app-accent);
+    --bs-btn-hover-bg: var(--app-accent-hover);
+    --bs-btn-hover-border-color: var(--app-accent-hover);
+    --bs-btn-active-bg: var(--app-accent-hover);
+    --bs-btn-active-border-color: var(--app-accent-hover);
+    --bs-btn-focus-shadow-rgb: 13, 148, 136;
+}
+.btn-outline-primary {
+    --bs-btn-color: var(--app-accent);
+    --bs-btn-border-color: var(--app-accent);
+    --bs-btn-hover-bg: var(--app-accent);
+    --bs-btn-hover-border-color: var(--app-accent);
+    --bs-btn-active-bg: var(--app-accent-hover);
+}
+.btn-secondary {
+    --bs-btn-bg: #f1f5f9;
+    --bs-btn-color: #334155;
+    --bs-btn-border-color: var(--app-border);
+    --bs-btn-hover-bg: #e2e8f0;
+    --bs-btn-hover-border-color: #cbd5e1;
+    --bs-btn-hover-color: #0f172a;
+    --bs-btn-active-bg: #e2e8f0;
+    --bs-btn-active-border-color: #cbd5e1;
+}
+.btn-danger {
+    --bs-btn-bg: var(--app-danger);
+    --bs-btn-border-color: var(--app-danger);
+}
+.btn-indigo {
+    --bs-btn-bg: #6366f1;
+    --bs-btn-border-color: #6366f1;
+    --bs-btn-color: #ffffff;
+    --bs-btn-hover-bg: #4f46e5;
+    --bs-btn-hover-border-color: #4f46e5;
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-active-bg: #4338ca;
+    --bs-btn-active-border-color: #4338ca;
+    --bs-btn-active-color: #ffffff;
+    --bs-btn-focus-shadow-rgb: 99, 102, 241;
+}
+
+/* Form button group — submit/cancel aligned consistently */
+.form-actions,
+.card > .card-body > form > .d-flex:last-child,
+.card > .card-body > .d-flex.gap-2:last-child {
+    gap: .5rem !important;
+    padding-top: .35rem;
+    border-top: 1px solid var(--app-border-soft);
+    margin-top: 1rem !important;
+}
+
+/* ── Alerts ──────────────────────────────────────────────────────── */
+.alert {
+    border-radius: var(--app-radius-sm);
+    border-width: 1px;
+    font-size: .85rem;
+    padding: .7rem 1rem;
+}
+.alert-info    { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+.alert-success { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.alert-warning { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.alert-danger  { background: var(--app-danger-soft); border-color: #fecaca; color: #991b1b; }
+
+/* ── Badges — consistent pill rounding ───────────────────────────── */
+.badge { font-weight: 600; padding: .3em .55em; border-radius: 999px; }
+
+/* ── Dropdowns (⋮ action menus) ─────────────────────────────────── */
+.dropdown-menu {
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-sm);
+    box-shadow: 0 6px 20px rgba(15, 23, 42, .08);
+    padding: .3rem;
+    font-size: .85rem;
+}
+.dropdown-item {
+    border-radius: 4px;
+    padding: .38rem .65rem;
+}
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background: var(--app-row-hover);
+    color: var(--app-text-strong);
+}
+.dropdown-item.text-danger:hover { background: var(--app-danger-soft); color: var(--app-danger); }
+
+/* ── Avatar badges (dev-avatar, client-avatar) ───────────────────── */
+.dev-avatar,
+.client-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--app-accent-soft);
+    color: var(--app-accent-hover);
+    font-size: .76rem;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+/* ── Hide the native browser success tick on valid fields ────────── */
+.form-control.is-valid,
+.form-select.is-valid,
+.was-validated .form-control:valid,
+.was-validated .form-select:valid {
+    background-image: none !important;
+    padding-right: .6rem !important;
+}
+
+/* ── Stock / status text colors (iot-product etc.) ───────────────── */
+.stock-low  { color: var(--app-danger); font-weight: 600; }
+.stock-ok   { color: var(--app-success); font-weight: 600; }
+.stock-none { color: var(--app-text-muted); }
+
+/* ── Bootstrap tooltips — themed, forced visible (animation:false in JS) ── */
+.tooltip {
+    z-index: 2000 !important;
+    pointer-events: none;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: .76rem;
+    font-weight: 500;
+    opacity: 1 !important;
+}
+.tooltip .tooltip-inner {
+    background: #0f172a;
+    color: #ffffff;
+    padding: .32rem .6rem;
+    border-radius: 5px;
+    max-width: 240px;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, .18);
+    font-weight: 500;
+    letter-spacing: .1px;
+    line-height: 1.25;
+}
+.tooltip .tooltip-arrow::before                    { border-top-color:    #0f172a !important; }
+.tooltip.bs-tooltip-bottom .tooltip-arrow::before  { border-bottom-color: #0f172a !important; }
+.tooltip.bs-tooltip-start  .tooltip-arrow::before  { border-left-color:   #0f172a !important; }
+.tooltip.bs-tooltip-end    .tooltip-arrow::before  { border-right-color:  #0f172a !important; }
+
+/* ── Scoped tweaks for legacy wrapper classes ─────────────────────── */
+/* .app-form-page (delivery-product), .form-wrapper / .section-block
+   (client-quotation) — bring them in line with the card look. */
+.app-form-page .app-form-card,
+.form-wrapper .section-block {
+    background: var(--app-card-bg);
+    border: 1px solid var(--app-border) !important;
+    border-radius: var(--app-radius);
+    box-shadow: var(--app-shadow);
+    padding: 1.1rem 1.15rem;
+}
+.section-header,
+.app-form-header h1,
+.app-form-header h2,
+.app-form-header h3 {
+    font-size: .95rem !important;
+    font-weight: 600 !important;
+    color: var(--app-text-strong) !important;
+    padding-bottom: .55rem;
+    border-bottom: 1px solid var(--app-border-soft);
+    margin-bottom: .9rem !important;
+}

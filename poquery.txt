@@ -1,0 +1,11 @@
+ALTER TABLE `client_quotation` ADD `completed_status` TINYINT NOT NULL DEFAULT '0' AFTER `alter_reason`;
+
+CREATE TABLE `maestro_erp`.`po_details` (`id` BIGINT NOT NULL AUTO_INCREMENT , `quote_id` BIGINT NOT NULL , `po_number` VARCHAR(20) NOT NULL , `date` DATETIME NOT NULL , `particulars` VARCHAR(500) NOT NULL , `po_cost` VARCHAR(10) NOT NULL , `file` VARCHAR(150) NOT NULL , `reason` VARCHAR(500) NOT NULL , `created_at` DATETIME NOT NULL , `modified_at` DATETIME NOT NULL , `status` TINYINT NOT NULL , PRIMARY KEY (`id`)) ENGINE = InnoDB;
+
+ALTER TABLE `po_details` CHANGE `reason` `reason` VARCHAR(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL;
+
+ALTER TABLE `po_details` ADD FOREIGN KEY (`quote_id`) REFERENCES `client_quotation`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+ALTER TABLE `client` ADD `gst_regirstration_type` TINYINT NOT NULL COMMENT '1 - regular , 2- consumer' AFTER `logo`;
+
+ALTER TABLE `client` CHANGE `gst_regirstration_type` `gst_registration_type` TINYINT NOT NULL COMMENT '1 - regular , 2- consumer';

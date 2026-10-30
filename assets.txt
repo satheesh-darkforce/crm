@@ -1,0 +1,718 @@
+================================================================================
+MAESTRO ERP — ASSETS MODULE AUDIT REPORT
+Yii1 Source → Yii2 Migration Analysis
+Date: 2026-03-26
+================================================================================
+
+================================================================================
+SECTION 1: MODULE OVERVIEW
+================================================================================
+
+The Assets module manages the full lifecycle of organizational assets:
+- Asset registration with categorization, vendor, and document uploads
+- Asset handover (assignment to employees) and return tracking
+- Maintenance / service records
+- Lookup tables (Category, Subcategory, Brand, Location, Tags)
+- Barcode generation and printing
+
+Files audited:
+  Controller : protected/controllers/AssetsController.php
+  Models     : Assets, AssetsCategory, AssetsSubcategory, AssetsBrand,
+               AssetsLoc, AssetsTags, AssetsHandover, AssetsMaintenance,
+               AssetsUploads
+  Views      : protected/views/assets/ (18 files)
+
+================================================================================
+SECTION 2: ACCESS CONTROL
+================================================================================
+
+Role IDs used in Yii1:
+  1 = admin
+  2 = developer
+  3 = client
+  4 = sub_admin
+
+Controller-level rules:
+  - Admin (1) and Sub-admin (4) have full access to all actions.
+  - Developer (2) has limited read/view access only.
+  - Client (3) has no access.
+
+Methods used:
+  allowOnlyAdmin()      — restricts action to admin/sub-admin roles
+  allowOnlyDeveloper()  — restricts action to developer role
+
+Yii2 migration note:
+  Replace with RBAC or simple role checks in beforeAction() / behaviors().
+  Use Yii::$app->user->identity->usertype for role comparison.
+
+================================================================================
+SECTION 3: DATABASE TABLES
+================================================================================
+
+TABLE: assets
+  id, product_name, model, brand_id, asset_cat_id, asset_subcat_id,
+  vendor_id, asset_loc, date_of_purchase, date_of_expire, description,
+  bill (decimal), warranty (0/1), warranty_start_date, warranty_end_date,
+  amc (0/1), amc_start_date, amc_end_date, service_contact, tags,
+  barcode, status
+
+TABLE: assets_category
+  id, name, status, modified_by, modified
+
+TABLE: assets_subcategory
+  id, name, category_id, status, modified_by, modified
+
+TABLE: assets_brand
+  id, brand_name, modified, status
+
+TABLE: assets_loc
+  id, loc, modified, status
+
+TABLE: assets_tags
+  id, name, status, modified_by, modified
+
+TABLE: assets_handover
+  id, asset_id (JSON array of asset IDs), dev_id, in_date, out_date,
+  status, asset_location, asset_condition, description
+
+TABLE: assets_maintenance
+  id, asset_id, service_cost, service_provider, service_provider_name,
+  sp_number, attended (dev_id), payment_type, payment_mode,
+  invoice_bill, gpay_number, bank_number, status
+
+TABLE: assets_uploads
+  id, asset_id, type (file extension), path, modified, status, upload_type
+
+Upload types (upload_type field):
+  1 = Purchase Bill
+  2 = Warranty Bill
+  3 = AMC Bill
+  4 = Product Image
+
+================================================================================
+SECTION 4: MODEL VALIDATION RULES
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+4.1 Assets Model
+────────────────────────────────────────────────────────────────────────────────
+
+Standard rules:
+  required     : brand_id, asset_cat_id, asset_subcat_id, vendor_id,
+                 asset_loc, date_of_purchase, product_name
+  integer      : brand_id, asset_cat_id, asset_subcat_id, vendor_id,
+                 warranty, amc, status, asset_loc
+  decimal      : bill
+  string max250: model, service_contact, product_name
+  safe         : warranty_start_date, warranty_end_date, amc_start_date,
+                 amc_end_date, description, barcode, date_of_expire
+
+Dynamic rules (via beforeValidate):
+  - If warranty == 1:
+      warranty_start_date → required
+      warranty_end_date   → required
+  - If amc == 1:
+      amc_start_date → required
+      amc_end_date   → required
+  - Otherwise: those fields are optional.
+
+Custom validator — compareDates():
+  warranty_end_date  >= warranty_start_date  (if warranty=1)
+  amc_end_date       >= amc_start_date       (if amc=1)
+  date_of_expire     >= date_of_purchase
+
+Custom validator — uniqueWhenNotDeleted():
+  product_name must be unique among status != 0 records (excluding current id)
+  model must be unique among status != 0 records (excluding current id)
+
+────────────────────────────────────────────────────────────────────────────────
+4.2 AssetsCategory Model
+────────────────────────────────────────────────────────────────────────────────
+  required     : name, modified_by, modified
+  integer      : status, modified_by
+  string max255: name
+  custom       : uniqueWhenNotDeleted() on name
+
+────────────────────────────────────────────────────────────────────────────────
+4.3 AssetsSubcategory Model
+────────────────────────────────────────────────────────────────────────────────
+  required     : name, category_id, modified_by, modified
+  integer      : category_id, status, modified_by
+  string max255: name
+  custom       : uniqueWhenNotDeleted() on name
+
+────────────────────────────────────────────────────────────────────────────────
+4.4 AssetsBrand Model
+────────────────────────────────────────────────────────────────────────────────
+  required     : brand_name, modified
+  integer      : status
+  string max250: brand_name
+  custom       : uniqueWhenNotDeleted() on brand_name
+
+────────────────────────────────────────────────────────────────────────────────
+4.5 AssetsLoc Model
+────────────────────────────────────────────────────────────────────────────────
+  required     : loc, modified
+  integer      : status
+  string max250: loc
+  custom       : uniqueWhenNotDeleted() on loc
+
+────────────────────────────────────────────────────────────────────────────────
+4.6 AssetsTags Model
+────────────────────────────────────────────────────────────────────────────────
+  required     : name, modified_by, modified
+  integer      : status, modified_by
+  string max255: name
+  custom       : uniqueWhenNotDeleted() on name
+
+────────────────────────────────────────────────────────────────────────────────
+4.7 AssetsHandover Model
+────────────────────────────────────────────────────────────────────────────────
+  required (always)  : asset_id, dev_id, in_date, asset_location
+  required (on update): out_date, asset_condition
+  integer            : status
+  custom             : compareDates() — out_date >= in_date
+
+────────────────────────────────────────────────────────────────────────────────
+4.8 AssetsMaintenance Model
+────────────────────────────────────────────────────────────────────────────────
+  required (always)  : asset_id, attended, payment_type, service_provider,
+                       service_provider_name, sp_number
+  integer            : asset_id, status
+  decimal            : service_cost
+  string max250      : service_provider
+  string max100      : sp_number
+
+  Dynamic rules (via beforeValidate):
+    If payment_type == 2 (Paid):
+      payment_mode, invoice_bill, service_cost → required
+      service_cost must not be 0 (validateServiceCostNotZero)
+      If payment_mode == 2 (Gpay) : gpay_number → required
+      If payment_mode == 3 (Bank) : bank_number → required
+    If payment_type == 1 (Free):
+      All paid-related validators removed.
+
+────────────────────────────────────────────────────────────────────────────────
+4.9 AssetsUploads Model
+────────────────────────────────────────────────────────────────────────────────
+  required     : asset_id, modified
+  integer      : asset_id, status, upload_type
+  string max100: type
+  safe         : path
+
+================================================================================
+SECTION 5: CONTROLLER ACTIONS — LOGIC SUMMARY
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+5.1 actionAssetsindex()
+────────────────────────────────────────────────────────────────────────────────
+Purpose : List all assets with search/filter.
+Logic   :
+  - Load Assets model in search mode.
+  - Pass GET params as search attributes.
+  - Render grid with CActiveDataProvider (100 per page, order id DESC).
+  - Search supports: product_name, barcode, model, brand, vendor,
+    category, subcategory, location, tags (multi-select),
+    warranty/amc flags, date range.
+
+────────────────────────────────────────────────────────────────────────────────
+5.2 actionAssetsadd()
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Create a new asset.
+Logic   :
+  1. On POST: populate Assets model from $_POST['Assets'].
+  2. Validate and save.
+  3. On save success:
+     a. Generate barcode: uniqid('MAE' . $model->id, true) → truncate to 10 chars.
+     b. Save barcode back to record.
+     c. Process file uploads for upload_type = 1,2,3,4:
+        - File must not exceed 2MB.
+        - Save to /uploads/assets_bill/{filename}.
+        - Insert AssetsUploads record with asset_id, type, path, upload_type.
+  4. Redirect to assetsindex on success.
+  5. On GET: render empty form.
+
+────────────────────────────────────────────────────────────────────────────────
+5.3 actionAssetsupdate($id)
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Edit existing asset.
+Logic   :
+  1. Load Assets record by $id (404 if not found).
+  2. On POST: populate model with new values.
+  3. Same file upload handling as add (appends new uploads, does not replace).
+  4. Validate and save. Redirect to index on success.
+
+────────────────────────────────────────────────────────────────────────────────
+5.4 actionAssetsdelete($id)
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Soft-delete an asset.
+Logic   :
+  1. Check if asset has active handover (status=1, out_date IS NULL).
+     If yes → return JSON error "Asset is with employee, cannot delete."
+  2. Set assets.status = 0.
+  3. Set assets_maintenance.status = 0 for all matching asset_id.
+  4. For handover records: if JSON asset_id array has only this asset,
+     set assets_handover.status = 0.
+  5. Return JSON {status: 1, message: "Deleted"}.
+
+────────────────────────────────────────────────────────────────────────────────
+5.5 actionAssetsview($id)
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Show asset details in a modal.
+Logic   : Load asset by $id. Render partial view _assetsview.
+
+────────────────────────────────────────────────────────────────────────────────
+5.6 actionAssetsmaintenance()
+────────────────────────────────────────────────────────────────────────────────
+Purpose : List all maintenance records.
+Logic   : Load AssetsMaintenance in search mode with GET params. Render grid.
+
+────────────────────────────────────────────────────────────────────────────────
+5.7 actionAdd_assetsmaintenance()
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Create a maintenance record.
+Logic   :
+  1. On POST: populate AssetsMaintenance from $_POST.
+  2. Validate (dynamic rules fire in beforeValidate).
+  3. On save: if invoice_bill is uploaded, store to /uploads/assets_maintenance/.
+  4. Redirect to assetsmaintenance on success.
+
+────────────────────────────────────────────────────────────────────────────────
+5.8 actionUpdate_assetsmaintenance($id)
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Edit maintenance record.
+Logic   :
+  1. Load record by $id.
+  2. On POST: populate model.
+  3. If payment_type changed to Free: reset payment_mode, invoice_bill,
+     service_cost, gpay_number, bank_number to null/0.
+  4. Validate and save.
+
+────────────────────────────────────────────────────────────────────────────────
+5.9 actionDelete_assetsmaintenance($id)
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Soft-delete maintenance record.
+Logic   : Set assets_maintenance.status = 0. Return JSON.
+
+────────────────────────────────────────────────────────────────────────────────
+5.10 actionAssetshandover()
+────────────────────────────────────────────────────────────────────────────────
+Purpose : List asset handovers (grouped by employee).
+Logic   :
+  - Load AssetsHandover in search mode.
+  - Query groups by dev_id to show one row per employee.
+  - Search supports: asset_id (JSON_CONTAINS), dev_id, in_date, out_date.
+
+────────────────────────────────────────────────────────────────────────────────
+5.11 actionAssetshandoverview($id)
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Show all handover records for one employee.
+Logic   :
+  - $id = dev_id.
+  - Optional GET param 'key':
+      null → show active (out_date IS NULL)
+      set  → show returned (out_date IS NOT NULL)
+  - Renders detail list with edit/delete per record.
+
+────────────────────────────────────────────────────────────────────────────────
+5.12 actionAdd_assets_handover()
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Assign one or more assets to an employee.
+Logic   :
+  1. On POST: receive asset_id[] array, dev_id, in_date, asset_location.
+  2. Validate AssetsHandover model.
+  3. Check each asset_id for existing active handover (status=1, out_date IS NULL).
+     If any conflict → return error "Already assigned".
+  4. Encode asset_ids as JSON: json_encode($asset_ids).
+  5. Save. Redirect to assetshandover.
+
+────────────────────────────────────────────────────────────────────────────────
+5.13 actionUpdate_assets_handover($id, $dev_id, $key)
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Record asset return (or modify handover).
+Logic   :
+  1. Load AssetsHandover by $id.
+  2. On POST: out_date, asset_condition, description are required.
+  3. Validate dates (out_date >= in_date).
+  4. Save. Redirect to assetshandoverview.
+
+────────────────────────────────────────────────────────────────────────────────
+5.14 actionDelete_assets_handover($id, $dev_id, $key)
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Soft-delete handover record.
+Logic   : Set assets_handover.status = 0. Return JSON.
+
+────────────────────────────────────────────────────────────────────────────────
+5.15 actionManagedropdown($table)
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Entry point for managing lookup tables.
+Logic   :
+  Routes $table value to appropriate model and view:
+    'cat'     → AssetsCategory
+    'subcat'  → AssetsSubcategory
+    'brand'   → AssetsBrand
+    'loc'     → AssetsLoc
+    default   → AssetsTags
+
+────────────────────────────────────────────────────────────────────────────────
+5.16 actionAdddropdownvalue($table, $id)
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Add or edit a lookup table item.
+Logic   :
+  1. $id=0 → new record; $id>0 → update existing.
+  2. Populate model based on $table.
+  3. Set modified_by = current user id, modified = now().
+  4. Validate (includes uniqueWhenNotDeleted).
+  5. If AJAX request → return JSON {status, message}.
+     If form submit → redirect.
+
+────────────────────────────────────────────────────────────────────────────────
+5.17 actionRemovedropdownvalue($id, $table)
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Soft-delete a lookup item.
+Logic   :
+  1. Check if item is referenced by any asset record.
+     If yes → return JSON error "In use, cannot delete".
+  2. Set status = 0.
+  3. Return JSON {status:1}.
+
+────────────────────────────────────────────────────────────────────────────────
+5.18 actionBarcode($id) / actionPrintmultibarcode()
+────────────────────────────────────────────────────────────────────────────────
+Purpose : Generate barcode image(s) for printing.
+Logic   :
+  - Load asset(s) by id.
+  - Use BCGcode128 library to render barcode as PNG.
+  - Single barcode: renders for one asset.
+  - Multi barcode: accepts POST array of ids, renders all on one page.
+
+────────────────────────────────────────────────────────────────────────────────
+5.19 AJAX Helper Actions
+────────────────────────────────────────────────────────────────────────────────
+actionGetsubcategory()
+  Input : GET category_id
+  Output: JSON [{id, name}] filtered by category_id and status=1
+
+actionGetassetvalue()
+  Input : GET asset_id
+  Output: JSON {model, brand} for the asset
+
+actionGetassetlist()
+  Input : (none)
+  Output: JSON [{id, barcode}] for all active assets
+
+actionDeleteupload()
+  Input : POST upload id
+  Logic : Set assets_uploads.status = 0. JSON response.
+
+actionDeletemaintenancebill()
+  Input : POST maintenance id
+  Logic : Clear invoice_bill field in assets_maintenance.
+
+actionAddvendor()
+  Input : POST vendor_name, gst
+  Logic :
+    1. Validate vendor_name (required, unique).
+    2. Validate gst uniqueness.
+    3. Save new Vendors record.
+    4. Return JSON {status, message, vendor_id}.
+
+================================================================================
+SECTION 6: BUSINESS RULES SUMMARY
+================================================================================
+
+1. SOFT DELETE everywhere — never hard delete. Use status = 0.
+
+2. BARCODE FORMAT
+   Generated once on first save: uniqid('MAE' + id, true) → 10 chars.
+   Never regenerated after creation.
+
+3. WARRANTY / AMC TOGGLE
+   Checkbox toggles visibility of date fields AND makes them required.
+   Server-side: beforeValidate() dynamically adds/removes required rules.
+
+4. DATE VALIDATION ORDER
+   purchase_date ≤ expiry_date
+   warranty_start ≤ warranty_end
+   amc_start ≤ amc_end
+   handover in_date ≤ out_date
+
+5. ASSET HANDOVER CONSTRAINTS
+   - Cannot delete an asset that is currently with an employee
+     (active handover = status=1 AND out_date IS NULL).
+   - Cannot assign an asset already on active handover.
+   - Multiple assets can be assigned in a single handover record (JSON array).
+
+6. MAINTENANCE PAYMENT RULES
+   - Free service: no payment fields required.
+   - Paid service: payment_mode, invoice_bill, service_cost (> 0) required.
+   - Paid + GPay: gpay_number required.
+   - Paid + Bank: bank_number required.
+
+7. UNIQUE LOOKUP NAMES (SOFT-DELETE AWARE)
+   uniqueWhenNotDeleted() checks uniqueness only among non-deleted records.
+   Cannot reuse a name that exists (status != 0) even under a different id.
+
+8. LOOKUP DELETION PROTECTION
+   Cannot delete a Category/Brand/Location/Tag if any asset references it.
+
+9. CASCADING SOFT DELETE
+   Deleting an asset → soft-deletes all linked maintenance records.
+   If a handover record's JSON asset array contains only that asset,
+   the handover is also soft-deleted.
+
+10. FILE UPLOADS
+    Max 4 files per upload_type. Max 2MB per file.
+    Allowed types per section:
+      Product Image  : jpg, jpeg, png
+      Other bills    : jpg, jpeg, png, pdf, doc, docx
+    Upload directory: /uploads/assets_bill/, /uploads/assets_maintenance/
+
+================================================================================
+SECTION 7: YII2 MIGRATION PLAN
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+7.1 File / Directory Structure
+────────────────────────────────────────────────────────────────────────────────
+
+Models (common/models/):
+  Assets.php
+  AssetsCategory.php
+  AssetsSubcategory.php
+  AssetsBrand.php
+  AssetsLoc.php
+  AssetsTags.php
+  AssetsHandover.php
+  AssetsMaintenance.php
+  AssetsUploads.php
+  AssetsSearch.php          ← search model (separate from base model)
+  AssetsHandoverSearch.php
+  AssetsMaintenanceSearch.php
+
+Controller (backend/controllers/):
+  AssetsController.php      ← extends backend\controllers\Controller
+
+Views (backend/views/assets/):
+  index.php
+  create.php
+  update.php
+  _form.php
+  _search.php
+  view.php
+  maintenance/index.php
+  maintenance/_form.php
+  maintenance/view.php
+  handover/index.php
+  handover/_form.php
+  handover/view.php
+  dropdown/manage.php
+  dropdown/_form.php
+  dropdown/table.php
+  barcode/single.php
+  barcode/multi.php
+
+────────────────────────────────────────────────────────────────────────────────
+7.2 Controller Actions Mapping (Yii1 → Yii2)
+────────────────────────────────────────────────────────────────────────────────
+
+Yii1 Action                        → Yii2 Action (route)
+─────────────────────────────────────────────────────────────────────────
+actionAssetsindex                  → actionIndex
+actionAssetsadd                    → actionCreate
+actionAssetsupdate($id)            → actionUpdate($id)
+actionAssetsdelete($id)            → actionDelete($id)
+actionAssetsview($id)              → actionView($id)
+actionAssetsmaintenance            → actionMaintenance
+actionAdd_assetsmaintenance        → actionMaintenanceCreate
+actionUpdate_assetsmaintenance($id)→ actionMaintenanceUpdate($id)
+actionDelete_assetsmaintenance($id)→ actionMaintenanceDelete($id)
+actionView_assetsmaintenance($id)  → actionMaintenanceView($id)
+actionAssetshandover               → actionHandover
+actionAssetshandoverview($id)      → actionHandoverView($id)
+actionAdd_assets_handover          → actionHandoverCreate
+actionUpdate_assets_handover(...)  → actionHandoverUpdate($id)
+actionDelete_assets_handover(...)  → actionHandoverDelete($id)
+actionManagedropdown($table)       → actionDropdown($table)
+actionAdddropdownvalue($table,$id) → actionDropdownSave($table, $id=0)
+actionRemovedropdownvalue($id,$t)  → actionDropdownDelete($id, $table)
+actionBarcode($id)                 → actionBarcode($id)
+actionPrintmultibarcode            → actionBarcodeMulti
+actionGetsubcategory               → actionGetSubcategory (AJAX)
+actionGetassetvalue                → actionGetAssetValue (AJAX)
+actionGetassetlist                 → actionGetAssetList (AJAX)
+actionDeleteupload                 → actionDeleteUpload (AJAX)
+actionDeletemaintenancebill        → actionDeleteMaintenanceBill (AJAX)
+actionAddvendor                    → actionAddVendor (AJAX)
+actionDisplaydropdowntable($table) → actionDropdownTable($table) (AJAX)
+
+────────────────────────────────────────────────────────────────────────────────
+7.3 Model Rules Translation (Yii1 → Yii2)
+────────────────────────────────────────────────────────────────────────────────
+
+Yii1                              Yii2 equivalent
+─────────────────────────────────────────────────
+CActiveRecord                   → ActiveRecord
+array('f','required')           → [['f'], 'required']
+array('f','numerical',          → [['f'], 'integer']
+       integerOnly=>true)
+array('f','numerical')          → [['f'], 'number']
+array('f','length','max'=>255)  → [['f'], 'string', 'max' => 255]
+array('f','safe')               → [['f'], 'safe']
+beforeValidate() dynamic rules  → scenarios() + conditional rules in rules()
+uniqueWhenNotDeleted()          → custom inline validator or UniqueValidator
+                                   with 'filter' => ['!=', 'status', 0]
+
+Dynamic warranty/AMC rules in Yii2:
+  Use scenarios: 'with-warranty', 'with-amc', 'default'
+  Or: add conditional in rules() using when/whenClient callbacks.
+
+Example:
+  [['warranty_start_date', 'warranty_end_date'], 'required',
+   'when' => fn($m) => $m->warranty == 1,
+   'whenClient' => "function(attr, val){ return $('#warranty-toggle').is(':checked'); }"]
+
+────────────────────────────────────────────────────────────────────────────────
+7.4 Key Implementation Notes for Yii2
+────────────────────────────────────────────────────────────────────────────────
+
+POST CHECK:
+  Use: Yii::$app->request->isPost
+  NOT: $this->requirePost()  ← does not exist in Yii2
+
+SOFT DELETE:
+  status = 0 (never DELETE rows)
+  All find() queries must add: ->where(['status' => 1]) or ['!=', 'status', 0]
+
+PAYMENT STATUS FILTER (IMPORTANT):
+  payment_type = 0 is a valid value, so do NOT use falsy check:
+    WRONG : if (!$model->payment_type)
+    RIGHT : if ($model->payment_type !== null && $model->payment_type !== '')
+
+FILE UPLOADS:
+  Use yii\web\UploadedFile::getInstance($model, 'billupload')
+  Validate with FileValidator: size, extensions
+  Store to Yii::getAlias('@webroot/uploads/assets_bill/')
+
+BARCODE:
+  Port BCGcode128 library usage as-is (composer package: barcode-bakery/barcode1d)
+  Or generate via action returning PNG content with appropriate headers.
+
+JSON HANDOVER asset_id:
+  Store as JSON: json_encode($assetIds)
+  Read with: json_decode($model->asset_id, true)
+  For search: use MySQL JSON_CONTAINS in ActiveQuery
+
+AJAX RESPONSES:
+  Use Yii::$app->response->format = Response::FORMAT_JSON
+  Return ['status' => 1, 'message' => '...']
+
+UI COMPONENTS:
+  Use Bootstrap 5 (yii\bootstrap5\*)
+  All inputs: class="form-control form-control-sm" or "form-select form-select-sm"
+  Action menus: Bootstrap dropdown with ⋮ (&#8942;) button
+  Select2: include via asset bundle
+
+NAVIGATION:
+  Add link in backend/views/layouts/main.php under appropriate section.
+
+DATABASE:
+  DSN: mysql:host=127.0.0.1;port=3306;dbname=maestroerp
+  User: root  Password: (empty)
+
+────────────────────────────────────────────────────────────────────────────────
+7.5 Search Models in Yii2
+────────────────────────────────────────────────────────────────────────────────
+
+Create separate *Search models extending the base model.
+Each search model:
+  - Declares safe rules for all filter attributes
+  - Implements search() returning ActiveDataProvider
+  - Uses ActiveQuery with andFilterWhere() for nullable filters
+
+AssetsSearch special filters:
+  - tags (multi-select): andWhere(['in', 'id', ...]) or FIND_IN_SET
+  - brand_id (multi-select): andFilterWhere(['in', 'brand_id', $this->brand_id])
+  - from_date / to_date: andFilterWhere(['>=', 'date_of_purchase', ...])
+  - category/subcategory/location (multi): andFilterWhere(['in', ...])
+
+AssetsHandoverSearch special filter:
+  - asset_id (JSON): use andWhere("JSON_CONTAINS(asset_id, :val)", [':val' => json_encode($id)])
+
+────────────────────────────────────────────────────────────────────────────────
+7.6 Migrations to Create
+────────────────────────────────────────────────────────────────────────────────
+
+Run: php yii migrate/create create_assets_tables
+
+Tables to create (if not already migrated):
+  assets
+  assets_category
+  assets_subcategory
+  assets_brand
+  assets_loc
+  assets_tags
+  assets_handover
+  assets_maintenance
+  assets_uploads
+
+Reference: maestro_erp/protected/data/schema.mysql.sql for column definitions.
+
+────────────────────────────────────────────────────────────────────────────────
+7.7 Dependencies / Packages
+────────────────────────────────────────────────────────────────────────────────
+
+Required composer packages:
+  barcode-bakery/barcode1d   — for BCGcode128 barcode generation
+  (already likely present via Yii1 side)
+
+Frontend assets:
+  Select2 (for multi-select dropdowns)
+  Bootstrap Datepicker or flatpickr (for date fields)
+  Bootstrap 5 (already configured in Yii2 template)
+
+================================================================================
+SECTION 8: IMPLEMENTATION CHECKLIST
+================================================================================
+
+Phase 1 — Models
+  [ ] Assets.php               with compareDates(), uniqueWhenNotDeleted(), beforeValidate()
+  [ ] AssetsCategory.php
+  [ ] AssetsSubcategory.php
+  [ ] AssetsBrand.php
+  [ ] AssetsLoc.php
+  [ ] AssetsTags.php
+  [ ] AssetsHandover.php       with compareDates()
+  [ ] AssetsMaintenance.php    with conditional payment validators
+  [ ] AssetsUploads.php
+  [ ] *Search.php models       (Assets, Handover, Maintenance)
+
+Phase 2 — Controller
+  [ ] AssetsController.php     extending backend\controllers\Controller
+  [ ] All 27 actions mapped
+  [ ] Access control (role checks)
+  [ ] File upload logic
+  [ ] Barcode generation
+  [ ] AJAX endpoints returning FORMAT_JSON
+
+Phase 3 — Views
+  [ ] Asset list (index) with search panel and grid
+  [ ] Asset create / update form (_form.php) with all upload sections
+  [ ] Asset view modal
+  [ ] Maintenance list, create, update, view
+  [ ] Handover list, create, update, view
+  [ ] Dropdown management pages
+  [ ] Barcode single/multi print views
+
+Phase 4 — Integration
+  [ ] Add Assets link to backend/views/layouts/main.php
+  [ ] Run migrations
+  [ ] Test file upload directories and permissions
+  [ ] Test AJAX cascading subcategory dropdown
+  [ ] Test soft-delete constraints (handover block, lookup protection)
+  [ ] Test barcode generation
+
+================================================================================
+END OF REPORT
+================================================================================

@@ -1,0 +1,10 @@
+Options -Indexes +FollowSymLinks
+RewriteEngine on
+RewriteBase /erp/maestro_erp_yii2/
+
+# If the file exists (including via symlinks), serve it directly
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+
+# Everything else goes to the Yii entry script
+RewriteRule ^ backend/web/index.php [L]

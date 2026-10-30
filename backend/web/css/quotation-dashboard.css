@@ -1,0 +1,99 @@
+/* Quotation / Delivery dashboard tile styles.
+   Icon + label + value horizontal layout.
+   Original design preserved in memory (project_quotation_dashboard_card_revert). */
+
+.card-home {
+    position: relative;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 18px;
+    border: 1px solid rgba(17, 24, 39, 0.06);
+    box-shadow: 0 1px 3px rgba(17, 24, 39, 0.04),
+                0 8px 20px rgba(17, 24, 39, 0.04);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    overflow: hidden;
+    height: 100%;
+}
+
+.card-home:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 10px rgba(17, 24, 39, 0.06),
+                0 16px 32px rgba(17, 24, 39, 0.1);
+    border-color: rgba(17, 24, 39, 0.1);
+}
+
+.card-home a {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: 100%;
+}
+
+.card-home-icon {
+    flex: 0 0 56px;
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    color: var(--card-accent, #6c757d);
+    background: color-mix(in srgb, var(--card-accent, #6c757d) 14%, transparent);
+    transition: transform 0.3s ease, background 0.3s ease;
+}
+
+.card-home:hover .card-home-icon {
+    transform: scale(1.08) rotate(-4deg);
+    background: color-mix(in srgb, var(--card-accent, #6c757d) 20%, transparent);
+}
+
+.card-home-body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.card-home-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #6b7280;
+    margin: 0 0 4px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.card-home-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.1;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Accent colours — consumed by the icon badge. */
+.card-home-total      { --card-accent: #3b82f6; }
+.card-home-returnable { --card-accent: #10b981; }
+.card-home-sale       { --card-accent: #f59e0b; }
+.card-home-service    { --card-accent: #0ea5e9; }
+.card-home-overdue    { --card-accent: #ef4444; }
+.card-home-returned   { --card-accent: #a855f7; }
+.card-home-cancelled  { --card-accent: #6b7280; }
+.card-home-inward     { --card-accent: #06b6d4; }
+
+@media (max-width: 575.98px) {
+    .card-home { padding: 14px; }
+    .card-home-icon {
+        flex: 0 0 48px;
+        width: 48px;
+        height: 48px;
+        font-size: 20px;
+        border-radius: 12px;
+    }
+    .card-home-value { font-size: 24px; }
+}
