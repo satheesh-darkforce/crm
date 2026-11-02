@@ -270,12 +270,25 @@ class UserAccess
             'lead/dropped'                      => ['lead/dropped'],
             'lead/my-leads'                     => ['lead/myleads'],
             'lead/assigned'                     => ['lead/assigned'],
+            'lead/view-assigned'                => ['lead/viewassigned'],
+            'lead/change-lead-status'           => ['lead/changeleadstatus'],
+            'lead/change-followup-status'       => ['lead/changefollowupstatus'],
+            'lead/add-to-client'                => ['lead/addtoclient'],
+            'lead/delete'                       => ['lead/delete'],
+            'lead/delete-attachment'            => ['lead/deleteattachment'],
             'lead/lead-master'                  => ['lead/leadmaster'],
+            // Yii1 Lead Master buttons checked the underscore names, so accept both.
+            'lead/lead-master-view'             => ['lead/leadmasterview', 'lead/lead_master_view'],
+            'lead/create-lead-master'           => ['lead/createleadmaster'],
+            'lead/update-lead-master'           => ['lead/updateleadmaster', 'lead/update_lead_master'],
+            'lead/delete-lead-master'           => ['lead/deleteleadmaster', 'lead/delete_lead_master'],
+            'lead/convert-to-lead'              => ['lead/converttolead', 'lead/convert_to_lead'],
             'lead/upload-lead'                  => ['lead/uploadlead'],
             'lead-followers/index'              => ['leadfollowers/admin'],
             'lead-followers/create'             => ['leadfollowers/create'],
             'lead-followers/update'             => ['leadfollowers/update'],
             'lead-followers/view'               => ['leadfollowers/view'],
+            'lead-followers/view-attachments'   => ['leadfollowers/viewattachments'],
             // Quotations
             'quotation/index'                   => ['quotations/admin'],
             'quotation/create'                  => ['quotations/create'],
@@ -502,12 +515,6 @@ class UserAccess
             'rfid-card/toggle-status'          => ['rfidcards/changestatus', 'rfidcards/admin'],
             // Client extras
             'client/reset-password'            => ['client/accesspermissions'],
-            // Lead extras
-            'lead/convert-to-lead'             => ['lead/converttolead'],
-            'lead/convert-to-client'           => ['lead/addtoclient'],
-            'lead/delete'                      => ['lead/delete'],
-            'lead/add-follower'                => ['leadfollowers/create'],
-            'lead/delete-attachment'            => ['lead/deleteattachment'],
             // Work Report extras
             'work-report/client-work-reports'  => ['workreport/clientworkreports'],
             'work-report/project-detail'       => ['workreport/projectdetailsview'],
@@ -587,6 +594,12 @@ class UserAccess
         ];
     }
 
+    /** Whether the AMC module is switched on (params['features.amc']). */
+    public static function isAmcEnabled(): bool
+    {
+        return !empty(Yii::$app->params['features.amc']);
+    }
+
     /**
      * Check if the current user has access to a given route.
      *
@@ -601,6 +614,11 @@ class UserAccess
     public static function checkAccess(string $route): bool
     {
         if (Yii::$app->user->isGuest) {
+            return false;
+        }
+
+        // Disabled modules are hidden from everyone, admins included.
+        if (str_starts_with($route, 'amc/') && !self::isAmcEnabled()) {
             return false;
         }
 
@@ -638,6 +656,18 @@ class UserAccess
             // granting only the all-data permission still shows the menu/page.
             'attendance/live-all-data' => [
                 'attendance/live',
+            ],
+            // Leads: the sample template belongs to the upload page; the
+            // assigned list opens its own read-only view; editing a lead
+            // includes removing its attachments.
+            'lead/upload-lead' => [
+                'lead/download-sample',
+            ],
+            'lead/assigned' => [
+                'lead/view-assigned',
+            ],
+            'lead/update' => [
+                'lead/delete-attachment',
             ],
             // PO Listing permission: View + Edit of existing POs.
             'po/index' => [

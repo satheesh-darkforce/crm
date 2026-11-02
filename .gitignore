@@ -63,6 +63,7 @@ uploads/
 *.log
 *.cache
 .phpunit.result.cache
+*.sql
 *.sql.gz
 *.sql.zip
 
@@ -88,3 +89,6 @@ nbproject/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ─── Legacy Yii1 ERP (local reference copy only) ──────────────
+/old_erp/

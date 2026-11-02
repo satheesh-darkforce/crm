@@ -168,4 +168,41 @@ class ClientModel extends ActiveRecord
             default                => '—',
         };
     }
+
+    /**
+     * Save a new (already validated) client together with its login user and,
+     * when it has a company name, its Sundry Debtor ledger — mirrors Yii1.
+     * All-or-nothing: rolls back and returns false if any step fails.
+     */
+    public function saveWithLogin(User $user): bool
+    {
+        $tx = static::getDb()->beginTransaction();
+        try {
+            if (!$user->save(false)) {
+                throw new \RuntimeException('user');
+            }
+            $this->user_id = $user->user_id;
+            if (!$this->save(false)) {
+                throw new \RuntimeException('client');
+            }
+            if ($this->company_name !== '') {
+                $ledger = new AccLedger();
+                $ledger->category_id = 8; // Sundry Debtor
+                $ledger->title       = $this->company_name;
+                $ledger->type        = 1; // For client
+                $ledger->is_fixed    = 0;
+                $ledger->client_id   = $this->id;
+                $ledger->created_at  = date('Y-m-d H:i:s');
+                $ledger->created_by  = \Yii::$app->user->id;
+                $ledger->status      = 1;
+                $ledger->save(false);
+            }
+            $tx->commit();
+            return true;
+        } catch (\Throwable $e) {
+            $tx->rollBack();
+            \Yii::error('Client create failed: ' . $e->getMessage(), __METHOD__);
+            return false;
+        }
+    }
 }

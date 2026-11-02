@@ -4,6 +4,7 @@ namespace backend\controllers;
 
 use backend\models\Developer;
 use backend\models\MasterSetting;
+use common\components\UserAccess;
 use Yii;
 use yii\web\Response;
 
@@ -103,6 +104,9 @@ class SettingsController extends Controller
         }
 
         $allRoutes = $this->getAllAccessibleRoutes();
+        if (!UserAccess::isAmcEnabled()) {
+            unset($allRoutes['AMC']);
+        }
 
         return $this->render('access-menus', compact('developers', 'selected', 'allRoutes'));
     }
@@ -121,11 +125,31 @@ class SettingsController extends Controller
                 'attendance/live'          => 'Live Attendance',
             ],
             'CRM' => [
-                'lead/index'         => 'Leads — List',
-                'lead/create'        => 'Leads — Create',
-                'lead/view'          => 'Leads — View',
-                'lead/update'        => 'Leads — Update',
-                'lead/delete'        => 'Leads — Delete',
+                'lead/index'                  => 'Manage Leads — List',
+                'lead/create'                 => 'Leads — Create',
+                'lead/view'                   => 'Leads — View',
+                'lead/update'                 => 'Leads — Update',
+                'lead/delete'                 => 'Leads — Delete',
+                'lead/change-status'          => 'Leads — Change Lead Status',
+                'lead/change-lead-status'     => 'Leads — Active / Inactive',
+                'lead/my-leads'               => 'My Leads — List',
+                'lead/assigned'               => 'Assigned Leads — List',
+                'lead/converted'              => 'Converted Leads — List',
+                'lead/dropped'                => 'Dropped Leads — List',
+                'lead/add-to-client'          => 'Converted Leads — Add To Client',
+                'lead-followers/index'        => 'Follow Ups — List',
+                'lead-followers/create'       => 'Follow Ups — Create',
+                'lead-followers/update'       => 'Follow Ups — Update',
+                'lead-followers/view'         => 'Follow Ups — View',
+                'lead-followers/view-attachments' => 'Follow Ups — Attachments',
+                'lead/change-followup-status' => 'Follow Ups — Close',
+                'lead/lead-master'            => 'Lead Master — List',
+                'lead/lead-master-view'       => 'Lead Master — View',
+                'lead/create-lead-master'     => 'Lead Master — Create',
+                'lead/update-lead-master'     => 'Lead Master — Update',
+                'lead/delete-lead-master'     => 'Lead Master — Delete',
+                'lead/upload-lead'            => 'Lead Master — Upload',
+                'lead/convert-to-lead'        => 'Lead Master — Convert to Lead',
                 'client/index'       => 'Clients — List',
                 'client/view'        => 'Clients — View',
             ],

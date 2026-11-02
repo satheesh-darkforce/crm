@@ -195,33 +195,11 @@ class ClientController extends Controller
                 return $this->render('create', compact('client', 'user'));
             }
 
-            if (!$user->save(false)) {
-                $user->addError('username', 'Failed to create user account.');
-                return $this->render('create', compact('client', 'user'));
-            }
-
-            $client->user_id = $user->user_id;
-
-            if ($client->save(false)) {
-                // Create AccLedger entry (Sundry Debtor) — mirrors Yii1 behavior
-                if ($client->company_name !== '') {
-                    $ledger = new AccLedger();
-                    $ledger->category_id = 8; // Sundry Debtor
-                    $ledger->title = $client->company_name;
-                    $ledger->type = 1; // For client
-                    $ledger->is_fixed = 0;
-                    $ledger->client_id = $client->id;
-                    $ledger->created_at = date('Y-m-d H:i:s');
-                    $ledger->created_by = Yii::$app->user->id;
-                    $ledger->status = 1;
-                    $ledger->save(false);
-                }
-
+            if ($client->saveWithLogin($user)) {
                 Yii::$app->session->setFlash('success', 'Client created successfully.');
                 return $this->redirect(['view', 'id' => $client->id]);
             }
 
-            $user->delete();
             $client->addError('client_name', 'Failed to save client record.');
         }
 

@@ -144,10 +144,7 @@ $menus = [
             ['menu_name' => 'Delete',                  'menu_path' => 'uploadpayslip/delete'        ],
         ],
     ],
-    // Leads section is hidden for now per business request — the CRM/Leads
-    // module isn't being rolled out to developers yet. To re-enable, simply
-    // uncomment this block; the routes and controller remain in place.
-    /*
+    // Leads — Yii1-format routes; UserAccess maps the Yii2 routes onto these.
     [
         'main_menu' => 'Leads',
         'menus' => [
@@ -155,7 +152,9 @@ $menus = [
             ['menu_name' => 'Create',             'menu_path' => 'lead/create'             ],
             ['menu_name' => 'Update',             'menu_path' => 'lead/update'             ],
             ['menu_name' => 'View',               'menu_path' => 'lead/view'               ],
+            ['menu_name' => 'Delete',             'menu_path' => 'lead/delete'             ],
             ['menu_name' => 'Change Status',      'menu_path' => 'lead/changestatus'       ],
+            ['menu_name' => 'Active / Inactive',  'menu_path' => 'lead/changeleadstatus'   ],
             ['menu_name' => 'Converted',          'menu_path' => 'lead/converted'          ],
             ['menu_name' => 'Dropped',            'menu_path' => 'lead/dropped'            ],
             ['menu_name' => 'Add To Client',      'menu_path' => 'lead/addtoclient'        ],
@@ -163,6 +162,7 @@ $menus = [
             ['menu_name' => 'Create Follow Up',   'menu_path' => 'leadfollowers/create'    ],
             ['menu_name' => 'Update Follow Up',   'menu_path' => 'leadfollowers/update'    ],
             ['menu_name' => 'View Follow Up',     'menu_path' => 'leadfollowers/view'      ],
+            ['menu_name' => 'Close Follow Up',    'menu_path' => 'lead/changefollowupstatus'],
             ['menu_name' => 'View Attachments',   'menu_path' => 'leadfollowers/viewattachments'],
             ['menu_name' => 'Assigned Lead',      'menu_path' => 'lead/assigned'           ],
             ['menu_name' => 'My Lead',            'menu_path' => 'lead/myleads'            ],
@@ -175,7 +175,6 @@ $menus = [
             ['menu_name' => 'Convert to Lead',    'menu_path' => 'lead/converttolead'      ],
         ],
     ],
-    */
     [
         'main_menu' => 'Invoices',
         'menus' => [

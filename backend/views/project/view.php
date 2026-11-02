@@ -21,7 +21,7 @@ $this->title = 'View Project';
 // AMC: only completed projects (main `project` table status 3 = Completed)
 // may start AMC. Show "View AMC" if an active contract already exists.
 $isCompletedProject = (int)$model->project_status === 3;
-$activeAmc = \backend\models\Amc::find()
+$activeAmc = !UserAccess::isAmcEnabled() ? null : \backend\models\Amc::find()
     ->where(['project_id' => $model->id, 'status' => 1, 'amc_status' => \backend\models\Amc::AMC_ACTIVE])
     ->one();
 $canStartAmc = UserAccess::checkAccess('amc/start');

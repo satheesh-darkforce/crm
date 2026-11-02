@@ -76,20 +76,36 @@ $modules = [
             'domain/renewal-history'=> 'Renewal History',
         ],
     ],
-    // CRM / Leads section is hidden for now per business request — the
-    // module isn't being rolled out to employees yet. To re-enable, simply
-    // uncomment this block; the routes and controller remain in place.
-    /*
     'lead' => [
         'label' => 'CRM / Leads',
         'actions' => [
-            'lead/index'   => 'View',
-            'lead/create'  => 'Create',
-            'lead/update'  => 'Edit',
-            'lead/delete'  => 'Delete',
+            'lead/index'                  => 'Manage Leads',
+            'lead/create'                 => 'Create',
+            'lead/view'                   => 'View',
+            'lead/update'                 => 'Edit',
+            'lead/delete'                 => 'Delete',
+            'lead/change-status'          => 'Change Lead Status',
+            'lead/change-lead-status'     => 'Active / Inactive',
+            'lead/my-leads'               => 'My Leads',
+            'lead/assigned'               => 'Assigned Leads',
+            'lead/converted'              => 'Converted Leads',
+            'lead/dropped'                => 'Dropped Leads',
+            'lead/add-to-client'          => 'Add To Client',
+            'lead-followers/index'        => 'Follow Ups',
+            'lead-followers/create'       => 'Add Follow Up',
+            'lead-followers/update'       => 'Edit Follow Up',
+            'lead-followers/view'         => 'View Follow Up',
+            'lead-followers/view-attachments' => 'Follow Up Attachments',
+            'lead/change-followup-status' => 'Close Follow Up',
+            'lead/lead-master'            => 'Lead Master',
+            'lead/lead-master-view'       => 'Lead Master — View',
+            'lead/create-lead-master'     => 'Lead Master — Create',
+            'lead/update-lead-master'     => 'Lead Master — Edit',
+            'lead/delete-lead-master'     => 'Lead Master — Delete',
+            'lead/upload-lead'            => 'Upload Lead',
+            'lead/convert-to-lead'        => 'Convert to Lead',
         ],
     ],
-    */
     'invoice' => [
         'label' => 'Invoices',
         'actions' => [

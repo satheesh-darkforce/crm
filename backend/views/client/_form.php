@@ -3,11 +3,13 @@
 /** @var \backend\models\ClientModel $client */
 /** @var \backend\models\User $user */
 /** @var bool $isUpdate */
+/** @var array|string|null $cancelUrl  Defaults to the client list (overridden by lead "Add To Client") */
 
 use yii\bootstrap5\ActiveForm;
 use yii\bootstrap5\Html;
 
-$isUpdate = $isUpdate ?? false;
+$isUpdate  = $isUpdate ?? false;
+$cancelUrl = $cancelUrl ?? ['/client/index'];
 ?>
 
 <?php $form = ActiveForm::begin(['successCssClass' => '']); ?>
@@ -150,7 +152,7 @@ if (!empty($allErrors)): ?>
 
 <div class="d-flex gap-2 mt-3">
     <?= Html::submitButton($isUpdate ? 'Update Client' : 'Create Client', ['class' => 'btn btn-primary']) ?>
-    <?= Html::a('Cancel', ['index'], [
+    <?= Html::a('Cancel', $cancelUrl, [
         'class' => 'btn btn-secondary',
         'onclick' => 'event.preventDefault(); window.location.replace(this.href); return false;',
     ]) ?>

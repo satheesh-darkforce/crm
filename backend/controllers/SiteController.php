@@ -3,6 +3,7 @@
 namespace backend\controllers;
 
 use common\components\AttendanceProcessor;
+use common\components\UserAccess;
 use backend\components\PayslipGenerator;
 use backend\components\MonthlyClCreditor;
 use backend\models\CronJobCallLogs;
@@ -94,7 +95,7 @@ class SiteController extends BaseController
         // ── Current month AMC renewals due ──────────────────────────────────
         // Active AMCs whose current end date (latest renewal end, else the
         // warranty end date) falls in the current month. Mirrors amc/renew-list.
-        $amcDueCount = (int) $db->createCommand("
+        $amcDueCount = !UserAccess::isAmcEnabled() ? 0 : (int) $db->createCommand("
             SELECT COUNT(*) FROM amc a
             WHERE a.status = 1 AND a.amc_status = 1
               AND YEAR(COALESCE((SELECT MAX(r.end_date) FROM amc_renew r WHERE r.amc_id = a.id AND r.status = 1), a.end_date)) = YEAR(CURDATE())

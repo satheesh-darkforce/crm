@@ -9,6 +9,9 @@ use yii\db\ActiveRecord;
  *
  * Table: lead_master
  *
+ * status: 1=Active, 0=Inactive, -1=Deleted (soft delete; also set once the
+ *         prospect has been converted into a Lead)
+ *
  * @property int    $id
  * @property string $account_name
  * @property string $first_name
@@ -25,6 +28,10 @@ use yii\db\ActiveRecord;
  */
 class LeadMaster extends ActiveRecord
 {
+    const STATUS_DELETED  = -1;
+    const STATUS_INACTIVE = 0;
+    const STATUS_ACTIVE   = 1;
+
     public static function tableName(): string
     {
         return 'lead_master';
@@ -33,14 +40,22 @@ class LeadMaster extends ActiveRecord
     public function rules(): array
     {
         return [
+            [['account_name', 'first_name', 'last_name', 'designation', 'email_id', 'phone_number', 'city'], 'trim'],
             [['account_name', 'first_name', 'email_id', 'phone_number'], 'required'],
-            [['created_by', 'updated_by', 'status'], 'integer'],
-            [['created_at', 'updated_at'], 'safe'],
+            [['email_id'], 'email'],
+            // Also stops a re-uploaded sheet from duplicating prospects. Only checked
+            // for new / changed emails so legacy duplicates stay editable.
+            [['email_id'], 'unique', 'filter' => ['!=', 'status', self::STATUS_DELETED],
+                'when' => fn($m) => $m->isNewRecord
+                    || strtolower(trim((string)$m->getOldAttribute('email_id'))) !== strtolower((string)$m->email_id),
+                'message' => 'A prospect with this email already exists.'],
+            [['phone_number'], 'match', 'pattern' => Lead::PHONE_PATTERN, 'message' => 'Phone Number must be a valid phone number.'],
+            [['status'], 'in', 'range' => [self::STATUS_DELETED, self::STATUS_INACTIVE, self::STATUS_ACTIVE]],
+            [['status'], 'default', 'value' => self::STATUS_ACTIVE],
             [['account_name'], 'string', 'max' => 200],
             [['first_name', 'last_name', 'email_id', 'phone_number', 'city'], 'string', 'max' => 100],
             [['designation'], 'string', 'max' => 250],
-            [['email_id'], 'email'],
-            [['phone_number'], 'match', 'pattern' => '/^[0-9]{10}$/', 'message' => 'Phone number must be exactly 10 digits.'],
+            [['created_at', 'created_by', 'updated_at', 'updated_by'], 'safe'],
         ];
     }
 
@@ -57,8 +72,20 @@ class LeadMaster extends ActiveRecord
             'city'         => 'City',
             'created_at'   => 'Created At',
             'created_by'   => 'Created By',
+            'updated_at'   => 'Updated At',
+            'updated_by'   => 'Updated By',
             'status'       => 'Status',
         ];
+    }
+
+    public static function statusOptions(): array
+    {
+        return [self::STATUS_ACTIVE => 'Active', self::STATUS_INACTIVE => 'Inactive'];
+    }
+
+    public function getCreatedByUser(): \yii\db\ActiveQuery
+    {
+        return $this->hasOne(User::class, ['user_id' => 'created_by']);
     }
 
     public function getFullName(): string

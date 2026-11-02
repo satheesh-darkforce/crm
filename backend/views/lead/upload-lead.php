@@ -1,71 +1,56 @@
 <?php
 /** @var \yii\web\View $this */
+/** @var string[] $rowErrors */
 
 use yii\bootstrap5\Html;
 
-$this->title = 'Upload Leads (CSV)';
+$this->title = 'Upload Lead';
 ?>
-<div class="lead-upload" style="max-width:640px">
+<div class="lead-upload" style="max-width:820px">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0 fw-semibold">Upload Leads via CSV</h5>
-        <?= Html::a('Back to Prospects', ['lead-master'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
+        <h5 class="fw-semibold mb-0"><?= Html::encode($this->title) ?></h5>
+        <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', ['lead-master'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
     </div>
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-header bg-white fw-semibold py-2">Upload CSV File</div>
+
+    <div class="card border-0 shadow-sm mb-3">
         <div class="card-body">
             <form method="post" enctype="multipart/form-data">
-                <?= Html::hiddenInput(Yii::$app->request->csrfParam, Yii::$app->request->csrfToken) ?>
-                <div class="mb-3">
-                    <label class="form-label small fw-semibold">CSV File <span class="text-danger">*</span></label>
-                    <input type="file" name="lead_file" class="form-control form-control-sm" accept=".csv" required>
-                    <div class="form-text">Only CSV files are accepted. Max 5 MB.</div>
-                </div>
+                <input type="hidden" name="<?= Yii::$app->request->csrfParam ?>" value="<?= Yii::$app->request->csrfToken ?>">
+                <label class="form-label">Excel / CSV file <span class="text-danger">*</span></label>
                 <div class="d-flex gap-2">
-                    <?= Html::submitButton('Upload &amp; Import', ['class' => 'btn btn-primary btn-sm']) ?>
-                    <?= Html::a('Cancel', ['lead-master'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
+                    <input type="file" name="lead_file" class="form-control form-control-sm" accept=".xlsx,.xls,.csv" required>
+                    <button type="submit" class="btn btn-primary btn-sm px-4">Upload</button>
                 </div>
+                <div class="form-text">Imported rows are added to Lead Master as active prospects.</div>
             </form>
         </div>
     </div>
 
-    <!-- Format guide -->
-    <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white fw-semibold py-2">CSV Format</div>
-        <div class="card-body p-0">
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <span class="fw-semibold small text-uppercase text-muted">File format</span>
+            <?= Html::a('<i class="fas fa-download me-1"></i>Download sample', ['download-sample'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
+        <div class="card-body small">
+            <p class="mb-2">The first row is a header and is skipped. Columns must be exactly <strong>A–H</strong>:</p>
             <div class="table-responsive">
-                <table class="table table-sm table-bordered mb-0" style="font-size:.8rem">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Col A</th><th>Col B</th><th>Col C</th><th>Col D</th>
-                            <th>Col E</th><th>Col F</th><th>Col G</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr class="table-warning">
-                            <td><em>account_name</em></td>
-                            <td><em>first_name</em></td>
-                            <td><em>last_name</em></td>
-                            <td><em>designation</em></td>
-                            <td><em>email_id</em></td>
-                            <td><em>phone_number</em></td>
-                            <td><em>city</em></td>
-                        </tr>
-                        <tr>
-                            <td>Acme Corp</td>
-                            <td>John</td>
-                            <td>Doe</td>
-                            <td>Manager</td>
-                            <td>john@acme.com</td>
-                            <td>9876543210</td>
-                            <td>Mumbai</td>
-                        </tr>
-                    </tbody>
+                <table class="table table-sm table-bordered mb-2 text-center">
+                    <tr class="table-light"><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th><th>H</th></tr>
+                    <tr><td>S.No</td><td>Account Name *</td><td>First Name *</td><td>Last Name</td><td>Designation</td><td>Email *</td><td>Phone Number *</td><td>City</td></tr>
                 </table>
             </div>
-            <div class="px-3 py-2 text-muted" style="font-size:.78rem">
-                Row 1 must be the header row (column names). Data starts from row 2.
-                Required fields: Account Name, First Name, Email, Phone.
-            </div>
+            <p class="mb-0 text-muted">Rows with a missing required value, an invalid email or an invalid phone number are skipped and listed after the upload.</p>
         </div>
     </div>
+
+    <?php if ($rowErrors): ?>
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold small text-uppercase text-danger">Skipped rows (<?= count($rowErrors) ?>)</div>
+        <ul class="list-group list-group-flush small" style="max-height:320px;overflow:auto">
+            <?php foreach ($rowErrors as $err): ?>
+                <li class="list-group-item py-1"><?= Html::encode($err) ?></li>
+            <?php endforeach; ?>
+        </ul>
+    </div>
+    <?php endif; ?>
 </div>

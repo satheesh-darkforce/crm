@@ -272,6 +272,7 @@ $total      = $dataProvider->getTotalCount();
 $changeStatusUrl = Url::to(['change-status']);
 $setLiveDateUrl  = Url::to(['set-live-date']);
 $amcStartUrl     = Url::to(['/amc/start']);
+$amcEnabledJs    = UserAccess::checkAccess('amc/start') ? 'true' : 'false';
 $todayStr        = date('Y-m-d');
 $this->registerJs(<<<JS
 // Flow shown after a project is marked Completed (status 3):
@@ -307,6 +308,10 @@ window.amcAfterComplete = function(projectId) {
             success: function(res) {
                 if (!res.success) {
                     Swal.fire({icon:'error', title:'Error', text: res.message || 'Failed to save date'});
+                    return;
+                }
+                if (!$amcEnabledJs) {
+                    Swal.fire({icon:'success', title:'Updated successfully!', timer:1200, showConfirmButton:false});
                     return;
                 }
                 Swal.fire({

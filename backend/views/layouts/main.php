@@ -41,11 +41,13 @@ if ($canSeeAllLeaves) {
         ->createCommand('SELECT COUNT(*) FROM leave_requests WHERE status=1 AND request_status=0')
         ->queryScalar();
 }
-// TODO: Uncomment when Lead module is re-enabled
-// if ($user && UserAccess::checkAccess('lead/index')) {
-//     $db = $db ?? Yii::$app->db;
-//     $openLeads = (int) $db->createCommand('SELECT COUNT(*) FROM `lead` WHERE status=1 AND lead_status IN (1,2,3)')->queryScalar();
-// }
+// Unread lead follow-ups assigned to me by someone else (Yii1 developer header badge).
+if ($user && UserAccess::checkAccess('lead/assigned')) {
+    $openLeads = (int) Yii::$app->db->createCommand(
+        'SELECT COUNT(*) FROM lead_followers WHERE status=1 AND read_status=1 AND assigned_to=:u AND created_by<>:c',
+        [':u' => $user->user_id, ':c' => $user->user_id]
+    )->queryScalar();
+}
 
 // Shorthand
 $ca = fn(string $route): bool => UserAccess::checkAccess($route);
@@ -82,6 +84,7 @@ $navGroupMap = [
     'additional-works'      => 'nav-workreports',
     'task'                  => 'nav-tasks',
     'lead'                  => 'nav-leads',
+    'lead-followers'        => 'nav-leads',
     'proposal'              => 'nav-leads',
     'domain'                => 'nav-domains',
     'invoice'               => 'nav-invoices',
@@ -713,22 +716,15 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
     <?php endif; ?>
 
     <!-- 7. Leads -->
-    <?php /*
-    TEMPORARILY HIDDEN — do NOT uncomment unless the user explicitly asks
-    "uncomment / re-enable the Leads module". Keep the block intact so it can
-    be restored with a single diff.
-    ?>
-    <?php if ($ca('lead/index') || $ca('lead/my-leads') || $ca('lead/assigned') || $ca('lead/converted') || $ca('lead/dropped') || $ca('proposal/index')): ?>
-    <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-leads" aria-expanded="false">
+    <?php if ($ca('lead/index') || $ca('lead/my-leads') || $ca('lead/create') || $ca('lead/assigned') || $ca('lead/converted') || $ca('lead/dropped') || $ca('lead/lead-master') || $ca('lead/upload-lead')): ?>
+    <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-leads" aria-expanded="<?= $navAria('nav-leads') ?>">
         <span class="sidebar-icon"><i class="fas fa-bullseye"></i></span> Leads
         <?= $openLeads > 0 ? '<span class="badge bg-danger ms-1">' . $openLeads . '</span>' : '' ?>
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
-    <div class="collapse nav-sublist" id="nav-leads">
+    <div class="collapse nav-sublist <?= $navOpen('nav-leads') ?>" id="nav-leads">
         <?php if ($ca('lead/index')): ?>
-        <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/index']) ?>">
-            Leads <?= $openLeads > 0 ? '<span class="badge bg-danger">' . $openLeads . '</span>' : '' ?>
-        </a>
+        <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/index']) ?>">Manage Leads</a>
         <?php endif; ?>
         <?php if ($ca('lead/my-leads')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/my-leads']) ?>">My Leads</a>
@@ -737,7 +733,9 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/create']) ?>">Add New Lead</a>
         <?php endif; ?>
         <?php if ($ca('lead/assigned')): ?>
-        <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/assigned']) ?>">Assigned Leads</a>
+        <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/assigned']) ?>">
+            Assigned Leads <?= $openLeads > 0 ? '<span class="badge bg-danger">' . $openLeads . '</span>' : '' ?>
+        </a>
         <?php endif; ?>
         <?php if ($ca('lead/converted')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/converted']) ?>">Converted Leads</a>
@@ -745,9 +743,11 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
         <?php if ($ca('lead/dropped')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/dropped']) ?>">Dropped Leads</a>
         <?php endif; ?>
+        <?php /* Proposals stays hidden until that module is rolled out.
         <?php if ($ca('proposal/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/proposal/index']) ?>">Proposals</a>
         <?php endif; ?>
+        */ ?>
         <?php if ($ca('lead/lead-master')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/lead-master']) ?>">Lead Master</a>
         <?php endif; ?>
@@ -756,8 +756,6 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
         <?php endif; ?>
     </div>
     <?php endif; ?>
-    <?php
-    */ ?>
 
     <!-- 8. Domains -->
     <?php if ($ca('domain/index') || $ca('domain/create')): ?>
@@ -1159,13 +1157,11 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
             Leaves <span class="badge bg-danger"><?= $pendingLeaves ?></span>
         </a>
         <?php endif; ?>
-        <?php /* TODO: Uncomment when Lead module is re-enabled
         <?php if ($openLeads > 0): ?>
-        <a href="<?= \yii\helpers\Url::to(['/lead/index']) ?>" class="btn btn-sm btn-outline-info position-relative">
+        <a href="<?= \yii\helpers\Url::to(['/lead/assigned']) ?>" class="btn btn-sm btn-outline-info position-relative" title="Unread lead follow-ups assigned to you">
             Leads <span class="badge bg-danger"><?= $openLeads ?></span>
         </a>
         <?php endif; ?>
-        */ ?>
 
         <!-- User dropdown -->
         <div class="dropdown">
