@@ -17,11 +17,22 @@ use yii\db\ActiveRecord;
  */
 class AssetHandover extends ActiveRecord
 {
+    use \backend\components\GuardedAttributes;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['status'];
+    }
+
     public static function tableName(): string { return 'assets_handover'; }
 
     public function rules(): array
     {
         return [
+            // Dates must be real YYYY-MM-DD values (checked when new or edited).
+            [['in_date', 'out_date'], 'date', 'format' => 'php:Y-m-d', 'message' => '{attribute} must be a date (YYYY-MM-DD).',
+                'when' => fn($m, $a) => $m->isNewRecord || $m->isAttributeChanged($a, false)],
             [['asset_id', 'dev_id', 'in_date', 'asset_location'], 'required'],
             [['dev_id', 'asset_condition', 'status'], 'integer'],
             [['in_date', 'out_date'], 'safe'],

@@ -16,11 +16,6 @@ $total      = $dataProvider->getTotalCount();
 $q          = Yii::$app->request->get();
 ?>
 <style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-
 /* Assign / Unassign modal — compact spacing + proper vertical centering. */
 #assignModal .modal-content{font-size:.875rem}
 #assignModal .modal-header{align-items:center;padding:.55rem .85rem;gap:.5rem}
@@ -31,7 +26,6 @@ $q          = Yii::$app->request->get();
 #assignModal .modal-body .mb-2{margin-bottom:.4rem !important}
 #assignModal .modal-body small.form-text{font-size:.72rem;display:block;margin-top:.2rem}
 #assignModal .modal-footer{padding:.5rem .85rem;gap:.4rem}
-
 /* Select2 single — match form-select-sm height and centre the caret + clear. */
 #assignModal .select2-container--default .select2-selection--single{height:calc(1.5em + .5rem + 2px);display:flex;align-items:center;padding-right:1.75rem}
 #assignModal .select2-container--default .select2-selection--single .select2-selection__rendered{flex:1;line-height:1.3;padding-left:.5rem;padding-right:.25rem;font-size:.85rem}
@@ -40,13 +34,15 @@ $q          = Yii::$app->request->get();
 #assignModal .select2-container--default .select2-selection--single .select2-selection__clear{position:absolute;right:1.5rem;top:50%;transform:translateY(-50%);margin:0;font-size:.9rem;line-height:1;color:#888}
 </style>
 
-<div class="rfid-card-index">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page rfid-card-index">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">RFID Cards</h5>
-            <small class="text-muted"><?= $total ?> card<?= $total != 1 ? 's' : '' ?></small>
+            <h1>RFID Cards</h1>
+            <div class="ui-sub"><?= $total ?> card<?= $total != 1 ? 's' : '' ?></div>
         </div>
-        <?= Html::a('+ Add Card', ['create'], ['class' => 'btn btn-primary btn-sm']) ?>
+        <div class="ui-actions">
+            <?= Html::a('+ Add Card', ['create'], ['class' => 'btn btn-primary btn-sm']) ?>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm mb-3">

@@ -2,6 +2,7 @@
 
 namespace backend\controllers;
 
+use backend\assets\LeadAsset;
 use backend\components\LeadAccess;
 use backend\components\LeadFiles;
 use backend\components\LeadMailer;
@@ -23,6 +24,13 @@ use yii\web\Response;
 class LeadFollowersController extends Controller
 {
     private const FORM_FIELDS = ['subject', 'follow_up_date', 'follow_up_time', 'assigned_to', 'mode', 'other_mode', 'description'];
+
+    /** Full pages get the Leads stylesheet/script; renderAjax() partials do not need them. */
+    public function render($view, $params = []): string
+    {
+        LeadAsset::registerFor($this->getView());
+        return parent::render($view, $params);
+    }
 
     /** All follow-ups of one lead. */
     public function actionIndex(int $id): string

@@ -70,13 +70,15 @@ $jsCfgJson = Json::encode($jsCfg);
 input.lop-input,input.extra-input,input.allowance-input,input.incentive-input,input.pt-input{width:90px}
 </style>
 
-<div class="developer-create-payslip">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page developer-create-payslip">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Create Payslip</h5>
-            <small class="text-muted">Lists salary-applicable employees. Enter LOP, Allowance and Incentive — PF/ESI &amp; Net Pay update automatically from Manage Deductions settings.</small>
+            <h1>Create Payslip</h1>
+            <div class="ui-sub">Lists salary-applicable employees. Enter LOP, Allowance and Incentive — PF/ESI &amp; Net Pay update automatically from Manage Deductions settings.</div>
         </div>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['/developer/index'], ['class' => 'btn btn-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['/developer/index'], ['class' => 'btn btn-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <?php if (empty($developers)): ?>

@@ -62,21 +62,19 @@ $isActiveTab = static function ($key) use ($currentStatus) {
 .cq-tabs { display:flex; gap:4px; border-bottom:1px solid #e2e8f0; margin-bottom:14px; }
 .cq-tabs a { padding:8px 16px; font-size:.85rem; font-weight:500; color:#64748b; text-decoration:none; border-bottom:2px solid transparent; transition:all .15s; }
 .cq-tabs a:hover { color:#0f172a; }
-.cq-tabs a.active { color:#0d6efd; border-bottom-color:#0d6efd; font-weight:600; }
+.cq-tabs a.active { color:var(--app-accent); border-bottom-color:var(--app-accent); font-weight:600; }
 .cq-tabs .badge { font-size:.7rem; padding:2px 7px; margin-left:4px; }
 </style>
 
-<div class="quotation-index">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page quotation-index">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Quotations</h5>
-            <small class="text-muted">
-                <?= (int) $total ?> total · <?= (int) $completedTotal ?> completed · <?= (int) $cancelledTotal ?> cancelled
-            </small>
+            <h1>Quotations</h1>
+            <div class="ui-sub"><?= (int) $total ?> total · <?= (int) $completedTotal ?> completed · <?= (int) $cancelledTotal ?> cancelled</div>
         </div>
-        <div class="d-flex gap-2">
+        <div class="ui-actions">
             <?php if (UserAccess::checkAccess('client-quotation/create')): ?>
-                <?= Html::a('+ Add Quotation', ['create'], ['class' => 'btn btn-primary btn-sm']) ?>
+                <?= Html::a('<i class="fas fa-plus me-1"></i>Add quotation', ['create'], ['class' => 'btn btn-primary btn-sm', 'encode' => false]) ?>
             <?php endif; ?>
         </div>
     </div>

@@ -44,17 +44,14 @@ $nameOf = static function ($row) use ($table): string {
 .iot-masters-side .nav-link.active{background:#e8f4fd;color:#0076B7;font-weight:600;border-left:3px solid #0076B7}
 .iot-masters-side .nav-link:hover:not(.active){background:#f2f6ff}
 .iot-masters-head{background:#0076B7;color:#fff;padding:.5rem .9rem;font-size:.85rem;font-weight:600;border-radius:6px 6px 0 0}
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
 </style>
 
-<div class="iot-masters">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0">IOT Masters</h5>
-        <small class="text-muted">Manage brands, categories, sub-categories, locations and tags</small>
+<div class="ui-page iot-masters">
+    <div class="ui-head">
+        <div>
+            <h1>IoT Lookup Tables</h1>
+            <div class="ui-sub">Manage brands, categories, sub-categories, locations and tags</div>
+        </div>
     </div>
 
     <div class="row g-3">
@@ -102,7 +99,7 @@ $nameOf = static function ($row) use ($table): string {
                             <?php endif; ?>
                         </div>
                         <div class="col text-end">
-                            <button type="button" class="btn btn-danger btn-sm iot-master-add"
+                            <button type="button" class="btn btn-primary btn-sm iot-master-add"
                                     data-table="<?= Html::encode($table) ?>" data-title="<?= Html::encode($active['title']) ?>">
                                 + Add <?= Html::encode($active['title']) ?>
                             </button>
@@ -276,7 +273,7 @@ $this->registerJs(<<<JS
                 confirmButtonColor: '#dc3545',
             }).then(function (res) {
                 if (!res.isConfirmed) return;
-                jQuery.get(delUrl, { id: btn.dataset.id, table: btn.dataset.table })
+                jQuery.post(delUrl, { id: btn.dataset.id, table: btn.dataset.table })
                     .done(function (r) {
                         if (r && r.status === 1) {
                             Swal.fire({ icon: 'success', title: 'Deleted', text: r.msg, timer: 1500, showConfirmButton: false })

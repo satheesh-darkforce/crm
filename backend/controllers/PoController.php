@@ -2,6 +2,7 @@
 
 namespace backend\controllers;
 
+use backend\assets\DeliveryAsset;
 use backend\models\ClientModel;
 use backend\models\Developer;
 use backend\models\PoDetail;
@@ -26,6 +27,13 @@ use yii\web\UploadedFile;
  */
 class PoController extends Controller
 {
+    /** Full pages get the Delivery / PO / Quotation module assets. */
+    public function render($view, $params = []): string
+    {
+        DeliveryAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     public function actionIndex(): string
     {
         $request = Yii::$app->request;
@@ -82,7 +90,7 @@ class PoController extends Controller
         $model->date      = date('Y-m-d');
         $model->po_status = PoDetail::STATUS_PENDING;
 
-        if (Yii::$app->request->isPost && $model->load(Yii::$app->request->post())) {
+        if (Yii::$app->request->isPost && $this->loadForm($model)) {
             $model->po_file = UploadedFile::getInstance($model, 'po_file');
             $now            = date('Y-m-d H:i:s');
             $model->created_at  = $now;
@@ -90,14 +98,8 @@ class PoController extends Controller
             $model->status      = 1;
             $model->quote_id    = null; // standalone
 
-            if (!empty($model->date)) {
-                $model->date = date('Y-m-d H:i:s', strtotime((string) $model->date));
-            }
-            if (!empty($model->delivery_date)) {
-                $model->delivery_date = date('Y-m-d H:i:s', strtotime((string) $model->delivery_date));
-            } else {
-                $model->delivery_date = null;
-            }
+            $model->date          = $this->toDateTime($model->date);
+            $model->delivery_date = $this->toDateTime($model->delivery_date) ?: null;
             if (empty($model->po_status)) {
                 $model->po_status = PoDetail::STATUS_PENDING;
             }
@@ -136,21 +138,15 @@ class PoController extends Controller
         // Default scenario — keeps the existing file unless a new upload arrives.
         // The `on=>'create'` constraint on po_file only fires in the create flow.
 
-        if (Yii::$app->request->isPost && $model->load(Yii::$app->request->post())) {
+        if (Yii::$app->request->isPost && $this->loadForm($model)) {
             $upload = UploadedFile::getInstance($model, 'po_file');
             if ($upload) {
                 $model->po_file = $upload;
             }
             $model->modified_at = date('Y-m-d H:i:s');
 
-            if (!empty($model->date)) {
-                $model->date = date('Y-m-d H:i:s', strtotime((string) $model->date));
-            }
-            if (!empty($model->delivery_date)) {
-                $model->delivery_date = date('Y-m-d H:i:s', strtotime((string) $model->delivery_date));
-            } else {
-                $model->delivery_date = null;
-            }
+            $model->date          = $this->toDateTime($model->date);
+            $model->delivery_date = $this->toDateTime($model->delivery_date) ?: null;
             // po_incharge column is NOT NULL on the live DB. Optional from the
             // user's perspective → store 0 (unassigned) when left blank.
             if ($model->po_incharge === '' || $model->po_incharge === null) {
@@ -193,7 +189,7 @@ class PoController extends Controller
         Yii::$app->response->format = Response::FORMAT_JSON;
         $row = ClientModel::find()
             ->select(['company_name', 'address', 'gst_no'])
-            ->where(['id' => $client_id])
+            ->where(['id' => $client_id, 'status' => 1])
             ->asArray()
             ->one();
         return [
@@ -205,6 +201,34 @@ class PoController extends Controller
     }
 
     // ──────────────────────────────────────────────────── helpers ──
+
+    /** Only the form fields; status, quote, file path and timestamps never come from the browser. */
+    private function loadForm(PoDetail $model): bool
+    {
+        $post = Yii::$app->request->post('PoDetail');
+        if (!is_array($post)) {
+            return false;
+        }
+        $fields = ['client_id', 'po_number', 'date', 'particulars', 'po_cost', 'given_cost', 'reason', 'po_status', 'delivery_date', 'po_received_by', 'po_incharge'];
+        $model->setAttributes(array_map(fn($v) => is_scalar($v) ? (string)$v : null, array_intersect_key($post, array_flip($fields))), false);
+        return true;
+    }
+
+    /** "Y-m-d" (date picker) → "Y-m-d H:i:s"; anything unreadable is returned as-is for the validator to reject. */
+    private function toDateTime($value): ?string
+    {
+        $value = trim((string)$value);
+        if ($value === '') {
+            return null;
+        }
+        foreach (['!Y-m-d', '!Y-m-d H:i:s', '!d-m-Y'] as $fmt) {
+            $d = \DateTime::createFromFormat($fmt, $value);
+            if ($d && $d->format(ltrim($fmt, '!')) === $value) {
+                return $d->format('Y-m-d') . (str_contains($fmt, 'H') ? $d->format(' H:i:s') : ' 00:00:00');
+            }
+        }
+        return $value;
+    }
 
     private function findModel(int $id): PoDetail
     {

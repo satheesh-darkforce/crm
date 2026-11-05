@@ -3,10 +3,14 @@ use yii\bootstrap5\Html;
 use yii\widgets\DetailView;
 $this->title = 'Attendance #' . $model->id;
 ?>
-<div class="attendance-view">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="mb-0"><?= Html::encode($this->title) ?></h4>
-        <?= Html::a('Back', Yii::$app->request->referrer ?: \yii\helpers\Url::to(['index']), ['class' => 'btn btn-secondary btn-sm']) ?>
+<div class="ui-page attendance-view">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($this->title) ?></h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('Back', Yii::$app->request->referrer ?: \yii\helpers\Url::to(['index']), ['class' => 'btn btn-secondary btn-sm']) ?>
+        </div>
     </div>
     <?= DetailView::widget(['model' => $model, 'attributes' => [
         'id',

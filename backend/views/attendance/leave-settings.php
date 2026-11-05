@@ -19,17 +19,12 @@ $durationOptions = [
     '08:00:00' => '8 Hours',
 ];
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-</style>
 
-<div class="leave-settings">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page leave-settings">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Leave Settings</h5>
-            <small class="text-muted">Configure permission limits, grace time and CL quota</small>
+            <h1>Leave Settings</h1>
+            <div class="ui-sub">Configure permission limits, grace time and CL quota</div>
         </div>
     </div>
     <div class="card border-0 shadow-sm" style="max-width:600px">

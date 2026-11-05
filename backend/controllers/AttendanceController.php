@@ -28,6 +28,22 @@ use yii\web\UploadedFile;
  */
 class AttendanceController extends Controller
 {
+    public function behaviors(): array
+    {
+        return array_merge(parent::behaviors(), [
+            'verbs' => ['class' => \yii\filters\VerbFilter::class, 'actions' => [
+                'check-in' => ['POST'], 'check-out' => ['POST'], 'verify-attendance' => ['POST'],
+            ]],
+        ]);
+    }
+
+    /** Full pages get the HR module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        \backend\assets\HrAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     /**
      * Developer IDs hidden from the Live Attendance board by request — they are
      * not tracked there. (5 = Senthilkumar, 35 = GOWRI PRIYA D.)
@@ -1221,8 +1237,18 @@ class AttendanceController extends Controller
     {
         $user   = Yii::$app->user->identity;
         $devId  = $user->getDeveloperId();
-        $status = (int)(Yii::$app->request->post('status') ?? Yii::$app->request->get('status', 1));
-        $reason = Yii::$app->request->post('reason') ?? Yii::$app->request->get('reason', '');
+        // 1 = confirmed, 2 = disputed (a reason is required).
+        $status = (int)Yii::$app->request->post('status', 0);
+        $reason = trim((string)Yii::$app->request->post('reason', ''));
+        if (!in_array($status, [1, 2], true)) {
+            Yii::$app->session->setFlash('error', 'Choose whether to confirm or dispute your attendance.');
+            return $this->redirect(['verify-my-attendance']);
+        }
+        if ($status === 2 && $reason === '') {
+            Yii::$app->session->setFlash('error', 'Tell us what is wrong with your attendance.');
+            return $this->redirect(['verify-my-attendance']);
+        }
+        $reason = mb_substr($reason, 0, 2000);
 
         $record = AttendanceVerification::findOne($id);
 
@@ -1302,13 +1328,18 @@ class AttendanceController extends Controller
             // remark text is already stored) but is surfaced to the user.
             $uploadError = null;
             $file = UploadedFile::getInstanceByName('remarks_attachment');
+            if ($file && (!in_array(strtolower((string) $file->extension), \backend\components\SafeUpload::ALLOWED_EXTENSIONS, true) || $file->size > \backend\components\SafeUpload::MAX_BYTES)) {
+                // Nothing executable may land in the public uploads folder.
+                $uploadError = 'The attachment must be a PDF, image or Office document up to ' . (\backend\components\SafeUpload::MAX_BYTES / 1024 / 1024) . ' MB; the remark was saved without it.';
+                $file = null;
+            }
             if ($file) {
                 $uploadsDir = Yii::getAlias('@webroot') . '/uploads/remarks';
                 if (!is_dir($uploadsDir)) {
                     @\yii\helpers\FileHelper::createDirectory($uploadsDir, 0777);
                 }
                 if (is_dir($uploadsDir) && is_writable($uploadsDir)) {
-                    $fileName = 'Remarks_' . uniqid() . '_' . $model->id . '.' . $file->extension;
+                    $fileName = 'Remarks_' . bin2hex(random_bytes(6)) . '_' . $model->id . '.' . strtolower((string) $file->extension);
                     $filePath = '/uploads/remarks/' . $fileName;
                     if ($file->saveAs($uploadsDir . '/' . $fileName)) {
                         $model->remarks_attachment = $filePath;

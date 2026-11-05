@@ -389,23 +389,39 @@ class Lead extends ActiveRecord
         return $this->latestFollower->subject ?? $this->subject ?? '';
     }
 
-    public static function leadStatusBadge(int $status): string
+    /**
+     * Colour tone for a lead status pill (see .lead-pill in css/leads.css):
+     * new → neutral, in progress → accent, awaiting payment → warning,
+     * converted → success, dropped → danger.
+     */
+    public static function leadStatusTone(int $status): string
     {
-        return [1 => 'secondary', 2 => 'info', 3 => 'warning', 4 => 'primary', 5 => 'success', 6 => 'danger'][$status] ?? 'light';
+        return [
+            self::LEAD_STATUS_OPEN            => 'neutral',
+            self::LEAD_STATUS_GOT_REQUIREMENT => 'accent',
+            self::LEAD_STATUS_GAVE_QUOTATION  => 'accent',
+            self::LEAD_STATUS_WAITING_PAYMENT => 'warning',
+            self::LEAD_STATUS_CONVERTED       => 'success',
+            self::LEAD_STATUS_DROPPED         => 'danger',
+        ][$status] ?? 'neutral';
     }
 
-    /** Row highlight for a follow-up date, matching the Yii1 today / tomorrow / overdue colours. */
-    public static function followUpRowClass(?string $date): string
+    /**
+     * Whether a follow-up date is overdue, today or tomorrow (Yii1 highlighted
+     * these rows). Returns '' for later, empty or unparseable dates.
+     */
+    public static function followUpState(?string $date): string
     {
-        if (!$date) {
+        $ts = $date ? strtotime($date) : false;
+        if ($ts === false || (int)date('Y', $ts) < 1971) { // also skips legacy 0000-00-00 values
             return '';
         }
-        $d = date('Y-m-d', strtotime($date));
+        $d = date('Y-m-d', $ts);
         return match (true) {
-            $d === date('Y-m-d')                     => 'row-today',
-            $d === date('Y-m-d', strtotime('+1 day')) => 'row-tomorrow',
-            $d < date('Y-m-d')                       => 'row-overdue',
-            default                                  => '',
+            $d === date('Y-m-d')                      => 'today',
+            $d === date('Y-m-d', strtotime('+1 day')) => 'tomorrow',
+            $d < date('Y-m-d')                        => 'overdue',
+            default                                   => '',
         };
     }
 
@@ -423,7 +439,8 @@ class Lead extends ActiveRecord
 
     public static function formatDateTime(?string $value): string
     {
-        return $value ? date('d-m-Y h:i a', strtotime($value)) : '-';
+        $ts = $value ? strtotime($value) : false;
+        return ($ts !== false && (int)date('Y', $ts) >= 1971) ? date('d-m-Y h:i a', $ts) : '-';
     }
 
     /**

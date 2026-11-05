@@ -21,10 +21,14 @@ $modeOptions = [
     4   => 'Others',
 ];
 ?>
-<div class="domain-renewal-form">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0">Record Renewal &mdash; <?= Html::encode($domain->domain_name) ?></h5>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['view', 'id' => $domain->id], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+<div class="ui-page domain-renewal-form">
+    <div class="ui-head">
+        <div>
+            <h1>Record Renewal &mdash; <?= Html::encode($domain->domain_name) ?></h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['view', 'id' => $domain->id], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <div class="row g-3 mb-3">

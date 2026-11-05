@@ -210,13 +210,15 @@ $modules = [
 .check-all-btn{cursor:pointer;font-size:.75rem;color:#0d6efd;text-decoration:underline;border:none;background:none;padding:0}
 </style>
 
-<div class="employee-permissions">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page employee-permissions">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Permissions — <?= Html::encode($model->employee_name) ?></h5>
-            <small class="text-muted"><?= Html::encode($model->designation) ?></small>
+            <h1>Permissions — <?= Html::encode($model->employee_name) ?></h1>
+            <div class="ui-sub"><?= Html::encode($model->designation) ?></div>
         </div>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <form method="post" action="">

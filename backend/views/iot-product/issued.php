@@ -25,22 +25,18 @@ $total      = $dataProvider->getTotalCount();
 $selStatus  = Yii::$app->request->get('consumption_status', '');
 ?>
 <style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
 .status-sel{font-size:.78rem;padding:.15rem .35rem;min-width:120px}
 </style>
 
-<div class="iot-issued-index">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page iot-issued-index">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Manage Issued Products</h5>
-            <small class="text-muted"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></small>
+            <h1>Issued Products</h1>
+            <div class="ui-sub"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></div>
         </div>
-        <?= Html::a('+ ADD', ['create-issue'], ['class' => 'btn btn-danger btn-sm']) ?>
+        <div class="ui-actions">
+            <?= Html::a('+ New Request', ['create-issue'], ['class' => 'btn btn-primary btn-sm']) ?>
+        </div>
     </div>
 
     <!-- Filters -->

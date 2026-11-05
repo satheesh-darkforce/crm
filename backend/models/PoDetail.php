@@ -2,6 +2,7 @@
 
 namespace backend\models;
 
+use backend\components\GuardedAttributes;
 use Yii;
 use yii\db\ActiveRecord;
 
@@ -32,6 +33,14 @@ use yii\db\ActiveRecord;
  */
 class PoDetail extends ActiveRecord
 {
+    use GuardedAttributes;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['status', 'quote_id', 'file', 'created_at', 'modified_at'];
+    }
+
     /** Form-only attribute: the uploaded PDF file. */
     public $po_file;
 
@@ -121,6 +130,19 @@ class PoDetail extends ActiveRecord
              'targetClass' => ClientQuotation::class, 'targetAttribute' => ['quote_id' => 'id']],
             [['client_id'], 'exist', 'skipOnError' => true,
              'targetClass' => ClientModel::class, 'targetAttribute' => ['client_id' => 'id']],
+
+            [['po_number', 'particulars', 'reason', 'po_received_by'], 'trim'],
+            [['po_status'], 'in', 'range' => array_keys(self::statusOptions()), 'message' => 'Choose a valid PO status.'],
+            [['po_cost'], 'compare', 'compareValue' => 0, 'operator' => '>', 'type' => 'number', 'message' => 'PO cost must be more than 0.'],
+            [['date', 'delivery_date'], 'date', 'format' => 'php:Y-m-d H:i:s', 'message' => '{attribute} must be a valid date.'],
+            [['delivery_date'], 'compare', 'compareAttribute' => 'date', 'operator' => '>=', 'type' => 'string',
+                'message' => 'Delivery date cannot be before the PO date.', 'when' => fn($m) => !empty($m->delivery_date)],
+            [['po_incharge'], 'exist', 'targetClass' => User::class, 'targetAttribute' => ['po_incharge' => 'user_id'],
+                'filter' => ['status' => 1], 'message' => 'Choose an active person in charge.', 'when' => fn($m) => (int)$m->po_incharge > 0],
+            // PO numbers come from the client, so they only need to be unique per client.
+            [['po_number'], 'unique', 'targetAttribute' => ['po_number', 'client_id'], 'filter' => ['<>', 'status', 0],
+                'message' => 'This client already has a PO with this number.',
+                'when' => fn($m) => $m->isNewRecord || (string)$m->getOldAttribute('po_number') !== (string)$m->po_number],
         ];
     }
 

@@ -27,6 +27,14 @@ use yii\db\ActiveRecord;
  */
 class IotProduct extends ActiveRecord
 {
+    use \backend\components\GuardedAttributes;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['status', 'created_by', 'updated_by', 'created_at', 'updated_at', 'opening_stock_qty'];
+    }
+
     public static function tableName(): string
     {
         return 'iot_products';

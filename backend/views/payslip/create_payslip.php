@@ -25,7 +25,6 @@ $actualSalaryTotal = 0;
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 input[type=number] { -moz-appearance: textfield; }
-
 .gen-table th { font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:#495057; font-weight:600; white-space:nowrap; }
 .gen-table td { vertical-align:middle; font-size:.82rem; white-space:nowrap; }
 .gen-table input[type=number], .gen-table input[type=text] {
@@ -35,13 +34,15 @@ input[type=number] { -moz-appearance: textfield; }
 .fixedtable  { overflow-x:auto; }
 </style>
 
-<div class="payslip-create-bulk">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page payslip-create-bulk">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Generate Payslip</h5>
-            <small class="text-muted">For Month : <strong><?= date('F Y', strtotime($month)) ?></strong></small>
+            <h1>Generate Payslip</h1>
+            <div class="ui-sub">For Month : <strong><?= date('F Y', strtotime($month)) ?></strong></div>
         </div>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
     <div class="card border-0 shadow-sm">
         <div class="card-body p-0">

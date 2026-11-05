@@ -3,113 +3,111 @@
 /** @var \backend\models\IotConsumption $model */
 /** @var \backend\models\IotConsumptionProducts[] $items */
 
+use backend\models\IotConsumption;
+use common\components\UserAccess;
 use yii\bootstrap5\Html;
+use yii\helpers\Url;
 
 $this->title = 'Issue Request #' . $model->id;
 
-$statusBadge = [0 => 'warning', 1 => 'success', 2 => 'danger'];
-$statusLabel = [0 => 'Pending', 1 => 'Approved', 2 => 'Rejected'];
-$cs = (int)$model->consumption_status;
+$cs        = (int)$model->consumption_status;
+$requested = $cs === IotConsumption::STATUS_REQUESTED;
+$issued    = $cs === IotConsumption::STATUS_ISSUED;
+$fmt       = fn($v) => $v ? date('d M Y', strtotime($v)) : '—';
+$fmtTime   = fn($v) => $v ? date('d M Y, h:i A', strtotime($v)) : '—';
 ?>
-<div class="issue-view">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0">Issue Request #<?= $model->id ?></h5>
-        <div class="d-flex gap-2">
-            <?php if ($cs == 0): ?>
-                <?= Html::a('<i class="fas fa-pen"></i> Edit', ['update-issue', 'id' => $model->id], ['class' => 'btn btn-outline-primary btn-sm', 'encode' => false]) ?>
-                <button class="btn btn-success btn-sm" onclick="changeStatus(<?= $model->id ?>, 1)"><i class="fas fa-check"></i> Approve</button>
-                <button class="btn btn-danger btn-sm"  onclick="changeStatus(<?= $model->id ?>, 2)"><i class="fas fa-times"></i> Reject</button>
+<div class="ui-page issue-view" style="max-width:960px">
+    <div class="ui-head">
+        <div>
+            <h1>Issue Request #<?= (int)$model->id ?>
+                <span class="ui-pill <?= $issued ? 'tone-success' : 'tone-warning' ?> align-middle"><?= $issued ? 'Issued' : 'Requested' ?></span>
+            </h1>
+            <div class="ui-sub"><?= Html::encode($model->developer->developer_name ?? '—') ?> · <?= Html::encode($model->project->title ?? 'No project') ?></div>
+        </div>
+        <div class="ui-actions">
+            <?php if ($requested && UserAccess::checkAccess('iot-product/update-issue')): ?>
+                <?= Html::a('<i class="fas fa-pen me-1"></i>Edit', ['update-issue', 'id' => $model->id], ['class' => 'btn btn-outline-primary btn-sm', 'encode' => false]) ?>
             <?php endif; ?>
-            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['issued'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+            <?php if ($requested && UserAccess::checkAccess('iot-product/change-status')): ?>
+                <button type="button" class="btn btn-primary btn-sm js-issue-now"><i class="fas fa-check me-1"></i>Mark as Issued</button>
+            <?php endif; ?>
+            <?php if ($issued && UserAccess::checkAccess('iot-product/create-return')): ?>
+                <?= Html::a('<i class="fas fa-undo me-1"></i>Return products', ['create-return', 'id' => $model->id], ['class' => 'btn btn-outline-primary btn-sm', 'encode' => false]) ?>
+            <?php endif; ?>
+            <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', ['issued'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
         </div>
     </div>
 
-    <div class="row g-3 mb-4">
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body">
-                    <dl class="row mb-0" style="font-size:.875rem">
-                        <dt class="col-sm-4 text-muted">Developer</dt>
-                        <dd class="col-sm-8 fw-semibold"><?= Html::encode($model->developer->developer_name ?? '—') ?></dd>
-                        <dt class="col-sm-4 text-muted">Project</dt>
-                        <dd class="col-sm-8"><?= Html::encode($model->project->title ?? '—') ?></dd>
-                        <dt class="col-sm-4 text-muted">Requested</dt>
-                        <dd class="col-sm-8"><?= $model->requested_date ? date('d M Y h:i A', strtotime($model->requested_date)) : '—' ?></dd>
-                        <dt class="col-sm-4 text-muted">Approved</dt>
-                        <dd class="col-sm-8"><?= $model->approved_at ? date('d M Y h:i A', strtotime($model->approved_at)) : '—' ?></dd>
-                        <dt class="col-sm-4 text-muted">Status</dt>
-                        <dd class="col-sm-8">
-                            <span class="badge bg-<?= $statusBadge[$cs] ?? 'secondary' ?>"><?= $statusLabel[$cs] ?? '—' ?></span>
-                        </dd>
-                    </dl>
-                </div>
-            </div>
-        </div>
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header ui-section">Request</div>
+        <table class="table ui-detail mb-0">
+            <tr><th scope="row">Employee</th><td class="fw-semibold"><?= Html::encode($model->developer->developer_name ?? '—') ?></td></tr>
+            <tr><th scope="row">Project</th><td><?= Html::encode($model->project->title ?? '—') ?></td></tr>
+            <tr><th scope="row">Required on</th><td><?= $fmt($model->requested_date) ?></td></tr>
+            <tr><th scope="row">Requested at</th><td><?= $fmtTime($model->created_at) ?></td></tr>
+            <tr><th scope="row">Issued at</th><td><?= $fmtTime($model->approved_at) ?></td></tr>
+        </table>
     </div>
 
     <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white fw-semibold py-2">Products</div>
-        <div class="table-responsive">
-            <table class="table table-sm mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>#</th>
-                        <th>Product Name</th>
-                        <th>Product Code</th>
-                        <th class="text-center">Quantity</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($items as $i => $item): ?>
+        <div class="card-header ui-section">Products</div>
+        <table class="table ui-table stack mb-0">
+            <thead>
                 <tr>
-                    <td class="text-muted"><?= $i + 1 ?></td>
-                    <td><?= Html::encode($item->product->product_name ?? '—') ?></td>
-                    <td><span class="badge bg-light text-dark border font-monospace"><?= Html::encode($item->product->product_code ?? '—') ?></span></td>
-                    <td class="text-center fw-semibold"><?= $item->quantity ?></td>
+                    <th class="cell-num">#</th>
+                    <th>Product</th>
+                    <th>Code</th>
+                    <th class="text-end">Quantity</th>
+                    <?php if ($issued): ?><th class="text-end">Returned</th><?php endif; ?>
                 </tr>
-                <?php endforeach; ?>
-                <?php if (empty($items)): ?>
-                    <tr><td colspan="4" class="text-muted text-center py-3">No products.</td></tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
+            </thead>
+            <tbody>
+            <?php foreach ($items as $i => $item): ?>
+                <tr>
+                    <td class="cell-num"><?= $i + 1 ?></td>
+                    <td class="cell-title"><?= Html::encode($item->product->product_name ?? '—') ?></td>
+                    <td data-label="Code" class="mono"><?= Html::encode($item->product->product_code ?? '—') ?></td>
+                    <td data-label="Quantity" class="text-end fw-semibold"><?= (int)$item->quantity ?></td>
+                    <?php if ($issued): ?><td data-label="Returned" class="text-end"><?= (int)($item->returned_quantity ?? 0) ?></td><?php endif; ?>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (empty($items)): ?>
+                <tr><td colspan="5" class="text-muted text-center py-4">No products on this request.</td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
     </div>
 </div>
 
 <?php
-$csrfParam = Yii::$app->request->csrfParam;
-$csrfToken = Yii::$app->request->getCsrfToken();
-$changeStatusUrl = \yii\helpers\Url::to(['/iot-product/change-status']);
+$changeStatusUrl = Url::to(['/iot-product/change-status']);
+$id = (int)$model->id;
 $this->registerJs(<<<JS
-window.changeStatus = function(id, status) {
-    var label = status == 1 ? 'approve' : 'reject';
+$(document).on('click', '.js-issue-now', function () {
+    var btn = this;
     Swal.fire({
         icon: 'question',
-        title: 'Confirm',
-        text: 'Are you sure you want to ' + label + ' this request?',
+        title: 'Mark as Issued?',
+        text: 'The quantities will be taken out of stock.',
         showCancelButton: true,
-        confirmButtonText: 'Yes, ' + label,
+        confirmButtonText: 'Yes, issue',
         cancelButtonText: 'Cancel'
-    }).then(function(result) {
+    }).then(function (result) {
         if (!result.isConfirmed) return;
-        jQuery.ajax({
-            url: '{$changeStatusUrl}',
-            type: 'POST',
-            data: {'{$csrfParam}': '{$csrfToken}', id: id, status: status},
-            dataType: 'json',
-            success: function(data) {
-                if (data.status == 1) {
-                    Swal.fire({icon: 'success', title: 'Success', text: data.msg, timer: 1500, showConfirmButton: false}).then(function() { location.reload(); });
-                } else {
-                    Swal.fire({icon: 'error', title: 'Error', text: data.msg});
-                }
-            },
-            error: function() {
-                Swal.fire({icon: 'error', title: 'Error', text: 'Request failed. Please try again.'});
+        btn.disabled = true;
+        $.post('{$changeStatusUrl}', { id: {$id}, status: 2 }, null, 'json').done(function (r) {
+            if (r && r.status == 1) {
+                Swal.fire({ icon: 'success', title: 'Issued', text: r.msg, timer: 1400, showConfirmButton: false })
+                    .then(function () { location.reload(); });
+            } else {
+                btn.disabled = false;
+                Swal.fire({ icon: 'error', title: 'Not issued', html: $('<div>').text((r && r.msg) || 'Unable to change status.').html().replace(/\\n/g, '<br>') });
             }
+        }).fail(function () {
+            btn.disabled = false;
+            Swal.fire({ icon: 'error', title: 'Error', text: 'Request failed. Please try again.' });
         });
     });
-};
-JS, \yii\web\View::POS_READY);
+});
+JS);
 ?>

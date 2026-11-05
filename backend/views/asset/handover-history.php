@@ -8,43 +8,31 @@ use backend\models\Asset;
 use yii\bootstrap5\Html;
 use kartik\select2\Select2;
 
-$this->title = 'Asset View';
+$this->title = 'Handover: ' . $developer->developer_name;
 $devId = $developer->id;
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-</style>
 
-<div class="asset-handover-view">
-    <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white">
-            <h5 class="mb-0"><b>Employee</b>: <?= Html::encode($developer->developer_name) ?></h5>
+<div class="ui-page asset-handover-view">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($developer->developer_name) ?></h1>
+            <div class="ui-sub">Assets handed over to this employee</div>
         </div>
-        <div class="card-body">
-            <div class="row mb-3">
-                <div class="col-sm-3">
-                    <?= Select2::widget([
-                        'name' => 'filter',
-                        'value' => $key,
-                        'data' => [1 => 'Active Assets', 2 => 'Handovered Assets'],
-                        'options' => [
-                            'id' => 'handover-filter',
-                            'class' => 'form-control',
-                        ],
-                        'pluginOptions' => [
-                            'allowClear' => false,
-                            'width' => '100%',
-                            'minimumResultsForSearch' => -1,
-                        ],
-                    ]) ?>
-                </div>
-                <div class="col-sm-3">
-                    <?= Html::a('Back', ['handover'], ['class' => 'btn btn-danger btn-sm']) ?>
-                </div>
+        <div class="ui-actions">
+            <div style="min-width:200px">
+                <?= Select2::widget([
+                    'name' => 'filter',
+                    'value' => $key,
+                    'data' => [1 => 'Active assets', 2 => 'Returned assets'],
+                    'options' => ['id' => 'handover-filter', 'class' => 'form-select form-select-sm'],
+                    'pluginOptions' => ['allowClear' => false, 'width' => '100%', 'minimumResultsForSearch' => -1],
+                ]) ?>
             </div>
-
+            <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', ['handover'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
+    </div>
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table list-table mb-0">
                     <thead class="table-light">
@@ -138,11 +126,11 @@ $('#handover-filter').on('change', function() {
 });
 
 window.deletehandover = function(id, dev_id, key) {
-    if (confirm('Are you sure to delete this record?')) {
+    Swal.fire({icon: 'warning', title: 'Delete this handover record?', showCancelButton: true, confirmButtonText: 'Yes, delete', customClass: {confirmButton: 'is-danger'}}).then(function (r) {
+        if (!r.isConfirmed) { return; }
         $.ajax({
-            url: '{$deleteUrl}',
-            type: 'get',
-            data: {id: id, dev_id: dev_id, key: key},
+            url: '{$deleteUrl}?id=' + encodeURIComponent(id) + '&dev_id=' + encodeURIComponent(dev_id) + '&key=' + encodeURIComponent(key),
+            type: 'post',
             success: function(data) {
                 if (data.status == 1) {
                     Swal.fire({icon:'success', title:'Success', text: data.msg}).then(function(){ location.reload(); });
@@ -151,7 +139,7 @@ window.deletehandover = function(id, dev_id, key) {
                 }
             }
         });
-    }
+    });
 };
 JS;
 $this->registerJs($js);

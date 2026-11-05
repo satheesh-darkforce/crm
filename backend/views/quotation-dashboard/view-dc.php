@@ -32,14 +32,14 @@ $fmtDate = static fn($d) => !empty($d) ? date('d M Y', strtotime((string) $d)) :
 ?>
 
 <style>
-.dc-view-wrap      { background-color: #f8fafc; padding: 28px 20px; border-radius: 15px; }
-.dc-hero           { background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%); color: #fff; padding: 24px 28px; border-radius: 14px; box-shadow: 0 10px 25px -10px rgba(59,130,246,.45); margin-bottom: 24px; }
+.dc-view-wrap      { padding: 0; }
+.dc-hero           { background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%); color: #fff; padding: 24px 28px; border-radius: 14px; box-shadow: none; margin-bottom: 24px; }
 .dc-hero h2        { margin: 0 0 4px 0; font-weight: 700; letter-spacing: .3px; }
 .dc-hero .hero-sub { opacity: .9; font-size: .9rem; }
 .dc-hero .hero-meta{ font-size: .82rem; opacity: .95; margin-top: 10px; }
 .dc-hero .badge    { font-size: .75rem; padding: .45em .75em; letter-spacing: .5px; }
 .dc-hero .btn      { border-radius: 8px; font-weight: 600; }
-.dc-hero .btn-outline-light:hover { color: #3b82f6; }
+.dc-hero .btn-outline-light:hover { color: #0f766e; }
 
 .dc-section        { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 22px 24px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04); }
 .dc-section-head   { display:flex; align-items:center; padding-bottom: 12px; margin-bottom: 18px; border-bottom: 2px solid #f1f5f9; }
@@ -70,7 +70,7 @@ $fmtDate = static fn($d) => !empty($d) ? date('d M Y', strtotime((string) $d)) :
 .doc-tile.empty    { background: #f8fafc; color: #94a3b8; }
 </style>
 
-<div class="dc-view-wrap">
+<div class="ui-page dc-view-wrap">
 
     <!-- Hero header ──────────────────────────────────────────────────── -->
     <div class="dc-hero d-flex flex-wrap justify-content-between align-items-start">

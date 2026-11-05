@@ -1,8 +1,23 @@
 <?php
+/** @var \yii\web\View $this */
+/** @var \backend\models\Project $project */
+/** @var \backend\models\ClientModel[] $clients */
+/** @var \backend\models\Developer[] $developers */
+/** @var \backend\models\Project[] $existingPhases */
+
 use yii\bootstrap5\Html;
+
 $this->title = 'New Project';
 ?>
-<div class="project-create">
-    <h4 class="mb-3"><?= Html::encode($this->title) ?></h4>
-    <?= $this->render('_form', compact('project', 'clients', 'developers')) ?>
+<div class="ui-page project-create" style="max-width:1200px">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($this->title) ?></h1>
+            <div class="ui-sub">New projects start as In progress.</div>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
+    </div>
+    <?= $this->render('_form', compact('project', 'clients', 'developers', 'existingPhases')) ?>
 </div>

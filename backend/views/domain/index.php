@@ -27,24 +27,18 @@ $today    = date('Y-m-d');
 $in30days = date('Y-m-d', strtotime('+30 days'));
 ?>
 <style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
 .dropdown-menu{z-index:9999!important}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
 tr.row-expired td{background:#fff0f0!important}
 tr.row-expiring td{background:#fffbe6!important}
 </style>
 
-<div class="domain-index">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page domain-index">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Domains</h5>
-            <small class="text-muted"><?= $totalCount ?> record<?= $totalCount != 1 ? 's' : '' ?></small>
+            <h1>Domains</h1>
+            <div class="ui-sub"><?= $totalCount ?> record<?= $totalCount != 1 ? 's' : '' ?></div>
         </div>
-        <div class="d-flex gap-2">
+        <div class="ui-actions">
             <?= Html::a('+ Add Domain', ['create'], ['class' => 'btn btn-primary btn-sm']) ?>
             <?= Html::a('<i class="fas fa-folder-open"></i> Export', ['export-domains',
                 'client_id' => Yii::$app->request->get('client_id'),

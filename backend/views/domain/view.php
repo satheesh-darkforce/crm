@@ -13,10 +13,12 @@ $this->title = 'Domain: ' . $model->domain_name;
 $statusLabels = \backend\models\Domain::domainStatusLabels();
 $today = date('Y-m-d');
 ?>
-<div class="domain-view">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= Html::encode($model->domain_name) ?></h5>
-        <div class="d-flex gap-2">
+<div class="ui-page domain-view">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($model->domain_name) ?></h1>
+        </div>
+        <div class="ui-actions">
             <?= Html::a('<i class="fas fa-pen"></i> Edit', ['update', 'id' => $model->id], ['class' => 'btn btn-outline-primary btn-sm', 'encode' => false]) ?>
             <?= Html::a('<i class="fas fa-sync-alt"></i> Renewal', ['renewal', 'id' => $model->id], ['class' => 'btn btn-outline-success btn-sm', 'encode' => false]) ?>
             <?= Html::a('<i class="fas fa-arrow-left"></i> Back', Yii::$app->request->referrer ?: \yii\helpers\Url::to(['index']), ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>

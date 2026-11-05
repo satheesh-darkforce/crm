@@ -76,7 +76,7 @@ sort($accOptions);
 .pod-tabs          { display:flex; gap:4px; border-bottom:1px solid #e2e8f0; margin-bottom:14px; flex-wrap:wrap; }
 .pod-tabs a        { padding:8px 16px; font-size:.85rem; font-weight:500; color:#64748b; text-decoration:none; border-bottom:2px solid transparent; transition:all .15s; cursor:pointer; }
 .pod-tabs a:hover  { color:#0f172a; }
-.pod-tabs a.active { color:#0d6efd; border-bottom-color:#0d6efd; font-weight:600; }
+.pod-tabs a.active { color:var(--app-accent); border-bottom-color:var(--app-accent); font-weight:600; }
 .pod-tabs .badge   { font-size:.7rem; padding:2px 7px; margin-left:4px; }
 
 @media (max-width: 1200px) {
@@ -102,7 +102,7 @@ sort($accOptions);
 .pod-table .nowrap { white-space:nowrap; }
 .pod-truncate     { display:block; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .file-pill         { display:inline-flex; align-items:center; gap:6px; background:#f1f5f9; color:#64748b; padding:4px 10px; border-radius:6px; font-size:.75rem; cursor:pointer; border:1px solid #e2e8f0; }
-.file-pill.has    { background:#dbeafe; color:#1e40af; border-color:#bfdbfe; }
+.file-pill.has    { background:rgba(13,148,136,.1); color:var(--app-accent); border-color:rgba(13,148,136,.25); }
 .btn-icon         { background:#f8fafc; border:1px solid #e2e8f0; color:#475569; border-radius:6px; width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; font-size:.85rem; }
 .btn-icon:hover   { background:#e2e8f0; }
 .status-cell      { display:inline-flex; align-items:center; gap:6px; }
@@ -114,7 +114,16 @@ sort($accOptions);
 .pod-table .dropdown-menu.show{ z-index:2050; }
 </style>
 
-<div class="pod-wrap">
+<div class="ui-page pod-wrap">
+    <div class="ui-head">
+        <div>
+            <h1>PO dashboard</h1>
+            <div class="ui-sub">Track every purchase order: delivery, invoices and payments.</div>
+        </div>
+        <div class="ui-actions">
+            <?php if (UserAccess::checkAccess('po/index')): ?><?= Html::a('List view', ['/po/index'], ['class' => 'btn btn-outline-secondary btn-sm']) ?><?php endif; ?>
+        </div>
+    </div>
 
     <!-- Stats -->
     <div class="pod-stats-grid">

@@ -6,10 +6,12 @@ use yii\bootstrap5\Html;
 
 $this->title = 'RFID Card — ' . $model->code;
 ?>
-<div class="rfid-card-view">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0 fw-semibold font-monospace"><?= Html::encode($model->code) ?></h5>
-        <div class="d-flex gap-2">
+<div class="ui-page rfid-card-view">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($model->code) ?></h1>
+        </div>
+        <div class="ui-actions">
             <?= Html::a('<i class="fas fa-users"></i> Assign', ['assign', 'id' => $model->id], ['class' => 'btn btn-sm btn-outline-primary', 'encode' => false]) ?>
             <?= Html::a('<i class="fas fa-pen"></i> Edit', ['update', 'id' => $model->id], ['class' => 'btn btn-sm btn-outline-warning', 'encode' => false]) ?>
             <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-sm btn-outline-secondary', 'encode' => false]) ?>

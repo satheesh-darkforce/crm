@@ -75,7 +75,25 @@ class LeaveRequests extends ActiveRecord
             ['to_date', 'compare', 'compareAttribute' => 'from_date', 'operator' => '>=',
                 'type' => 'string', 'message' => 'To Date must be on or after From Date.'],
             ['from_date', 'validateNoOverlap'],
+            [['from_date', 'to_date'], 'date', 'format' => 'php:Y-m-d', 'message' => '{attribute} must be a date (YYYY-MM-DD).'],
+            // Leave length must match the dates (legacy rows are only checked once edited).
+            ['no_of_days', 'validateDayCount', 'when' => fn($m) => (int)$m->leave_type === self::TYPE_LEAVE
+                && ($m->isNewRecord || $m->isAttributeChanged('no_of_days', false) || $m->isAttributeChanged('from_date', false) || $m->isAttributeChanged('to_date', false))],
         ];
+    }
+
+    /** Leave days: more than 0, in half-day steps, and no more than the calendar days selected. */
+    public function validateDayCount(string $attr): void
+    {
+        $days = (float)$this->$attr;
+        $span = (strtotime((string)$this->to_date) - strtotime((string)$this->from_date)) / 86400 + 1;
+        if ($days <= 0) {
+            $this->addError($attr, 'Number of days must be more than 0.');
+        } elseif (fmod($days * 2, 1.0) !== 0.0) {
+            $this->addError($attr, 'Number of days must be in half-day steps (e.g. 1, 1.5, 2).');
+        } elseif ($span >= 1 && $days > $span) {
+            $this->addError($attr, 'Number of days (' . $days . ') cannot be more than the ' . (int)$span . ' day(s) between the dates.');
+        }
     }
 
     /**

@@ -34,12 +34,7 @@ $selectedEmployees = $model->employee_id ? json_decode($model->employee_id, true
         ], ['class' => 'form-select form-select-sm', 'prompt' => 'Select type…']) ?>
     </div>
     <div class="col-md-3">
-        <?= $form->field($model, 'project_status')->dropDownList([
-            \backend\models\Project::PROJECT_STATUS_ACTIVE    => 'Active',
-            \backend\models\Project::PROJECT_STATUS_COMPLETED => 'Completed',
-            \backend\models\Project::PROJECT_STATUS_ON_HOLD   => 'On Hold',
-            \backend\models\Project::PROJECT_STATUS_CANCELLED => 'Cancelled',
-        ], ['class' => 'form-select form-select-sm']) ?>
+        <?= $form->field($model, 'project_status')->dropDownList(\backend\models\Project::statusOptions(), ['class' => 'form-select form-select-sm']) ?>
     </div>
     <div class="col-md-3">
         <?= $form->field($model, 'total_estimation_hours')->label('Est. Hours')

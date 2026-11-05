@@ -26,11 +26,22 @@ use yii\db\ActiveRecord;
  */
 class Domain extends ActiveRecord
 {
+    use \backend\components\GuardedAttributes;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['created_by', 'updated_by', 'status', 'created_at', 'updated_at', 'update_history'];
+    }
+
     public static function tableName(): string { return 'domains'; }
 
     public function rules(): array
     {
         return [
+            // Dates must be real YYYY-MM-DD values (checked when new or edited).
+            [['date_of_purchase', 'expiry_date'], 'date', 'format' => 'php:Y-m-d', 'message' => '{attribute} must be a date (YYYY-MM-DD).',
+                'when' => fn($m, $a) => $m->isNewRecord || $m->isAttributeChanged($a, false)],
             [['domain_name', 'service_provider', 'domain_username', 'hosting_server', 'domain_password', 'description'], 'trim'],
             [['client_id', 'domain_name', 'date_of_purchase', 'service_provider', 'expiry_date', 'domain_status'], 'required'],
             [['client_id', 'domain_status', 'created_by', 'updated_by', 'status'], 'integer'],
@@ -40,6 +51,8 @@ class Domain extends ActiveRecord
             [['domain_password'], 'string', 'max' => 255],
             [['description', 'update_history'], 'string'],
             [['domain_status'], 'in', 'range' => [1, 2, 3, 4, 5], 'message' => 'Please select a valid status (1-5).'],
+            [['client_id'], 'exist', 'targetClass' => ClientModel::class, 'targetAttribute' => 'id', 'message' => 'Select a valid client.',
+                'when' => fn($m) => $m->isNewRecord || $m->isAttributeChanged('client_id', false)],
             ['domain_name', 'match', 'pattern' => '/^(https?:\/\/)?(www\.)?([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}(\/.?)?$/i', 'message' => 'Enter a valid domain name (e.g. example.com or http://example.com/ or https://www.example.com/).'],
             ['date_of_purchase', 'validatePurchaseNotFuture'],
             ['expiry_date', 'compareDateRange'],

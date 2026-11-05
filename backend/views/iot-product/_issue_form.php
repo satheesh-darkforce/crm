@@ -30,10 +30,14 @@ if ($selfDev && empty($model->developer_id)) {
 .product-row td{vertical-align:middle}
 </style>
 
-<div class="issue-form">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= Html::encode($this->title) ?></h5>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['issued'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+<div class="ui-page issue-form">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($this->title) ?></h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['issued'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm">
@@ -141,12 +145,12 @@ if ($selfDev && empty($model->developer_id)) {
                 </table>
             </div>
 
-            <button type="button" class="btn btn-success btn-sm mb-4" id="addProductRow" style="font-weight:bold;font-size:1rem;padding:2px 12px">+</button>
+            <button type="button" class="btn btn-outline-primary btn-sm mb-4" id="addProductRow"><i class="fas fa-plus me-1"></i>Add product</button>
 
             <div class="d-flex gap-2">
                 <?= Html::submitButton($isNew ? 'Submit Request' : 'Save Changes', ['class' => 'btn btn-primary btn-sm px-4', 'name' => 'save_action', 'value' => 'save']) ?>
                 <?php if ($isNew): ?>
-                    <?= Html::submitButton('Save &amp; Add New', ['class' => 'btn btn-success btn-sm px-4', 'name' => 'save_action', 'value' => 'save_new', 'encode' => false]) ?>
+                    <?= Html::submitButton('Save &amp; Add New', ['class' => 'btn btn-outline-primary btn-sm px-4', 'name' => 'save_action', 'value' => 'save_new', 'encode' => false]) ?>
                 <?php endif; ?>
                 <?= Html::a('Cancel', ['issued'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
             </div>

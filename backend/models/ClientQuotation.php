@@ -2,6 +2,7 @@
 
 namespace backend\models;
 
+use backend\components\GuardedAttributes;
 use Yii;
 use yii\db\ActiveRecord;
 
@@ -35,6 +36,14 @@ use yii\db\ActiveRecord;
  */
 class ClientQuotation extends ActiveRecord
 {
+    use GuardedAttributes;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['status', 'completed_status', 'parent_id', 'quote_no', 'quoted_by', 'created_at', 'modified_at', 'cancel_reason'];
+    }
+
     /** Deployment type values for `deployment_type`. */
     public const DEPLOYMENT = 1;
     public const TRIAL      = 2;

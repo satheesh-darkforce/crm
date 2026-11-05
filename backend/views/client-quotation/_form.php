@@ -28,16 +28,6 @@ $indexUrl = Url::to(['index']);
 ?>
 
 <style>
-.form-wrapper      { background-color: #f8fafc; padding: 40px 20px; border-radius: 15px; }
-.section-block     { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 30px; margin-bottom: 30px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-.section-header    { display: flex; align-items: center; margin-bottom: 25px; padding-bottom: 10px; border-bottom: 2px solid #f1f5f9; }
-.section-header h4 { margin-bottom: 0; color: #1e293b; font-weight: 700; font-size: 1.15rem; text-transform: uppercase; letter-spacing: .5px; }
-.header-icon       { background: #3b82f6; color: #fff; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px; font-size: .9rem; }
-.custom-form .form-label { font-weight: 600; color: #64748b; font-size: .85rem; margin-bottom: 8px; }
-.form-control:focus, .form-select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
-.action-footer     { background: #fff; padding: 20px 30px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
-.required label:after { content: " *"; color: red; font-weight: bold; }
-
 #clientquotation-address { height: 100px; }
 .quote-by-field-wrap    { display: flex; gap: 10px; align-items: flex-start; }
 .quote-by-field-wrap .field-clientquotation-alternate_quote_by { flex: 1; margin-bottom: 0; }

@@ -20,21 +20,24 @@ $datePlugin = ['autoclose' => true, 'format' => 'yyyy-mm-dd', 'todayHighlight' =
 
 /** Text input options: small control + placeholder (+ extras). */
 $in = fn(string $placeholder, array $extra = []) => ['class' => 'form-control form-control-sm', 'placeholder' => $placeholder] + $extra;
-$s2 = fn(string $placeholder) => [
-    'options' => ['placeholder' => $placeholder],
+$s2 = fn(string $placeholder, array $extra = []) => [
+    'options' => ['placeholder' => $placeholder] + $extra,
     'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
     'size' => Select2::SMALL,
 ];
+$dateInput = fn(array $plugin) => [
+    'type' => DatePicker::TYPE_INPUT,
+    'options' => ['class' => 'form-control form-control-sm', 'placeholder' => 'YYYY-MM-DD', 'autocomplete' => 'off'],
+    'pluginOptions' => $datePlugin + $plugin,
+];
 ?>
-<?= $this->render('_form-css') ?>
+<?php $form = ActiveForm::begin(['id' => 'lead-form', 'options' => ['enctype' => 'multipart/form-data', 'class' => 'ui-form']]); ?>
 
-<?php $form = ActiveForm::begin(['id' => 'lead-form', 'options' => ['enctype' => 'multipart/form-data', 'class' => 'lead-form-scope']]); ?>
-
-<?= $form->errorSummary($lead, ['class' => 'alert alert-danger py-2 small']) ?>
-<p class="text-muted small mb-3">Fields marked <span class="text-danger fw-bold">*</span> are required.</p>
+<?= $form->errorSummary($lead, ['class' => 'alert alert-danger', 'header' => '<p>Please fix the following:</p>']) ?>
+<p class="ui-req-note">Fields marked <b>*</b> are required.</p>
 
 <div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-white fw-semibold small text-uppercase text-muted">Client</div>
+    <div class="card-header ui-section">Client</div>
     <div class="card-body row g-3">
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'client_name')->textInput($in('e.g. John Mathew', ['maxlength' => 255])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'company_name')->textInput($in('e.g. Acme Pvt Ltd', ['maxlength' => 255])) ?></div>
@@ -50,7 +53,7 @@ $s2 = fn(string $placeholder) => [
 </div>
 
 <div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-white fw-semibold small text-uppercase text-muted">Lead</div>
+    <div class="card-header ui-section">Lead</div>
     <div class="card-body row g-3">
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'title')->textInput($in('e.g. E-commerce website', ['maxlength' => 255])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'subject')->textInput($in('e.g. Requirement discussion', ['maxlength' => 255])) ?></div>
@@ -60,8 +63,8 @@ $s2 = fn(string $placeholder) => [
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'expected_budget')->input('number', $in('0.00', ['min' => 0, 'max' => 99999999.99, 'step' => '0.01'])) ?></div>
         <?php if ($isNew): ?>
         <div class="col-lg-3 col-md-6">
-            <label class="form-label">Lead Status</label>
-            <input type="text" class="form-control form-control-sm" value="Open" disabled>
+            <label class="form-label" for="lead-status-display">Lead Status</label>
+            <input type="text" id="lead-status-display" class="form-control form-control-sm" value="Open" disabled>
         </div>
         <?php endif; ?>
         <div class="col-md-6"><?= $form->field($lead, 'industry')->textarea($in('e.g. Manufacturing, Healthcare', ['rows' => 2, 'maxlength' => 255])) ?></div>
@@ -70,34 +73,22 @@ $s2 = fn(string $placeholder) => [
 </div>
 
 <div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-white fw-semibold small text-uppercase text-muted">Meeting &amp; Follow Up</div>
+    <div class="card-header ui-section">Meeting &amp; Follow Up</div>
     <div class="card-body row g-3">
-        <div class="col-lg-3 col-md-6">
-            <?= $form->field($lead, 'attended_date')->widget(DatePicker::class, [
-                'type' => DatePicker::TYPE_INPUT,
-                'options' => ['class' => 'form-control form-control-sm', 'placeholder' => 'YYYY-MM-DD', 'autocomplete' => 'off'],
-                'pluginOptions' => $datePlugin + ['endDate' => $today],
-            ]) ?>
-        </div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'attended_date')->widget(DatePicker::class, $dateInput(['endDate' => $today])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'attended_time')->input('time', $in('HH:MM')) ?></div>
         <?php if ($isNew): ?>
-        <div class="col-lg-3 col-md-6">
-            <?= $form->field($lead, 'nextfollowup_date')->widget(DatePicker::class, [
-                'type' => DatePicker::TYPE_INPUT,
-                'options' => ['class' => 'form-control form-control-sm', 'placeholder' => 'YYYY-MM-DD', 'autocomplete' => 'off'],
-                'pluginOptions' => $datePlugin + ['startDate' => $today],
-            ]) ?>
-        </div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'nextfollowup_date')->widget(DatePicker::class, $dateInput(['startDate' => $today])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'nextfollowup_time')->input('time', $in('HH:MM')) ?></div>
         <?php else: ?>
         <div class="col-lg-6 col-md-12">
-            <label class="form-label">Next Follow Up Date &amp; Time</label>
-            <input type="text" class="form-control form-control-sm" value="<?= Lead::formatDateTime($lead->meeting_reported_date) ?>" disabled>
+            <label class="form-label" for="lead-next-display">Next Follow Up Date &amp; Time</label>
+            <input type="text" id="lead-next-display" class="form-control form-control-sm" value="<?= Lead::formatDateTime($lead->meeting_reported_date) ?>" disabled>
             <div class="form-text">Changes when a follow-up is added.</div>
         </div>
         <?php endif; ?>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'assigned_to')->widget(Select2::class, ['data' => $users] + $s2('Select employee')) ?></div>
-        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'mode')->widget(Select2::class, ['data' => Lead::modeOptions()] + $s2('Select the mode')) ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'mode')->widget(Select2::class, ['data' => Lead::modeOptions()] + $s2('Select the mode', ['data-other-mode' => '#other-mode-wrap'])) ?></div>
         <div class="col-lg-3 col-md-6" id="other-mode-wrap" style="<?= (int)$lead->mode === Lead::MODE_OTHER ? '' : 'display:none' ?>">
             <?= $form->field($lead, 'other_mode', ['options' => ['class' => 'mb-3 required']])->textInput($in('e.g. Google Meet', ['maxlength' => 255])) ?>
         </div>
@@ -108,40 +99,32 @@ $s2 = fn(string $placeholder) => [
 </div>
 
 <div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-white fw-semibold small text-uppercase text-muted">Attachments</div>
+    <div class="card-header ui-section">Attachments</div>
     <div class="card-body">
-        <input type="file" name="attachments[]" class="form-control form-control-sm" multiple accept="<?= LeadFiles::acceptAttribute() ?>">
+        <label class="visually-hidden" for="lead-attachments">Attachments</label>
+        <input type="file" id="lead-attachments" name="attachments[]" class="form-control form-control-sm" multiple accept="<?= LeadFiles::acceptAttribute() ?>">
         <div class="form-text">PDF, Office documents, images, CSV, TXT or ZIP — up to 20 MB each.</div>
         <?php if (!$isNew && $lead->attachments): ?>
         <div class="d-flex flex-wrap gap-2 mt-3">
             <?php foreach ($lead->attachments as $att): ?>
-            <div class="border rounded px-2 py-1 small d-flex align-items-center gap-2">
-                <a href="<?= Html::encode(Controller::uploadUrl($att->attachment_path)) ?>" target="_blank" rel="noopener">
-                    <i class="fas fa-paperclip me-1"></i><?= Html::encode(basename($att->attachment_path)) ?>
-                </a>
-                <?php if (UserAccess::checkAccess('lead/delete-attachment')): ?>
-                <a href="#" class="text-danger js-delete-attachment" data-id="<?= $att->id ?>" title="Delete"><i class="fas fa-times"></i></a>
-                <?php endif; ?>
-            </div>
+                <?php $name = basename((string)$att->attachment_path); ?>
+                <span class="ui-file">
+                    <a href="<?= Html::encode(Controller::uploadUrl((string)$att->attachment_path)) ?>" target="_blank" rel="noopener" class="text-reset text-decoration-none d-inline-flex align-items-center gap-2" title="<?= Html::encode($name) ?>">
+                        <i class="fas fa-paperclip"></i><span><?= Html::encode($name) ?></span>
+                    </a>
+                    <?php if (UserAccess::checkAccess('lead/delete-attachment')): ?>
+                        <a href="#" class="js-delete-attachment" data-id="<?= $att->id ?>" data-name="<?= Html::encode($name) ?>" title="Delete" aria-label="Delete <?= Html::encode($name) ?>"><i class="fas fa-times"></i></a>
+                    <?php endif; ?>
+                </span>
             <?php endforeach; ?>
         </div>
         <?php endif; ?>
     </div>
 </div>
 
-<div class="d-flex gap-2 mb-4">
-    <?= Html::submitButton($isNew ? 'Submit' : 'Update', ['class' => 'btn btn-primary btn-sm px-4']) ?>
+<div class="ui-form-actions">
+    <?= Html::submitButton('<i class="fas fa-check me-1"></i>' . ($isNew ? 'Save Lead' : 'Update Lead'), ['class' => 'btn btn-primary btn-sm px-4']) ?>
     <?= Html::a('Cancel', $cancelUrl, ['class' => 'btn btn-outline-secondary btn-sm']) ?>
 </div>
 
 <?php ActiveForm::end(); ?>
-
-<?php
-$this->registerJs(<<<JS
-jQuery('#lead-mode').on('change', function () {
-    var other = jQuery(this).val() == '5';
-    jQuery('#other-mode-wrap').toggle(other);
-    if (!other) { jQuery('#lead-other_mode').val(''); jQuery('#lead-form').yiiActiveForm('validateAttribute', 'lead-other_mode'); }
-});
-JS);
-echo $this->render('_status-js');

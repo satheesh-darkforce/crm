@@ -2,52 +2,76 @@
 
 namespace backend\controllers;
 
+use backend\assets\InvoiceAsset;
+use backend\components\SafeUpload;
 use backend\models\AccLedger;
 use backend\models\AccLedgerCategory;
 use backend\models\InwardInvoice;
 use backend\models\InwardInvoiceAttachments;
 use backend\models\InwardInvoiceDetails;
 use backend\models\Vendor;
+use common\components\UserAccess;
 use Yii;
 use yii\data\ActiveDataProvider;
-use yii\helpers\ArrayHelper;
+use yii\filters\VerbFilter;
+use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
-use yii\web\UploadedFile;
 
 class InwardInvoiceController extends Controller
 {
+    const MAX_LINES = 200;
+
+    public function behaviors(): array
+    {
+        return array_merge(parent::behaviors(), [
+            'verbs' => ['class' => VerbFilter::class, 'actions' => [
+                'delete' => ['POST'], 'convert-to-invoice' => ['POST'], 'delete-attachment' => ['POST'],
+                'autocomplete-ledger' => ['POST'], 'get-payment-ledgers' => ['POST'],
+            ]],
+        ]);
+    }
+
+    /** Full pages get the Invoices module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        InvoiceAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     /* ── List ─────────────────────────────────────────────── */
 
     public function actionIndex(): string
     {
-        $query = InwardInvoice::find()
-            ->with('vendor')
-            ->where(['inward_invoice.status' => 1])
-            ->orderBy(['inward_invoice.id' => SORT_DESC]);
+        $f = $this->filters();
+        $query = InwardInvoice::find()->alias('ii')->with('vendor')->where(['ii.status' => 1]);
 
-        if ($vendorId = Yii::$app->request->get('vendor_id')) {
-            $query->andWhere(['vendor_id' => (int)$vendorId]);
+        if ($f['vendor_id'] !== '')      { $query->andWhere(['ii.vendor_id' => (int)$f['vendor_id']]); }
+        if ($f['from_date'] !== '')      { $query->andWhere(['>=', 'ii.invoice_date', $f['from_date']]); }
+        if ($f['to_date'] !== '')        { $query->andWhere(['<=', 'ii.invoice_date', $f['to_date']]); }
+        if ($f['q'] !== '')              { $query->andWhere(['or', ['like', 'ii.invoice_number', $f['q']], ['like', 'ii.title', $f['q']]]); }
+        if ($f['payment_status'] === 'none') {
+            $query->andWhere(['ii.payment_status' => null]);
+        } elseif ($f['payment_status'] !== '') {
+            $query->andWhere(['ii.payment_status' => (int)$f['payment_status']]);
         }
-        if ($from = Yii::$app->request->get('from_date')) {
-            $query->andWhere(['>=', 'invoice_date', $from]);
-        }
-        if ($to = Yii::$app->request->get('to_date')) {
-            $query->andWhere(['<=', 'invoice_date', $to]);
-        }
+        if ($f['invoice_role'] !== '')   { $query->andWhere(['ii.invoice_role' => (int)$f['invoice_role']]); }
 
-        $dataProvider = new ActiveDataProvider(['query' => $query, 'pagination' => ['pageSize' => 20]]);
+        $netTotal = (float)(clone $query)->sum('ii.net_total');
+        $dataProvider = new ActiveDataProvider([
+            'query'      => $query->orderBy(['ii.invoice_date' => SORT_DESC, 'ii.id' => SORT_DESC]),
+            'pagination' => ['pageSize' => 25],
+        ]);
         $vendors = Vendor::find()->where(['status' => 1])->orderBy('company_name')->all();
 
-        return $this->render('index', compact('dataProvider', 'vendors'));
+        return $this->render('index', compact('dataProvider', 'vendors', 'f', 'netTotal'));
     }
 
     /* ── View ─────────────────────────────────────────────── */
 
     public function actionView(int $id): string
     {
-        $model = $this->findModel($id);
-        return $this->render('view', ['model' => $model]);
+        return $this->render('view', ['model' => $this->findModel($id)]);
     }
 
     /* ── Create ───────────────────────────────────────────── */
@@ -55,56 +79,37 @@ class InwardInvoiceController extends Controller
     public function actionCreate(): string|Response
     {
         $vendorId = Yii::$app->request->get('vendor_id');
-
-        // No vendor selected → show vendor-selection page
-        if (!$vendorId) {
+        if ($vendorId === null || $vendorId === '') {
             $vendors = Vendor::find()->where(['status' => 1])->orderBy('company_name')->all();
             return $this->render('select-vendor', compact('vendors'));
         }
 
-        $vendor = Vendor::findOne(['id' => (int)$vendorId, 'status' => 1]);
+        $vendor = ctype_digit((string)$vendorId) ? Vendor::findOne(['id' => (int)$vendorId, 'status' => 1]) : null;
         if (!$vendor) {
-            Yii::$app->session->setFlash('error', 'Invalid vendor.');
-            return $this->redirect(['index']);
+            Yii::$app->session->setFlash('error', 'That vendor was not found. Pick one from the list.');
+            return $this->redirect(['create']);
         }
-        if ($vendor->vendor_type < 1) {
-            Yii::$app->session->setFlash('error', 'Vendor Type not yet set. Please update vendor type and try again.');
-            return $this->redirect(['/vendor/update', 'id' => $vendor->id]);
+        if ($redirect = $this->requireVendorType($vendor)) {
+            return $redirect;
         }
 
-        $model = new InwardInvoice();
-        $model->status    = 1;
-        $model->vendor_id = $vendor->id;
+        $model = new InwardInvoice([
+            'status' => 1, 'vendor_id' => $vendor->id, 'invoice_role' => InwardInvoice::ROLE_PROVISIONAL,
+            'invoice_date' => date('Y-m-d'), 'round_off' => 0,
+        ]);
+        [$lines, $expenses] = [[], []];
 
         if (Yii::$app->request->isPost) {
-            $post = Yii::$app->request->post();
-            $model->load($post, 'InwardInvoice');
-            $model->vendor_id   = $vendor->id;
-            $model->grand_total = floatval($post['grandtotal'] ?? 0);
-            $model->sgst_amount = floatval($post['sgstamount'] ?? 0);
-            $model->cgst_amount = floatval($post['cgstamount'] ?? 0);
-            $model->igst_amount = floatval($post['igstamount'] ?? 0);
-            $model->round_off   = floatval($post['roundoff'] ?? 0);
-            $model->net_total   = floatval($post['nettotal'] ?? 0);
-            $model->invoice_role = 2; // provisional
-            $model->created_at   = date('Y-m-d H:i:s');
-            $model->created_by   = Yii::$app->user->id;
-
-            $this->loadPaymentFields($model, $post);
-
-            if ($model->save()) {
-                if ($this->saveDetails($model, $post) && $this->saveExpenses($model, $post)) {
-                    $this->saveAttachments($model);
-                    Yii::$app->session->setFlash('success', 'Inward invoice created successfully.');
-                    return $this->redirect(['view', 'id' => $model->id]);
-                }
+            $model->created_at = date('Y-m-d H:i:s');
+            $model->created_by = Yii::$app->user->id;
+            [$ok, $lines, $expenses] = $this->saveInvoice($model, $vendor);
+            if ($ok) {
+                Yii::$app->session->setFlash('success', 'Inward invoice ' . $model->invoice_number . ' saved.');
+                return $this->redirect(['view', 'id' => $model->id]);
             }
         }
 
-        return $this->render('create', array_merge(
-            compact('model', 'vendor'),
-            $this->formDropdowns(),
-        ));
+        return $this->render('create', array_merge(compact('model', 'vendor', 'lines', 'expenses'), $this->formData()));
     }
 
     /* ── Update ───────────────────────────────────────────── */
@@ -113,279 +118,350 @@ class InwardInvoiceController extends Controller
     {
         $model  = $this->findModel($id);
         $vendor = $model->vendor;
-
-        if (!$vendor || $vendor->vendor_type < 1) {
-            Yii::$app->session->setFlash('error', 'Vendor or vendor type is invalid.');
-            return $this->redirect(['index']);
+        if (!$vendor) {
+            Yii::$app->session->setFlash('error', 'The vendor of this invoice was removed, so it cannot be edited.');
+            return $this->redirect(['view', 'id' => $model->id]);
         }
+        if ($redirect = $this->requireVendorType($vendor)) {
+            return $redirect;
+        }
+        $lines    = $model->lineItems;
+        $expenses = $model->expenses;
 
         if (Yii::$app->request->isPost) {
-            $post = Yii::$app->request->post();
-            $model->load($post, 'InwardInvoice');
-            $model->vendor_id   = $vendor->id;
-            $model->grand_total = floatval($post['grandtotal'] ?? 0);
-            $model->sgst_amount = floatval($post['sgstamount'] ?? 0);
-            $model->cgst_amount = floatval($post['cgstamount'] ?? 0);
-            $model->igst_amount = floatval($post['igstamount'] ?? 0);
-            $model->round_off   = floatval($post['roundoff'] ?? 0);
-            $model->net_total   = floatval($post['nettotal'] ?? 0);
-
-            $this->loadPaymentFields($model, $post);
-
-            if ($model->save()) {
-                // Soft-delete old details
-                InwardInvoiceDetails::updateAll(['status' => 0], ['inward_invoice_id' => $model->id]);
-
-                if ($this->saveDetails($model, $post) && $this->saveExpenses($model, $post)) {
-                    $this->saveAttachments($model);
-                    Yii::$app->session->setFlash('success', 'Inward invoice updated successfully.');
-                    return $this->redirect(['view', 'id' => $model->id]);
-                }
+            [$ok, $lines, $expenses] = $this->saveInvoice($model, $vendor);
+            if ($ok) {
+                Yii::$app->session->setFlash('success', 'Inward invoice ' . $model->invoice_number . ' updated.');
+                return $this->redirect(['view', 'id' => $model->id]);
             }
         }
 
-        return $this->render('update', array_merge(
-            compact('model', 'vendor'),
-            $this->formDropdowns(),
-        ));
+        return $this->render('update', array_merge(compact('model', 'vendor', 'lines', 'expenses'), $this->formData()));
     }
 
     /* ── Convert Provisional → Actual ─────────────────────── */
 
     public function actionConvertToInvoice(int $id): Response
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-        if (!Yii::$app->request->isPost) {
-            return $this->asJson(['status' => 0, 'msg' => 'POST required']);
-        }
         $model = InwardInvoice::findOne(['id' => $id, 'status' => 1]);
         if (!$model) {
-            return $this->asJson(['status' => 0, 'msg' => 'Invoice not found']);
+            return $this->asJson(['success' => false, 'message' => 'This invoice no longer exists.']);
         }
-        if ($model->invoice_role != 2) {
-            return $this->asJson(['status' => 0, 'msg' => 'Only provisional invoices can be converted']);
+        if ((int)$model->invoice_role !== InwardInvoice::ROLE_PROVISIONAL) {
+            return $this->asJson(['success' => false, 'message' => 'It is already an actual invoice.']);
         }
-        $model->invoice_role = 1;
-        if ($model->save(false)) {
-            return $this->asJson(['status' => 1, 'msg' => 'Converted to actual invoice']);
-        }
-        return $this->asJson(['status' => 0, 'msg' => 'Save failed']);
+        $model->updateAttributes(['invoice_role' => InwardInvoice::ROLE_ACTUAL]);
+        return $this->asJson(['success' => true, 'message' => 'Marked as an actual invoice.']);
     }
 
     /* ── Delete (soft) ────────────────────────────────────── */
 
     public function actionDelete(int $id): Response
     {
-        if (!Yii::$app->request->isPost) {
-            throw new \yii\web\BadRequestHttpException('POST required.');
-        }
         $model = $this->findModel($id);
-        $model->status = 0;
-        $model->save(false);
-        Yii::$app->session->setFlash('success', 'Invoice deleted.');
+        $model->updateAttributes(['status' => 0]);
+        Yii::$app->session->setFlash('success', 'Inward invoice ' . $model->invoice_number . ' removed.');
         return $this->redirect(['index']);
     }
 
-    /* ── AJAX: Autocomplete ledger categories ─────────────── */
-
-    public function actionAutocompleteLedgerCategory(): array
+    /**
+     * The ledger and attachment endpoints are in every developer's default routes, so they
+     * also need the right to create or edit inward invoices.
+     */
+    public function beforeAction($action): bool
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-        $term = trim(Yii::$app->request->get('term', ''));
-        $result = [];
-        if ($term !== '') {
-            $rows = AccLedgerCategory::find()
-                ->where(['status' => 1])
-                ->andWhere(['not', ['parent_id' => null]])
-                ->andWhere(['like', 'title', $term])
-                ->orderBy('title')
-                ->all();
-            foreach ($rows as $r) {
-                $result[] = ['label' => $r->title, 'value' => $r->title, 'id' => $r->id];
-            }
+        if (!parent::beforeAction($action)) {
+            return false;
         }
-        return $result;
+        $utility = ['autocomplete-ledger-category', 'autocomplete-ledger', 'get-payment-ledgers', 'delete-attachment'];
+        if (in_array($action->id, $utility, true)
+            && !UserAccess::checkAccess('inward-invoice/create') && !UserAccess::checkAccess('inward-invoice/update')) {
+            throw new ForbiddenHttpException('You do not have permission to change inward invoices.');
+        }
+        return true;
     }
 
-    /* ── AJAX: Get ledgers for a category ─────────────────── */
+    /* ── AJAX: ledgers (kept for existing permission routes) ─ */
 
-    public function actionAutocompleteLedger(): array
+    public function actionAutocompleteLedgerCategory(): Response
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-        $categoryId = trim(Yii::$app->request->post('categoryId', ''));
-        if ($categoryId === '') {
-            return ['status' => 0, 'msg' => 'No category'];
+        $term = trim((string)Yii::$app->request->get('term', ''));
+        if ($term === '') {
+            return $this->asJson([]);
         }
-        $rows = AccLedger::find()
-            ->where(['status' => 1, 'category_id' => (int)$categoryId])
-            ->orderBy('title')
-            ->all();
-        $data = [];
-        foreach ($rows as $r) {
-            $data[$r->id] = $r->title;
-        }
-        return ['status' => 1, 'data' => $data];
+        $rows = AccLedgerCategory::find()->where(['status' => 1])->andWhere(['not', ['parent_id' => null]])
+            ->andWhere(['like', 'title', $term])->orderBy('title')->limit(50)->all();
+        return $this->asJson(array_map(fn($r) => ['label' => $r->title, 'value' => $r->title, 'id' => $r->id], $rows));
     }
 
-    /* ── AJAX: Get payment ledgers by payment type ────────── */
-
-    public function actionGetPaymentLedgers(): array
+    public function actionAutocompleteLedger(): Response
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-        $categoryId = trim(Yii::$app->request->post('payment_type', ''));
-        if ($categoryId === '') {
-            return ['status' => 0, 'msg' => 'No type'];
-        }
-        $rows = AccLedger::find()
-            ->where(['status' => 1, 'category_id' => (int)$categoryId])
-            ->orderBy('title')
-            ->all();
-        $data = [];
-        foreach ($rows as $r) {
-            $data[$r->id] = $r->title;
-        }
-        return empty($data)
-            ? ['status' => 0, 'msg' => 'No ledgers found']
-            : ['status' => 1, 'data' => $data];
+        return $this->asJson($this->ledgersOf(Yii::$app->request->post('categoryId')));
+    }
+
+    public function actionGetPaymentLedgers(): Response
+    {
+        return $this->asJson($this->ledgersOf(Yii::$app->request->post('payment_type')));
     }
 
     /* ── AJAX: Delete attachment ───────────────────────────── */
 
-    public function actionDeleteAttachment(int $id): array
+    public function actionDeleteAttachment(int $id): Response
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-        if (!Yii::$app->request->isPost) {
-            return ['status' => 0, 'msg' => 'POST required'];
+        $att = InwardInvoiceAttachments::find()->alias('a')
+            ->innerJoin(InwardInvoice::tableName() . ' ii', 'ii.id = a.inward_invoice_id AND ii.status = 1')
+            ->where(['a.id' => $id, 'a.status' => 1])->one();
+        if (!$att) {
+            return $this->asJson(['success' => false, 'message' => 'That attachment was already removed.']);
         }
-        $att = InwardInvoiceAttachments::findOne(['id' => $id, 'status' => 1]);
-        if ($att) {
-            $att->status = 0;
-            $att->save(false);
-            return ['status' => 1, 'msg' => 'Deleted'];
-        }
-        return ['status' => 0, 'msg' => 'Not found'];
+        $att->updateAttributes(['status' => 0]);
+        return $this->asJson(['success' => true, 'message' => 'Attachment removed.']);
     }
 
     /* ── Private helpers ──────────────────────────────────── */
 
+    /**
+     * Read the posted invoice, lines and expenses, validate everything, then save in one transaction.
+     *
+     * @return array{0: bool, 1: InwardInvoiceDetails[], 2: InwardInvoiceDetails[]}
+     */
+    private function saveInvoice(InwardInvoice $model, Vendor $vendor): array
+    {
+        $req  = Yii::$app->request;
+        $post = $req->post('InwardInvoice');
+        $post = is_array($post) ? array_map(fn($v) => is_scalar($v) ? (string)$v : null, $post) : [];
+
+        // Only form fields; totals, vendor, role and status never come from the browser.
+        $model->setAttributes(array_intersect_key($post, array_flip([
+            'invoice_number', 'invoice_date', 'title', 'round_off', 'payment_status', 'payment_type',
+            'payment_ledger_id', 'payment_amount', 'tds_amount', 'payment_date', 'payment_remarks',
+        ])), false);
+        foreach (['round_off', 'payment_amount', 'tds_amount'] as $num) {
+            if ($model->$num === '' || $model->$num === null) {
+                $model->$num = 0;
+            }
+        }
+        foreach (['payment_status', 'payment_type', 'payment_ledger_id', 'payment_date'] as $opt) {
+            if ($model->$opt === '') {
+                $model->$opt = null;
+            }
+        }
+        $model->vendor_id = $vendor->id;
+
+        [$lines, $expenses, $lineErrors] = $this->readLines($vendor, (array)$req->post('lines', []), (array)$req->post('expenses', []));
+        $model->applyLines($lines, $expenses);
+
+        $valid = $model->validate();
+        if ($lineErrors) {
+            // Totals are derived from the lines; their errors would only repeat the line messages.
+            foreach (['grand_total', 'sgst_amount', 'cgst_amount', 'igst_amount', 'net_total'] as $derived) {
+                $model->clearErrors($derived);
+            }
+        }
+        foreach ($lineErrors as $msg) {
+            $model->addError('lines', $msg);
+            $valid = false;
+        }
+        if (!$valid) {
+            return [false, $lines, $expenses];
+        }
+
+        $tx = Yii::$app->db->beginTransaction();
+        try {
+            $model->save(false);
+            InwardInvoiceDetails::updateAll(['status' => 0], ['inward_invoice_id' => $model->id, 'status' => 1]);
+            foreach (array_merge($lines, $expenses) as $d) {
+                $d->inward_invoice_id = $model->id;
+                $d->status = 1;
+                $d->save(false);
+            }
+            $tx->commit();
+        } catch (\Throwable $e) {
+            $tx->rollBack();
+            Yii::error($e, __METHOD__);
+            $model->addError('lines', 'The invoice could not be saved. Nothing was changed — please try again.');
+            return [false, $lines, $expenses];
+        }
+
+        // Files after the commit: a rejected file never loses the invoice.
+        SafeUpload::flashRejected(SafeUpload::save('attachments', 'inward_invoice_attachments', 'inward_' . $model->id,
+            function (string $path) use ($model) {
+                (new InwardInvoiceAttachments(['inward_invoice_id' => $model->id, 'path' => $path, 'status' => 1]))->save(false);
+            }));
+
+        return [true, $lines, $expenses];
+    }
+
+    /**
+     * Build line / expense rows from the posted arrays (blank rows are skipped).
+     *
+     * @return array{0: InwardInvoiceDetails[], 1: InwardInvoiceDetails[], 2: string[]}
+     */
+    private function readLines(Vendor $vendor, array $postLines, array $postExpenses): array
+    {
+        $lines = $expenses = $errors = [];
+        $ledgerIds = [];
+        $str = fn($row, $k) => is_array($row) && isset($row[$k]) && is_scalar($row[$k]) ? trim((string)$row[$k]) : '';
+        $num = fn($row, $k) => is_numeric($str($row, $k)) ? (float)$str($row, $k) : null;
+
+        // Which taxes apply depends on where the vendor is.
+        $allowed = match ((int)$vendor->vendor_type) {
+            Vendor::TYPE_INTRA_STATE => ['sgst' => true, 'cgst' => true, 'igst' => false],
+            Vendor::TYPE_INTER_STATE => ['sgst' => false, 'cgst' => false, 'igst' => true],
+            default                  => ['sgst' => false, 'cgst' => false, 'igst' => false],
+        };
+
+        foreach (array_slice($postLines, 0, self::MAX_LINES) as $row) {
+            $product = $str($row, 'product');
+            if ($product === '' && $str($row, 'qty') === '' && $str($row, 'price_per_qty') === '') {
+                continue;
+            }
+            $n = count($lines) + 1;
+            $d = new InwardInvoiceDetails(['line_item_type' => 1, 'product' => $product, 'hsn' => $str($row, 'hsn')]);
+            $d->qty           = $num($row, 'qty');
+            $d->price_per_qty = $num($row, 'price_per_qty');
+            $d->ledger_id     = ctype_digit($str($row, 'ledger_id')) ? (int)$str($row, 'ledger_id') : null;
+            foreach (['sgst', 'cgst', 'igst'] as $tax) {
+                $pct = $num($row, $tax . '_percent') ?? 0.0;
+                if ($pct < 0 || $pct > 100) {
+                    $errors[] = "Line $n: " . strtoupper($tax) . ' must be between 0 and 100%.';
+                    $pct = 0.0;
+                } elseif ($pct > 0 && !$allowed[$tax]) {
+                    $errors[] = "Line $n: " . strtoupper($tax) . ' does not apply to ' . strtolower(Vendor::typeLabels()[(int)$vendor->vendor_type] ?? 'this') . ' vendors.';
+                    $pct = 0.0;
+                }
+                $d->{$tax . '_percent'} = $pct;
+            }
+            if ($product === '') {
+                $errors[] = "Line $n: enter what was bought.";
+            } elseif (mb_strlen($product) > 5000) {
+                $errors[] = "Line $n: the description is too long.";
+            }
+            if ($d->qty === null || $d->qty <= 0 || $d->qty > 1000000) {
+                $errors[] = "Line $n: quantity must be more than 0.";
+            }
+            if ($d->price_per_qty === null || $d->price_per_qty <= 0) {
+                $errors[] = "Line $n: price must be more than 0.";
+            }
+            if (mb_strlen((string)$d->hsn) > 500) {
+                $errors[] = "Line $n: HSN code is too long.";
+            }
+            if ($d->ledger_id) {
+                $ledgerIds[$d->ledger_id] = "Line $n";
+            }
+            $lines[] = $d;
+        }
+
+        foreach (array_slice($postExpenses, 0, self::MAX_LINES) as $row) {
+            $title  = $str($row, 'product');
+            $amount = $num($row, 'amount');
+            if ($title === '' && $str($row, 'amount') === '') {
+                continue;
+            }
+            $n = count($expenses) + 1;
+            $e = new InwardInvoiceDetails(['line_item_type' => 2, 'product' => $title, 'qty' => 1, 'item_total' => $amount ?? 0]);
+            $e->ledger_id = ctype_digit($str($row, 'ledger_id')) ? (int)$str($row, 'ledger_id') : null;
+            if ($title === '') {
+                $errors[] = "Extra expense $n: enter a description.";
+            }
+            if ($amount === null || $amount <= 0) {
+                $errors[] = "Extra expense $n: amount must be more than 0.";
+            }
+            if ($e->ledger_id) {
+                $ledgerIds[$e->ledger_id] = "Extra expense $n";
+            }
+            $expenses[] = $e;
+        }
+
+        if (!$lines) {
+            $errors[] = 'Add at least one line item.';
+        }
+        if ($ledgerIds) {
+            $found = AccLedger::find()->select('id')->where(['id' => array_keys($ledgerIds), 'status' => 1])->column();
+            foreach (array_diff(array_keys($ledgerIds), array_map('intval', $found)) as $bad) {
+                $errors[] = $ledgerIds[$bad] . ': that ledger no longer exists — pick another.';
+            }
+        }
+        if (count($postLines) > self::MAX_LINES) {
+            $errors[] = 'An invoice can have at most ' . self::MAX_LINES . ' lines.';
+        }
+        return [$lines, $expenses, $errors];
+    }
+
+    private function requireVendorType(Vendor $vendor): ?Response
+    {
+        if (in_array((int)$vendor->vendor_type, [Vendor::TYPE_INTER_STATE, Vendor::TYPE_INTRA_STATE, Vendor::TYPE_INTERNATIONAL], true)) {
+            return null;
+        }
+        Yii::$app->session->setFlash('warning', 'Set the vendor type of ' . $vendor->company_name . ' first — it decides which GST applies.');
+        return $this->redirect(['/vendor/update', 'id' => $vendor->id]);
+    }
+
+    private function ledgersOf($categoryId): array
+    {
+        if (!is_scalar($categoryId) || !ctype_digit((string)$categoryId)) {
+            return ['success' => false, 'message' => 'Choose a category first.', 'data' => []];
+        }
+        $data = AccLedger::find()->select(['title', 'id'])->where(['status' => 1, 'category_id' => (int)$categoryId])
+            ->orderBy('title')->indexBy('id')->column();
+        return ['success' => (bool)$data, 'message' => $data ? '' : 'No ledgers in this category.', 'data' => $data];
+    }
+
+    /** Cleaned list filters (unreadable values are dropped). */
+    private function filters(): array
+    {
+        $req = Yii::$app->request;
+        $get = fn($k) => is_scalar($req->get($k)) ? trim((string)$req->get($k)) : '';
+        $date = function ($k) use ($get) {
+            $v = $get($k);
+            $d = \DateTime::createFromFormat('!Y-m-d', $v);
+            return $d && $d->format('Y-m-d') === $v ? $v : '';
+        };
+        $f = [
+            'vendor_id'      => ctype_digit($get('vendor_id')) ? $get('vendor_id') : '',
+            'from_date'      => $date('from_date'),
+            'to_date'        => $date('to_date'),
+            'q'              => mb_substr($get('q'), 0, 100),
+            'payment_status' => in_array($get('payment_status'), ['0', '1', 'none'], true) ? $get('payment_status') : '',
+            'invoice_role'   => in_array($get('invoice_role'), ['1', '2'], true) ? $get('invoice_role') : '',
+        ];
+        if ($f['from_date'] !== '' && $f['to_date'] !== '' && $f['to_date'] < $f['from_date']) {
+            [$f['from_date'], $f['to_date']] = [$f['to_date'], $f['from_date']];
+        }
+        return $f;
+    }
+
+    /** Ledgers grouped by category for the line pickers, and payment types with their ledgers. */
+    private function formData(): array
+    {
+        $cats = AccLedgerCategory::find()->select(['title', 'id'])->where(['status' => 1])->andWhere(['not', ['parent_id' => null]])
+            ->orderBy('title')->indexBy('id')->column();
+        $ledgerGroups = [];
+        foreach (AccLedger::find()->select(['id', 'title', 'category_id'])->where(['status' => 1, 'category_id' => array_keys($cats)])
+                     ->orderBy('title')->asArray()->all() as $l) {
+            $ledgerGroups[$cats[$l['category_id']]][$l['id']] = $l['title'];
+        }
+        ksort($ledgerGroups);
+
+        $paymentTypes = AccLedgerCategory::find()->select(['title', 'id'])->where(['status' => 1, 'is_payment_ledger' => 1])
+            ->orderBy('title')->indexBy('id')->column();
+        $paymentLedgers = [];
+        foreach (AccLedger::find()->select(['id', 'title', 'category_id'])->where(['status' => 1, 'category_id' => array_keys($paymentTypes)])
+                     ->orderBy('title')->asArray()->all() as $l) {
+            $paymentLedgers[$l['category_id']][$l['id']] = $l['title'];
+        }
+        return compact('ledgerGroups', 'paymentTypes', 'paymentLedgers');
+    }
+
     private function findModel(int $id): InwardInvoice
     {
         $model = InwardInvoice::find()
-            ->with(['vendor', 'lineItems', 'lineItems.ledger', 'expenses', 'expenses.ledger', 'attachments'])
+            ->with(['vendor', 'lineItems', 'lineItems.ledger', 'expenses', 'expenses.ledger', 'attachments', 'paymentLedger', 'paymentCategory'])
             ->where(['inward_invoice.id' => $id, 'inward_invoice.status' => 1])
             ->one();
         if (!$model) {
             throw new NotFoundHttpException('Inward invoice not found.');
         }
         return $model;
-    }
-
-    private function loadPaymentFields(InwardInvoice $model, array $post): void
-    {
-        $inv = $post['InwardInvoice'] ?? [];
-        $model->payment_status    = ($inv['payment_status'] ?? '') !== '' ? (int)$inv['payment_status'] : null;
-        $model->payment_type      = !empty($inv['payment_type']) ? (int)$inv['payment_type'] : null;
-        $model->payment_ledger_id = !empty($inv['payment_ledger_id']) ? (int)$inv['payment_ledger_id'] : null;
-        $model->payment_amount    = !empty($inv['payment_amount']) ? floatval($inv['payment_amount']) : 0;
-        $model->tds_amount        = !empty($inv['tds_amount']) ? floatval($inv['tds_amount']) : 0;
-        $model->payment_date      = !empty($inv['payment_date']) ? $inv['payment_date'] : null;
-    }
-
-    private function saveDetails(InwardInvoice $model, array $post): bool
-    {
-        $particulars = $post['particular'] ?? [];
-        foreach ($particulars as $i => $particular) {
-            if (trim($particular) === '') continue;
-            $d = new InwardInvoiceDetails();
-            $d->inward_invoice_id = $model->id;
-            $d->product       = trim($particular);
-            $d->line_item_type = 1;
-            $d->hsn           = trim($post['hsn'][$i] ?? '');
-            $d->qty           = floatval($post['qty'][$i] ?? 0);
-            $d->ledger_id     = !empty($post['ledger_ids'][$i]) ? (int)$post['ledger_ids'][$i] : null;
-            $d->price_per_qty = floatval($post['price_per_qty'][$i] ?? 0);
-            $d->item_total    = floatval($post['item_total'][$i] ?? 0);
-            $d->sgst_percent  = floatval($post['sgst_percent'][$i] ?? 0);
-            $d->sgst_amount   = floatval($post['sgst_amount'][$i] ?? 0);
-            $d->cgst_percent  = floatval($post['cgst_percent'][$i] ?? 0);
-            $d->cgst_amount   = floatval($post['cgst_amount'][$i] ?? 0);
-            $d->igst_percent  = floatval($post['igst_percent'][$i] ?? 0);
-            $d->igst_amount   = floatval($post['igst_amount'][$i] ?? 0);
-            $d->total_amount  = floatval($post['total_amount'][$i] ?? 0);
-            $d->status        = 1;
-            if (!$d->save()) {
-                InwardInvoiceDetails::deleteAll(['inward_invoice_id' => $model->id]);
-                $model->delete();
-                Yii::$app->session->setFlash('error', 'Failed to save line item: ' . implode(', ', $d->getFirstErrors()));
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private function saveExpenses(InwardInvoice $model, array $post): bool
-    {
-        $titles = $post['expense_title'] ?? [];
-        if (empty($titles)) return true;
-        foreach ($titles as $i => $title) {
-            if (trim($title) === '') continue;
-            $d = new InwardInvoiceDetails();
-            $d->inward_invoice_id = $model->id;
-            $d->product        = trim($title);
-            $d->line_item_type = 2;
-            $d->ledger_id      = !empty($post['expense_ledger_id'][$i]) ? (int)$post['expense_ledger_id'][$i] : null;
-            $d->item_total     = floatval($post['expense_amount'][$i] ?? 0);
-            $d->total_amount   = $d->item_total;
-            $d->qty            = 1;
-            $d->status         = 1;
-            if (!$d->save()) {
-                InwardInvoiceDetails::deleteAll(['inward_invoice_id' => $model->id]);
-                $model->delete();
-                Yii::$app->session->setFlash('error', 'Failed to save expense: ' . implode(', ', $d->getFirstErrors()));
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private function saveAttachments(InwardInvoice $model): void
-    {
-        $files = UploadedFile::getInstancesByName('attachments');
-        if (empty($files)) return;
-
-        // Store under the project-root uploads/ directory (root/uploads/inward_invoice_attachments),
-        // consistent with every other module's attachments. The root `uploads` is a symlink to
-        // backend/web/uploads, so files remain web-accessible at /uploads/... as before.
-        $dir = dirname(Yii::getAlias('@backend')) . '/uploads/inward_invoice_attachments';
-        if (!is_dir($dir)) {
-            mkdir($dir, 0775, true);
-        }
-        $i = 1;
-        foreach ($files as $file) {
-            $name = 'attachment_' . $model->id . '_' . $i . '.' . $file->extension;
-            $path = '/uploads/inward_invoice_attachments/' . $name;
-            if ($file->saveAs($dir . '/' . $name)) {
-                $att = new InwardInvoiceAttachments();
-                $att->inward_invoice_id = $model->id;
-                $att->path   = $path;
-                $att->status = 1;
-                $att->save(false);
-            }
-            $i++;
-        }
-    }
-
-    private function formDropdowns(): array
-    {
-        $ledgerCategories = AccLedgerCategory::find()
-            ->where(['status' => 1])
-            ->andWhere(['not', ['parent_id' => null]])
-            ->orderBy('title')
-            ->all();
-        $paymentCategories = AccLedgerCategory::find()
-            ->where(['status' => 1, 'is_payment_ledger' => 1])
-            ->orderBy('title')
-            ->all();
-        return compact('ledgerCategories', 'paymentCategories');
     }
 }

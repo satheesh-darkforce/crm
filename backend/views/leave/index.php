@@ -31,24 +31,17 @@ foreach ($models as $m) { if ((int)$m->request_status < 2) $pendingCount++; }
 $canDecide = UserAccess::checkAccess('leave/decide');
 ?>
 <style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
 .list-table tr.row-pending{background:#fffde7}
 .list-table tr.row-approved td{opacity:.85}
 .list-table tr.row-approved td:last-child{opacity:1}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
 </style>
 
-<div class="leave-index">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page leave-index">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Leave Requests</h5>
-            <small class="text-muted"><?= $total ?> request<?= $total != 1 ? 's' : '' ?>
-                &nbsp;<span id="pending-count" class="badge bg-warning text-dark<?= $pendingCount > 0 ? '' : ' d-none' ?>"><?= $pendingCount ?> pending</span>
-            </small>
+            <h1>Leave Requests</h1>
+            <div class="ui-sub"><?= $total ?> request<?= $total != 1 ? 's' : '' ?>
+                &nbsp;<span id="pending-count" class="badge bg-warning text-dark<?= $pendingCount > 0 ? '' : ' d-none' ?>"><?= $pendingCount ?> pending</span></div>
         </div>
     </div>
 

@@ -12,12 +12,16 @@ use yii\helpers\Url;
 $this->title = 'Update Quotation';
 ?>
 
-<div class="d-flex justify-content-between mt-4 mb-2">
-    <div><h3>Update Quotation</h3></div>
-    <div class="d-flex gap-2">
-        <?= Html::a('View Details', ['view', 'id' => $model->id], ['class' => 'btn btn-outline-primary']) ?>
-        <?= Html::a('Back', Url::to(['index']), [
-            'class'   => 'btn btn-secondary',
+<div class="ui-page client-quotation-form">
+<div class="ui-head">
+    <div>
+        <h1>Edit quotation</h1>
+        <div class="ui-sub"><?= Html::encode($model->getOldAttribute('quote_no')) ?> · <?= Html::encode($model->getOldAttribute('project_name')) ?></div>
+    </div>
+    <div class="ui-actions">
+        <?= Html::a('View details', ['view', 'id' => $model->id], ['class' => 'btn btn-outline-primary btn-sm']) ?>
+        <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', Url::to(['index']), [
+            'class'   => 'btn btn-outline-secondary btn-sm', 'encode' => false,
             'onclick' => 'event.preventDefault(); window.location.replace(this.href); return false;',
         ]) ?>
     </div>
@@ -30,3 +34,4 @@ $this->title = 'Update Quotation';
     'userOptions' => $userOptions,
     'showFile' => false,
 ]) ?>
+</div>

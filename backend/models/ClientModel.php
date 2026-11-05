@@ -49,11 +49,25 @@ class ClientModel extends ActiveRecord
 
     public function rules(): array
     {
+        // Format and uniqueness checks run for new records and for values the
+        // user changed. Many clients migrated from Yii1 hold values the newer
+        // rules reject (e.g. a 5-digit phone, duplicate company names); those
+        // must not block an unrelated edit. The JS mirror compares the input
+        // with its data-orig attribute (set by the form) for the same effect.
+        $changed       = fn(string $attr) => fn($m) => $m->valueChanged($attr);
+        $changedClient = fn(string $extra = 'true') =>
+            "function(attribute, value){ var o = $(attribute.input).data('orig'); return (o === undefined || String(o) !== value) && ($extra); }";
+        $domestic      = "$('#clientmodel-client_type').val() != '3'";
+        $intl          = "$('#clientmodel-client_type').val() == '3'";
+
         return [
             [['client_name', 'company_name', 'address', 'contact_person', 'email_id', 'phone', 'alt_phone', 'gst_no', 'tax_exemption_reason'], 'trim'],
+            [['gst_no'], 'filter', 'filter' => fn($v) => is_string($v) ? strtoupper($v) : $v],
             [['client_name', 'company_name', 'address', 'contact_person', 'phone', 'email_id', 'client_type', 'tax_exemption', 'gst_registration_type'], 'required'],
             [['user_id', 'client_type', 'tax_exemption', 'status', 'gst_registration_type'], 'integer'],
             [['gst_registration_type'], 'in', 'range' => [self::GST_REG_REGULAR, self::GST_REG_CONSUMER]],
+            [['client_type'], 'in', 'range' => array_keys(self::typeOptions())],
+            [['tax_exemption'], 'in', 'range' => [0, 1]],
             // GST No. is mandatory for "Regular" GST registration; optional
             // (skippable) for "Consumer". The whenClient mirror keeps the
             // ActiveForm client-side validation consistent with the server.
@@ -61,39 +75,102 @@ class ClientModel extends ActiveRecord
                 'when'        => fn($m) => (int)$m->gst_registration_type === self::GST_REG_REGULAR,
                 'whenClient'  => "function(attribute, value){ return $('#clientmodel-gst_registration_type').val() == '1'; }",
                 'message'     => 'GST No. is required when Registration Type is Regular.'],
+            [['tax_exemption_reason'], 'required',
+                'when'        => fn($m) => (int)$m->tax_exemption === 1 && $m->valueChanged('tax_exemption'),
+                'whenClient'  => "function(){ var s = $('#tax-exemption-select'); return s.val() == '1' && String(s.data('orig')) !== '1'; }",
+                'message'     => 'Enter the reason for the tax exemption.'],
             [['address'], 'string', 'max' => 5000],
             [['access_permissions'], 'string'],
             [['client_name', 'company_name', 'contact_person', 'email_id', 'logo'], 'string', 'max' => 255],
             [['phone', 'alt_phone'], 'string', 'max' => 20],
             // International clients (TYPE_INTERNATIONAL) may use up to 15 digits;
             // domestic clients (Inter/Intra-State) must be exactly 10 digits.
-            // 'whenClient' mirrors the PHP 'when' so client-side validation
-            // doesn't fire the wrong pattern before the form is submitted.
             [['phone'], 'match', 'pattern' => '/^[0-9]{10}$/',
-                'when' => fn($m) => (int)$m->client_type !== self::TYPE_INTERNATIONAL,
-                'whenClient' => "function(){ return $('#clientmodel-client_type').val() != '3'; }",
+                'when' => fn($m) => (int)$m->client_type !== self::TYPE_INTERNATIONAL && $m->valueChanged('phone', 'client_type'),
+                'whenClient' => $changedClient($domestic),
                 'message' => 'Phone must be exactly 10 digits.'],
             [['phone'], 'match', 'pattern' => '/^[0-9]{1,15}$/',
-                'when' => fn($m) => (int)$m->client_type === self::TYPE_INTERNATIONAL,
-                'whenClient' => "function(){ return $('#clientmodel-client_type').val() == '3'; }",
+                'when' => fn($m) => (int)$m->client_type === self::TYPE_INTERNATIONAL && $m->valueChanged('phone', 'client_type'),
+                'whenClient' => $changedClient($intl),
                 'message' => 'International phone must be up to 15 digits.'],
             [['alt_phone'], 'match', 'pattern' => '/^[0-9]{10}$/', 'skipOnEmpty' => true,
-                'when' => fn($m) => (int)$m->client_type !== self::TYPE_INTERNATIONAL,
-                'whenClient' => "function(){ return $('#clientmodel-client_type').val() != '3'; }",
+                'when' => fn($m) => (int)$m->client_type !== self::TYPE_INTERNATIONAL && $m->valueChanged('alt_phone', 'client_type'),
+                'whenClient' => $changedClient($domestic),
                 'message' => 'Alt phone must be exactly 10 digits.'],
             [['alt_phone'], 'match', 'pattern' => '/^[0-9]{1,15}$/', 'skipOnEmpty' => true,
-                'when' => fn($m) => (int)$m->client_type === self::TYPE_INTERNATIONAL,
-                'whenClient' => "function(){ return $('#clientmodel-client_type').val() == '3'; }",
+                'when' => fn($m) => (int)$m->client_type === self::TYPE_INTERNATIONAL && $m->valueChanged('alt_phone', 'client_type'),
+                'whenClient' => $changedClient($intl),
                 'message' => 'Alt phone must be up to 15 digits.'],
             [['tax_exemption_reason'], 'string', 'max' => 255],
             [['gst_no'], 'string', 'max' => 15],
             [['gst_no'], 'match',
                 'pattern' => '/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/',
                 'message'  => 'Invalid GSTIN format (e.g. 29ABCDE1234F1Z5).',
-                'skipOnEmpty' => true],
-            [['email_id'], 'email'],
-            [['client_name'], 'unique', 'message' => 'Client already exists.'],
-            [['company_name'], 'unique', 'message' => 'Company already exists.'],
+                'skipOnEmpty' => true,
+                'when' => $changed('gst_no'), 'whenClient' => $changedClient()],
+            [['email_id'], 'email', 'when' => $changed('email_id'), 'whenClient' => $changedClient()],
+            [['client_name'], 'unique', 'message' => 'Client already exists.', 'when' => $changed('client_name')],
+            [['company_name'], 'unique', 'message' => 'Company already exists.', 'when' => $changed('company_name')],
+        ];
+    }
+
+    /**
+     * True for new records, or when any of the given attributes differs from
+     * the stored value (ignoring surrounding spaces and letter case).
+     */
+    public function valueChanged(string ...$attributes): bool
+    {
+        if ($this->isNewRecord) {
+            return true;
+        }
+        foreach ($attributes as $attr) {
+            if (strcasecmp(trim((string)$this->getOldAttribute($attr)), trim((string)$this->$attr)) !== 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Labels of required fields that are empty — legacy Yii1 records often lack them. */
+    public function missingRequiredFields(): array
+    {
+        $missing = [];
+        foreach (['client_name', 'company_name', 'contact_person', 'email_id', 'phone', 'address', 'client_type', 'gst_registration_type'] as $attr) {
+            if (trim((string)$this->$attr) === '' || ($attr === 'client_type' && !isset(self::typeOptions()[(int)$this->$attr]))
+                || ($attr === 'gst_registration_type' && !isset(self::registrationTypeOptions()[(int)$this->$attr]))) {
+                $missing[] = $this->getAttributeLabel($attr);
+            }
+        }
+        if ((int)$this->gst_registration_type === self::GST_REG_REGULAR && trim((string)$this->gst_no) === '') {
+            $missing[] = $this->getAttributeLabel('gst_no');
+        }
+        return $missing;
+    }
+
+    public static function typeOptions(): array
+    {
+        return [
+            self::TYPE_INTERSTATE    => 'Inter-State',
+            self::TYPE_INTRASTATE    => 'Intra-State',
+            self::TYPE_INTERNATIONAL => 'International',
+        ];
+    }
+
+    public static function registrationTypeOptions(): array
+    {
+        return [self::GST_REG_REGULAR => 'Regular', self::GST_REG_CONSUMER => 'Consumer'];
+    }
+
+    /**
+     * Client-portal pages an admin can grant (Yii1 route names, matched by
+     * UserAccess). The permissions page offers exactly these and the
+     * controller stores nothing else.
+     */
+    public static function portalPermissionOptions(): array
+    {
+        return [
+            'Invoices'     => ['invoice/clientinvoice' => 'Invoice List', 'invoice/view' => 'Invoice View'],
+            'Work Reports' => ['workreport/clientworkreports' => 'Work Report List', 'workreport/clientview' => 'Work Report View'],
         ];
     }
 
@@ -167,6 +244,47 @@ class ClientModel extends ActiveRecord
             self::GST_REG_CONSUMER => 'Consumer',
             default                => '—',
         };
+    }
+
+    public const PASSWORD_MIN = 6;
+    public const PASSWORD_MAX = 128;
+
+    /**
+     * Validate a new client's portal login (Clients → Add, Leads → Add To Client).
+     * Errors are added to $user; on success the password hash is set.
+     * The password is trimmed, as client logins always have been.
+     */
+    public static function validateLogin(User $user, string $password): bool
+    {
+        $user->username = trim((string)$user->username);
+        $valid = true;
+        if ($user->username === '') {
+            $user->addError('username', 'Username cannot be blank.');
+            $valid = false;
+        } elseif (!preg_match('/^[A-Za-z0-9._@-]{3,50}$/', $user->username)) {
+            $user->addError('username', 'Username must be 3–50 characters: letters, numbers, and . _ @ - only.');
+            $valid = false;
+        }
+        if ($error = self::passwordError($password)) {
+            $user->addError('password', $error);
+            return false;
+        }
+        $user->setPassword(trim($password));
+        // Uniqueness and column limits (User rules), once the format is right.
+        return $valid && $user->validate(['username', 'password', 'usertype', 'status']);
+    }
+
+    /** Why a portal password is unacceptable, or null when it is fine. */
+    public static function passwordError(string $password): ?string
+    {
+        $password = trim($password);
+        if ($password === '') {
+            return 'Password cannot be blank.';
+        }
+        if (mb_strlen($password) < self::PASSWORD_MIN || mb_strlen($password) > self::PASSWORD_MAX) {
+            return 'Password must be ' . self::PASSWORD_MIN . '–' . self::PASSWORD_MAX . ' characters.';
+        }
+        return null;
     }
 
     /**

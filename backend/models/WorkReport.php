@@ -47,7 +47,21 @@ class WorkReport extends ActiveRecord
 
     public function rules(): array
     {
+        // Applied to new reports and edited values only: legacy rows include
+        // 2,600+ zero-minute entries that must stay editable.
+        $changed = fn(string $attr) => fn($m) => $m->isNewRecord || (string)$m->getOldAttribute($attr) !== (string)$m->$attr;
+
         return [
+            [['date'], 'date', 'format' => 'php:Y-m-d', 'message' => 'Enter the date as YYYY-MM-DD.', 'when' => $changed('date')],
+            [['date'], 'compare', 'compareValue' => date('Y-m-d'), 'operator' => '<=', 'type' => 'string',
+                'message' => 'Work reports cannot be dated in the future.', 'when' => $changed('date')],
+            [['total_time'], 'integer', 'min' => 60, 'max' => 86400,
+                'tooSmall' => 'Total time must be at least 1 minute.', 'tooBig' => 'Total time cannot exceed 24 hours.',
+                'when' => $changed('total_time')],
+            [['project_id'], 'exist', 'targetClass' => Project::class, 'targetAttribute' => 'id', 'filter' => ['status' => 1],
+                'message' => 'Select an active project.', 'when' => $changed('project_id')],
+            [['developer_id'], 'exist', 'targetClass' => Developer::class, 'targetAttribute' => 'id', 'filter' => ['status' => 1],
+                'message' => 'Select an active employee.', 'when' => $changed('developer_id')],
             [['task', 'description', 'from_time', 'to_time'], 'trim'],
             // BUG-1 fix: removed client_id from required (projects may have no client)
             // BUG-4 fix: added task to required (matches Yii1 behaviour)
@@ -71,11 +85,11 @@ class WorkReport extends ActiveRecord
     {
         return [
             'work_id'     => 'Work Report ID',
-            'developer_id'=> 'Developer',
+            'developer_id'=> 'Employee',
             'project_id'  => 'Project',
             'date'        => 'Date',
             'task'        => 'Task',
-            'total_time'  => 'Total Time (mins)',
+            'total_time'  => 'Total time',
             'from_time'   => 'From',
             'to_time'     => 'To',
         ];
@@ -101,7 +115,7 @@ class WorkReport extends ActiveRecord
                     $hh = intdiv($windowSeconds, 3600);
                     $mm = intdiv($windowSeconds % 3600, 60);
                     $this->addError('total_time', sprintf(
-                        'Total Time cannot exceed the From–To window (max %02d:%02d).',
+                        'Total time cannot be more than the From–To window (%02d:%02d).',
                         $hh, $mm
                     ));
                 }

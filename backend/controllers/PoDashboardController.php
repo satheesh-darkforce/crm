@@ -34,6 +34,13 @@ use yii\web\UploadedFile;
  */
 class PoDashboardController extends Controller
 {
+    /** Full pages get the Delivery / PO / Quotation module assets. */
+    public function render($view, $params = []): string
+    {
+        \backend\assets\DeliveryAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     public function actionIndex(): string
     {
         $rows = PoDetail::find()
@@ -217,8 +224,15 @@ class PoDashboardController extends Controller
         if ($date === '') {
             return ['success' => false, 'message' => 'Please pick a delivery date.'];
         }
-        $po = $this->findPo($id);
-        $po->delivery_date = date('Y-m-d H:i:s', strtotime($date));
+        $po  = $this->findPo($id);
+        $day = $this->strictDate($date);
+        if ($day === null) {
+            return ['success' => false, 'message' => 'Pick a valid delivery date.'];
+        }
+        if ($po->date && $day < substr((string) $po->date, 0, 10)) {
+            return ['success' => false, 'message' => 'The delivery date cannot be before the PO date (' . date('d M Y', strtotime($po->date)) . ').'];
+        }
+        $po->delivery_date = $day . ' 00:00:00';
         $po->modified_at   = date('Y-m-d H:i:s');
         if (!$po->save(false, ['delivery_date', 'modified_at'])) {
             return ['success' => false, 'message' => 'Could not save delivery date.'];
@@ -266,15 +280,22 @@ class PoDashboardController extends Controller
             return ['success' => false, 'message' => 'Invalid request method.'];
         }
         $po = $this->findPo((int) Yii::$app->request->post('po_id'));
+        if ((int) $po->po_status === PoDetail::STATUS_CANCELLED) {
+            return ['success' => false, 'message' => 'This PO is cancelled.'];
+        }
 
         $inv = new PoInvoiceDetail();
         $inv->po_id          = $po->id;
         $inv->invoice_number = trim((string) Yii::$app->request->post('invoice_number'));
         $rawDate             = trim((string) Yii::$app->request->post('invoice_date'));
-        if ($rawDate !== '' && strtotime($rawDate) > strtotime(date('Y-m-d'))) {
+        $day = $rawDate !== '' ? $this->strictDate($rawDate) : null;
+        if ($rawDate !== '' && $day === null) {
+            return ['success' => false, 'message' => 'Pick a valid invoice date.'];
+        }
+        if ($day !== null && $day > date('Y-m-d')) {
             return ['success' => false, 'message' => 'Invoice date cannot be in the future.'];
         }
-        $inv->invoice_date   = $rawDate ? date('Y-m-d H:i:s', strtotime($rawDate)) : null;
+        $inv->invoice_date = $day !== null ? $day . ' 00:00:00' : null;
         $inv->created_at     = date('Y-m-d H:i:s');
         $inv->status         = 1;
 
@@ -363,14 +384,21 @@ class PoDashboardController extends Controller
             return ['success' => false, 'message' => 'Invalid request method.'];
         }
         $po = $this->findPo((int) Yii::$app->request->post('po_id'));
+        if ((int) $po->po_status === PoDetail::STATUS_CANCELLED) {
+            return ['success' => false, 'message' => 'This PO is cancelled.'];
+        }
 
         $p = new PoPayment();
         $p->po_id        = $po->id;
         $rawDate         = trim((string) Yii::$app->request->post('payment_date'));
-        if ($rawDate !== '' && strtotime($rawDate) > strtotime(date('Y-m-d'))) {
+        $day = $rawDate !== '' ? $this->strictDate($rawDate) : null;
+        if ($rawDate !== '' && $day === null) {
+            return ['success' => false, 'message' => 'Pick a valid payment date.'];
+        }
+        if ($day !== null && $day > date('Y-m-d')) {
             return ['success' => false, 'message' => 'Payment date cannot be in the future.'];
         }
-        $p->payment_date = $rawDate ? date('Y-m-d H:i:s', strtotime($rawDate)) : null;
+        $p->payment_date = $day !== null ? $day . ' 00:00:00' : null;
         $p->amount       = trim((string) Yii::$app->request->post('amount'));
         $p->mode         = (int)  Yii::$app->request->post('mode');
         $p->note         = trim((string) Yii::$app->request->post('note', ''));
@@ -379,6 +407,9 @@ class PoDashboardController extends Controller
 
         if (!$p->validate()) {
             return ['success' => false, 'message' => $this->firstError($p)];
+        }
+        if ((float) $p->amount <= 0) {
+            return ['success' => false, 'message' => 'The amount must be more than 0.'];
         }
         if (!$p->save(false)) {
             return ['success' => false, 'message' => 'Could not save payment.'];
@@ -468,6 +499,14 @@ class PoDashboardController extends Controller
             ->asArray()
             ->all();
         return ArrayHelper::map($rows, 'po_id', 'cnt');
+    }
+
+    /** Y-m-d (or Y-m-d H:i:s) → Y-m-d; null when unreadable. */
+    private function strictDate(string $value): ?string
+    {
+        $day = substr(trim($value), 0, 10);
+        $d   = \DateTime::createFromFormat('!Y-m-d', $day);
+        return $d && $d->format('Y-m-d') === $day ? $day : null;
     }
 
     private function firstError($model): string

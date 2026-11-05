@@ -3,96 +3,76 @@
 /** @var \yii\data\ActiveDataProvider $dataProvider */
 /** @var \backend\models\ClientModel $client */
 
+use backend\models\Invoice;
+use common\components\UserAccess;
 use yii\bootstrap5\Html;
-use yii\helpers\Url;
-use yii\widgets\LinkPager;
 
 $this->title = 'My Invoices';
 
-$paymentBadge = [0 => 'danger', 1 => 'warning', 2 => 'success'];
-$paymentLabel = [0 => 'Unpaid', 1 => 'Partial', 2 => 'Paid'];
-
-$models     = $dataProvider->getModels();
+$rows       = $dataProvider->getModels();
 $pagination = $dataProvider->getPagination();
 $total      = $dataProvider->getTotalCount();
+$offset     = $pagination ? $pagination->getOffset() : 0;
+$tone       = [Invoice::PAYMENT_STATUS_UNPAID => 'danger', Invoice::PAYMENT_STATUS_PARTIAL => 'warning', Invoice::PAYMENT_STATUS_PAID => 'success'];
+$canView    = UserAccess::checkAccess('invoice/view');
+$canPdf     = UserAccess::checkAccess('invoice/download-pdf');
+$fmt        = fn(Invoice $i, $v) => Html::encode($i->currency ?: '₹') . ' ' . number_format((float)$v, 2);
+$due        = 0.0;
+foreach ($rows as $r) {
+    $due += $r->getBalanceAmount();
+}
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
-</style>
-
-<div class="invoice-client">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page invoice-client">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">My Invoices</h5>
-            <small class="text-muted"><?= $total ?> invoice<?= $total != 1 ? 's' : '' ?></small>
+            <h1>Your invoices</h1>
+            <div class="ui-sub"><?= Html::encode($client->company_name ?: $client->client_name) ?> · <?= number_format($total) ?> invoice<?= $total == 1 ? '' : 's' ?></div>
         </div>
+        <?php if ($rows): ?>
+            <div class="ui-actions"><span class="ui-total">Due on this page <strong><?= number_format($due, 2) ?></strong></span></div>
+        <?php endif; ?>
     </div>
 
     <div class="card border-0 shadow-sm">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover list-table mb-0">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Invoice No</th>
-                            <th>Date</th>
-                            <th>Title</th>
-                            <th>Currency</th>
-                            <th class="text-end">Amount</th>
-                            <th class="text-end">Paid</th>
-                            <th class="text-end">Pending</th>
-                            <th>Status</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php if (empty($models)): ?>
-                        <tr><td colspan="10" class="text-center text-muted py-4">No invoices found.</td></tr>
-                    <?php else: ?>
-                        <?php foreach ($models as $i => $inv): ?>
-                        <?php
-                            $offset = $pagination ? $pagination->getOffset() : 0;
-                            $rowNo  = $offset + $i + 1;
-                            $ps     = (int)$inv->payment_status;
-                        ?>
-                        <tr>
-                            <td><?= $rowNo ?></td>
-                            <td><strong><?= Html::encode($inv->invoice_no ?: ('#' . $inv->id)) ?></strong></td>
-                            <td><?= Html::encode($inv->invoice_date) ?></td>
-                            <td><?= Html::encode($inv->title) ?></td>
-                            <td><?= Html::encode($inv->currency) ?></td>
-                            <td class="text-end"><?= number_format((float)$inv->net_total, 2) ?></td>
-                            <td class="text-end"><?= number_format((float)$inv->paid_amount, 2) ?></td>
-                            <td class="text-end"><?= number_format($inv->balanceAmount, 2) ?></td>
-                            <td>
-                                <span class="badge bg-<?= $paymentBadge[$ps] ?? 'secondary' ?>">
-                                    <?= $paymentLabel[$ps] ?? 'Unknown' ?>
-                                </span>
-                            </td>
-                            <td>
-                                <?= Html::a('View', ['view', 'id' => $inv->id], [
-                                    'class'  => 'btn btn-outline-primary btn-sm act-btn',
-                                    'target' => '_blank',
-                                ]) ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+        <div class="table-responsive">
+            <table class="table list-table ui-table stack mb-0">
+                <thead class="table-light">
+                <tr>
+                    <th style="width:40px">#</th>
+                    <th>Invoice</th>
+                    <th>Date</th>
+                    <th class="text-end">Amount</th>
+                    <th class="text-end">Paid</th>
+                    <th class="text-end">Due</th>
+                    <th>Status</th>
+                    <th class="text-end" style="width:120px"><span class="visually-hidden">Actions</span></th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php if (!$rows): ?>
+                    <tr class="ui-empty-row"><td colspan="8" class="ui-empty-cell">
+                        <?= $this->render('@backend/views/_ui/_empty', ['icon' => 'file-invoice', 'title' => 'No invoices yet', 'text' => 'Invoices raised to you will appear here.']) ?>
+                    </td></tr>
+                <?php endif; ?>
+                <?php foreach ($rows as $i => $inv): /** @var Invoice $inv */ $bal = $inv->getBalanceAmount(); ?>
+                    <tr>
+                        <td class="cell-num muted"><?= $offset + $i + 1 ?></td>
+                        <td class="cell-title"><span class="mono"><?= Html::encode($inv->invoice_no) ?></span>
+                            <div class="small text-muted fw-normal"><?= Html::encode($inv->title) ?></div></td>
+                        <td class="text-nowrap" data-label="Date"><?= $inv->invoice_date ? date('d M Y', strtotime($inv->invoice_date)) : '—' ?></td>
+                        <td class="text-end num" data-label="Amount"><?= $fmt($inv, $inv->net_total) ?></td>
+                        <td class="text-end num" data-label="Paid"><?= (float)$inv->paid_amount ? $fmt($inv, $inv->paid_amount) : '—' ?></td>
+                        <td class="text-end num<?= $bal > 0.01 ? ' fw-semibold text-danger' : ' text-muted' ?>" data-label="Due"><?= $bal > 0.01 ? $fmt($inv, $bal) : '—' ?></td>
+                        <td data-label="Status"><span class="ui-pill tone-<?= $tone[(int)$inv->payment_status] ?? 'neutral' ?>"><?= Html::encode($inv->getPaymentStatusLabel()) ?></span></td>
+                        <td class="text-end text-nowrap" data-label="">
+                            <?php if ($canView): ?><?= Html::a('View', ['view', 'id' => $inv->id], ['class' => 'btn btn-outline-secondary btn-sm', 'target' => '_blank', 'rel' => 'noopener']) ?><?php endif; ?>
+                            <?php if ($canPdf): ?><?= Html::a('<i class="fas fa-file-pdf"></i><span class="visually-hidden">Download PDF</span>', ['download-pdf', 'id' => $inv->id], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false, 'title' => 'Download PDF']) ?><?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
+        <?= $this->render('@backend/views/_ui/_pager', ['pagination' => $pagination, 'total' => $total, 'count' => count($rows), 'noun' => 'invoices']) ?>
     </div>
-
-    <?php if ($pagination && $pagination->pageCount > 1): ?>
-    <div class="d-flex justify-content-center mt-3">
-        <?= LinkPager::widget(['pagination' => $pagination]) ?>
-    </div>
-    <?php endif; ?>
 </div>

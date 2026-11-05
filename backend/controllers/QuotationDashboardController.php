@@ -20,6 +20,13 @@ use yii\web\NotFoundHttpException;
  */
 class QuotationDashboardController extends Controller
 {
+    /** Full pages get the Delivery / PO / Quotation module assets. */
+    public function render($view, $params = []): string
+    {
+        \backend\assets\DeliveryAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     /** Summary tiles + client list. */
     public function actionIndex(): string
     {

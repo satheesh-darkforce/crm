@@ -1,0 +1,43 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Leads module (lead, lead-followers views) — loaded by LeadAsset on top
+   of the shared page UI kit (page-ui.css). Only Leads-specific pieces live
+   here: follow-up due chips/edges, the owner cell and the inline status
+   select widths.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Follow-up due date: date + small chip, thin edge on the row ───── */
+.ui-page .fu-due { display: inline-flex; flex-direction: column; gap: .15rem; white-space: nowrap; }
+.ui-page .fu-chip {
+    align-self: flex-start;
+    font-size: .66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    padding: .05rem .4rem;
+    border-radius: 4px;
+}
+.ui-page .fu-chip.is-overdue  { background: var(--ui-danger-bg);  color: var(--ui-danger-fg); }
+.ui-page .fu-chip.is-today    { background: var(--ui-warning-bg); color: var(--ui-warning-fg); }
+.ui-page .fu-chip.is-tomorrow { background: var(--ui-accent-bg);  color: var(--ui-accent-fg); }
+.ui-page tr.fu-overdue  > td:first-child { box-shadow: inset 3px 0 0 #ef4444; }
+.ui-page tr.fu-today    > td:first-child { box-shadow: inset 3px 0 0 #f59e0b; }
+.ui-page tr.fu-tomorrow > td:first-child { box-shadow: inset 3px 0 0 var(--app-accent); }
+
+/* ── List cells ────────────────────────────────────────────────────── */
+.ui-page .ui-table .owner { white-space: normal; min-width: 110px; max-width: 150px; }
+.ui-page .ui-table .js-lead-status { width: 140px; }
+.ui-page .ui-table .js-lead-active { width: 96px; }
+
+@media (max-width: 767.98px) {
+    .ui-page .ui-table.stack td.owner > div { white-space: nowrap; }
+    .ui-page .ui-table.stack td.owner { flex-wrap: wrap; justify-content: flex-end; column-gap: .6rem; row-gap: .1rem; }
+    .ui-page .ui-table.stack td.owner::before { margin-right: auto; }
+    .ui-page .ui-table.stack .js-lead-status,
+    .ui-page .ui-table.stack .js-lead-active { width: auto; min-width: 150px; }
+    /* follow-up state edge moves to the card's left border */
+    .ui-page .ui-table.stack tr.fu-overdue  { border-left: 3px solid #ef4444; }
+    .ui-page .ui-table.stack tr.fu-today    { border-left: 3px solid #f59e0b; }
+    .ui-page .ui-table.stack tr.fu-tomorrow { border-left: 3px solid var(--app-accent); }
+    .ui-page .fu-due { align-items: flex-end; }
+    .ui-page .fu-chip { align-self: flex-end; }
+}

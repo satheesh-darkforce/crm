@@ -22,20 +22,16 @@ $leaveLabel = [
     8 => ['Half Day Leave',  'warning'],
 ];
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-</style>
 
-<div class="verify-my-attendance">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page verify-my-attendance">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Verify My Attendance</h5>
-            <small class="text-muted">Month: <strong><?= date('F Y', strtotime($verificationRecord->attendance_date)) ?></strong></small>
+            <h1>Verify My Attendance</h1>
+            <div class="ui-sub">Month: <strong><?= date('F Y', strtotime($verificationRecord->attendance_date)) ?></strong></div>
         </div>
-        <?= Html::a('&larr; My Attendance', ['my-attendance'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('&larr; My Attendance', ['my-attendance'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
     <!-- Summary card -->
     <div class="card border-0 shadow-sm mb-3">

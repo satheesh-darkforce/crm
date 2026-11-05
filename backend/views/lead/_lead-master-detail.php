@@ -14,16 +14,14 @@ $rows = [
     'Email'        => $model->email_id,
     'Phone Number' => $model->phone_number,
     'City'         => $model->city,
-    'Status'       => LeadMaster::statusOptions()[(int)$model->status] ?? '-',
     'Created By'   => Lead::userLabel($model->createdByUser),
-    'Created At'   => $model->created_at ? date('d-m-Y h:i a', strtotime($model->created_at)) : null,
+    'Created At'   => Lead::formatDateTime($model->created_at),
 ];
+$active = (int)$model->status === LeadMaster::STATUS_ACTIVE;
 ?>
-<table class="table table-sm table-striped mb-0" style="font-size:.85rem">
+<table class="table ui-detail">
     <?php foreach ($rows as $label => $value): ?>
-        <tr>
-            <th class="text-muted fw-normal" style="width:40%"><?= $label ?></th>
-            <td><?= Html::encode($value === null || $value === '' ? '-' : $value) ?></td>
-        </tr>
+        <tr><th scope="row"><?= $label ?></th><td><?= Html::encode($value === null || $value === '' ? '-' : $value) ?></td></tr>
     <?php endforeach; ?>
+    <tr><th scope="row">Status</th><td><span class="ui-pill tone-<?= $active ? 'success' : 'neutral' ?>"><?= Html::encode(LeadMaster::statusOptions()[(int)$model->status] ?? '-') ?></span></td></tr>
 </table>

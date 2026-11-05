@@ -19,33 +19,26 @@ $isUpdate = $isUpdate ?? false;
 // Back/Cancel back there. On create, keep the standalone-listing target.
 $backUrl = $isUpdate ? ['/po-dashboard/index'] : ['/po/index'];
 ?>
-<style>
-.po-wrap   { background:#f8fafc; padding:24px 20px; border-radius:14px; }
-.po-card   { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:22px 24px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.04); }
-.po-head   { padding-bottom:14px; margin-bottom:18px; border-bottom:2px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between; }
-.po-head h4{ margin:0; font-weight:700; color:#1e293b; }
-.po-help   { font-size:.78rem; color:#64748b; }
-.required-star { color:#dc2626; }
-</style>
 
-<div class="po-wrap">
-    <div class="po-card">
-        <div class="po-head">
-            <h4><i class="fas fa-file-invoice-dollar me-2 text-primary"></i>
-                <?= $isUpdate ? 'Edit Purchase Order' : 'Add Purchase Order' ?>
-            </h4>
-            <?php if ($isUpdate): ?>
-                <a href="<?= Url::to($backUrl) ?>" class="btn btn-sm btn-outline-secondary">
-                    <i class="fas fa-arrow-left me-1"></i> Back
-                </a>
-            <?php endif; ?>
+<div class="ui-page po-form" style="max-width:1000px">
+    <div class="ui-head">
+        <div>
+            <h1><?= $isUpdate ? 'Edit purchase order' : 'Add purchase order' ?></h1>
+            <div class="ui-sub"><?= $isUpdate ? 'PO ' . Html::encode($model->getOldAttribute('po_number')) : 'Record a PO received from a client.' ?></div>
         </div>
-
-        <?php $form = ActiveForm::begin([
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', $isUpdate ? ['view', 'id' => $model->id] : $backUrl, ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
+    </div>
+    <div class="card border-0 shadow-sm">
+        <div class="card-header ui-section">Purchase order</div>
+        <div class="card-body">
+<?php $form = ActiveForm::begin([
             'id' => 'po-form',
             'enableClientValidation' => true,
             'enableAjaxValidation'   => false,
-            'options'   => ['enctype' => 'multipart/form-data', 'class' => 'row g-3'],
+            'options'   => ['enctype' => 'multipart/form-data', 'class' => 'row g-3 ui-form'],
+            'requiredCssClass' => '', // stars are written explicitly (client is conditionally required)
             'fieldConfig' => [
                 'options'      => ['class' => 'mb-2'],
                 'labelOptions' => ['class' => 'form-label fw-semibold'],
@@ -67,7 +60,7 @@ $backUrl = $isUpdate ? ['/po-dashboard/index'] : ['/po/index'];
             <div class="col-md-6">
                 <label class="form-label fw-semibold">Client</label>
                 <input type="text" class="form-control form-control-sm" value="<?= Html::encode($linkedClient->client_name ?? '—') ?>" readonly>
-                <div class="po-help">Linked via Quotation <?= Html::encode($model->quote->quote_no ?? '') ?>.</div>
+                <div class="form-text">Linked via Quotation <?= Html::encode($model->quote->quote_no ?? '') ?>.</div>
             </div>
             <div class="col-md-6">
                 <label class="form-label fw-semibold">Company Name</label>
@@ -87,11 +80,11 @@ $backUrl = $isUpdate ? ['/po-dashboard/index'] : ['/po/index'];
                             'width'      => '100%',
                         ],
                     ])
-                    ->label('Client <span class="required-star">*</span>', ['encode' => false]) ?>
+                    ->label('Client <span class="text-danger">*</span>', ['encode' => false]) ?>
             </div>
 
             <div class="col-md-6">
-                <label class="form-label fw-semibold" for="po-company-select">Company Name <span class="required-star">*</span></label>
+                <label class="form-label fw-semibold" for="po-company-select">Company Name <span class="text-danger">*</span></label>
                 <?= Select2::widget([
                     'name'    => 'po_company_select',
                     'data'    => $companyOptions,
@@ -105,7 +98,7 @@ $backUrl = $isUpdate ? ['/po-dashboard/index'] : ['/po/index'];
                         'width'      => '100%',
                     ],
                 ]) ?>
-                <div class="po-help">Pick either Client or Company — the other auto-fills.</div>
+                <div class="form-text">Pick either Client or Company — the other auto-fills.</div>
             </div>
         <?php endif; ?>
 
@@ -120,13 +113,13 @@ $backUrl = $isUpdate ? ['/po-dashboard/index'] : ['/po/index'];
                         'todayHighlight' => true,
                     ],
                 ])
-                ->label('PO Date <span class="required-star">*</span>', ['encode' => false]) ?>
+                ->label('PO Date <span class="text-danger">*</span>', ['encode' => false]) ?>
         </div>
 
         <div class="col-md-4">
             <?= $form->field($model, 'po_number')
                 ->textInput(['maxlength' => 20, 'placeholder' => 'Enter PO Number'])
-                ->label('PO Number <span class="required-star">*</span>', ['encode' => false]) ?>
+                ->label('PO Number <span class="text-danger">*</span>', ['encode' => false]) ?>
         </div>
 
         <div class="col-md-4">
@@ -135,13 +128,13 @@ $backUrl = $isUpdate ? ['/po-dashboard/index'] : ['/po/index'];
                     'type' => 'number', 'step' => '0.01', 'min' => 0,
                     'placeholder' => 'Enter PO Cost',
                 ])
-                ->label('Value (₹) <span class="required-star">*</span>', ['encode' => false]) ?>
+                ->label('Value (₹) <span class="text-danger">*</span>', ['encode' => false]) ?>
         </div>
 
         <div class="col-12">
             <?= $form->field($model, 'particulars')
                 ->textarea(['rows' => 3, 'maxlength' => 500, 'placeholder' => 'Detail of project / PO particulars'])
-                ->label('Detail of Project <span class="required-star">*</span>', ['encode' => false]) ?>
+                ->label('Detail of Project <span class="text-danger">*</span>', ['encode' => false]) ?>
         </div>
 
         <div class="col-md-4">
@@ -196,21 +189,20 @@ $backUrl = $isUpdate ? ['/po-dashboard/index'] : ['/po/index'];
                     'accept'   => 'application/pdf,.pdf,image/*,.jpg,.jpeg,.png,.gif,.webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.doc,.docx',
                     'required' => !$isUpdate,
                 ])
-                ->label('PO File ' . (!$isUpdate ? '<span class="required-star">*</span>' : ''), ['encode' => false])
+                ->label('PO File ' . (!$isUpdate ? '<span class="text-danger">*</span>' : ''), ['encode' => false])
                 ->hint($isUpdate && !empty($model->file)
                     ? 'Existing: ' . basename($model->file) . ' — upload to replace.'
                     : 'Allowed: PDF, JPG, PNG, GIF, WebP, DOC, DOCX. Max 10 MB.') ?>
         </div>
 
-        <div class="col-12 d-flex gap-2">
+        <div class="col-12 ui-form-actions">
             <?= Html::submitButton('<i class="fas fa-save me-1"></i> ' . ($isUpdate ? 'Update PO' : 'Save PO'),
-                ['class' => 'btn btn-primary btn-sm']) ?>
-            <?php if ($isUpdate): ?>
-                <a href="<?= Url::to($backUrl) ?>" class="btn btn-outline-secondary btn-sm">Cancel</a>
-            <?php endif; ?>
+                ['class' => 'btn btn-primary btn-sm px-4']) ?>
+            <?= Html::a('Cancel', $isUpdate ? ['view', 'id' => $model->id] : $backUrl, ['class' => 'btn btn-outline-secondary btn-sm']) ?>
         </div>
 
         <?php ActiveForm::end(); ?>
+        </div>
     </div>
 </div>
 

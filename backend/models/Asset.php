@@ -31,11 +31,22 @@ use yii\db\ActiveRecord;
  */
 class Asset extends ActiveRecord
 {
+    use \backend\components\GuardedAttributes;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['status'];
+    }
+
     public static function tableName(): string { return 'assets'; }
 
     public function rules(): array
     {
         return [
+            // Dates must be real YYYY-MM-DD values (checked when new or edited).
+            [['date_of_purchase', 'date_of_expire', 'warranty_start_date', 'warranty_end_date', 'amc_start_date', 'amc_end_date'], 'date', 'format' => 'php:Y-m-d', 'message' => '{attribute} must be a date (YYYY-MM-DD).',
+                'when' => fn($m, $a) => $m->isNewRecord || $m->isAttributeChanged($a, false)],
             [['product_name', 'brand_id', 'asset_cat_id', 'asset_subcat_id', 'vendor_id', 'asset_loc', 'date_of_purchase'], 'required'],
             [['brand_id', 'asset_cat_id', 'asset_subcat_id', 'vendor_id', 'warranty', 'amc', 'asset_loc', 'status'], 'integer'],
             [['bill'], 'number', 'min' => 0],

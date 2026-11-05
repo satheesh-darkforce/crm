@@ -10,10 +10,12 @@ $this->title = 'Maintenance Detail';
 $ptLabels = AssetMaintenance::paymentTypeLabels();
 $pmLabels = AssetMaintenance::paymentModeLabels();
 ?>
-<div class="maintenance-view">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0">Maintenance Record #<?= $model->id ?></h5>
-        <div class="d-flex gap-2">
+<div class="ui-page maintenance-view">
+    <div class="ui-head">
+        <div>
+            <h1>Maintenance Record #<?= $model->id ?></h1>
+        </div>
+        <div class="ui-actions">
             <?= Html::a('<i class="fas fa-pen"></i> Edit', ['update-maintenance', 'id' => $model->id], ['class' => 'btn btn-outline-primary btn-sm', 'encode' => false]) ?>
             <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['maintenance'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
         </div>

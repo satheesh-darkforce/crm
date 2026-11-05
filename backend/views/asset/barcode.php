@@ -19,10 +19,12 @@ $this->title = 'Barcode — ' . $model->product_name;
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
 
-<div class="asset-barcode">
-    <div class="d-flex justify-content-between align-items-center mb-3 no-print">
-        <h5 class="fw-semibold mb-0">Asset Barcode</h5>
-        <div class="d-flex gap-2">
+<div class="ui-page asset-barcode">
+    <div class="ui-head">
+        <div>
+            <h1>Asset Barcode</h1>
+        </div>
+        <div class="ui-actions">
             <button class="btn btn-primary btn-sm" onclick="window.print()"><i class="fas fa-times"></i> Print</button>
             <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['view', 'id' => $model->id], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
         </div>

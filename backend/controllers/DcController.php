@@ -2,6 +2,8 @@
 
 namespace backend\controllers;
 
+use backend\assets\DeliveryAsset;
+use backend\components\SafeUpload;
 use backend\models\ClientModel;
 use backend\models\DcDetail;
 use backend\models\DcDocumentFile;
@@ -12,7 +14,10 @@ use Mpdf\Mpdf;
 use Mpdf\Output\Destination;
 use Yii;
 use yii\data\ActiveDataProvider;
+use common\components\UserAccess;
 use yii\db\IntegrityException;
+use yii\filters\VerbFilter;
+use yii\web\ForbiddenHttpException;
 use yii\helpers\ArrayHelper;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -30,6 +35,35 @@ use yii\web\UploadedFile;
  */
 class DcController extends Controller
 {
+    public function behaviors(): array
+    {
+        return array_merge(parent::behaviors(), [
+            'verbs' => ['class' => VerbFilter::class, 'actions' => ['cancel' => ['POST'], 'save-return' => ['POST'], 'get-client-info' => ['POST']]],
+        ]);
+    }
+
+    /**
+     * get-next-dc-no and get-client-info are in every developer's default routes (the DC
+     * forms call them); client contact details still need the right to raise DCs.
+     */
+    public function beforeAction($action): bool
+    {
+        if (!parent::beforeAction($action)) {
+            return false;
+        }
+        if (in_array($action->id, ['get-client-info', 'get-next-dc-no'], true)
+            && !array_filter(['dc/create', 'dc/update', 'dc/create-inward', 'dc/add-return'], fn($r) => UserAccess::checkAccess($r))) {
+            throw new ForbiddenHttpException('You do not have permission to raise delivery challans.');
+        }
+        return true;
+    }
+
+    /** Full pages get the Delivery / PO / Quotation module assets (the PDF renders a partial). */
+    public function render($view, $params = []): string
+    {
+        DeliveryAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
     public function actionIndex(): string
     {
         // Listing now includes Cancelled rows (status=2) so users can see what
@@ -241,7 +275,15 @@ class DcController extends Controller
                 } else {
                     $dc->status = 1;
                 }
-                if (!$dc->save()) {
+                if (!$dc->validate()) {
+                    throw new \RuntimeException($this->formatModelErrors($dc));
+                }
+                // A draft submitted from the edit page gets its DC number now, not on download.
+                if ((int) $dc->status === 1 && empty($dc->dc_no)) {
+                    if (!$this->saveDcWithGeneratedNumber($dc)) {
+                        throw new \RuntimeException($this->formatModelErrors($dc));
+                    }
+                } elseif (!$dc->save(false)) {
                     throw new \RuntimeException($this->formatModelErrors($dc));
                 }
 
@@ -324,12 +366,16 @@ class DcController extends Controller
         $submit = (int) Yii::$app->request->get('submit', 0);
 
         $dc = DcDetail::findOne($id);
-        if (!$dc) {
-            throw new NotFoundHttpException('DC not found.');
+        if (!$dc || !in_array((int) $dc->status, [1, 3], true)) {
+            // Cancelled (2) and deleted (0) DCs are never re-activated by a download link.
+            throw new NotFoundHttpException('DC not found or cancelled.');
         }
 
+        $wasDraft   = (int) $dc->status === 3;
         $dc->status = 1;
-        if ($submit === 1 && empty($dc->dc_no)) {
+        if (!$wasDraft && (int) $dc->getOldAttribute('status') === 1 && !empty($dc->dc_no)) {
+            // Already final: just download.
+        } elseif (empty($dc->dc_no) && (int) $dc->type !== 2) {
             if (!$this->saveDcWithGeneratedNumber($dc)) {
                 Yii::$app->session->setFlash('error', $this->formatModelErrors($dc));
                 return $this->redirect(['update', 'id' => $dc->id]);
@@ -402,12 +448,22 @@ class DcController extends Controller
         $date        = (string) Yii::$app->request->post('date', '');
         $description = (string) Yii::$app->request->post('description', '');
 
-        $dc = DcDetail::findOne($id);
+        $dc = DcDetail::findOne(['id' => $id, 'status' => 1]);
         if (!$dc) {
-            return ['success' => false, 'message' => 'DC not found.'];
+            return ['success' => false, 'message' => 'DC not found or not active.'];
         }
         if ($date === '') {
             return ['success' => false, 'message' => 'Return date is required.'];
+        }
+        $parsed = \DateTime::createFromFormat('!Y-m-d', substr($date, 0, 10));
+        if (!$parsed || $parsed->format('Y-m-d') !== substr($date, 0, 10)) {
+            return ['success' => false, 'message' => 'Enter the return date as YYYY-MM-DD.'];
+        }
+        if (substr($date, 0, 10) > date('Y-m-d')) {
+            return ['success' => false, 'message' => 'The return date cannot be in the future.'];
+        }
+        if (mb_strlen($description) > 5000) {
+            return ['success' => false, 'message' => 'The description is too long.'];
         }
         if (!empty($dc->dc_date)) {
             $dcDay     = substr((string) $dc->dc_date, 0, 10);
@@ -538,6 +594,11 @@ class DcController extends Controller
             if (empty(trim((string) $doc->$numAttr))) {
                 throw new \RuntimeException("$label Number is required when $label File is uploaded");
             }
+            // Only documents and images — nothing executable may land in the public uploads folder.
+            $ext = strtolower((string) $f->extension);
+            if ($f->error !== UPLOAD_ERR_OK || !in_array($ext, SafeUpload::ALLOWED_EXTENSIONS, true) || $f->size > SafeUpload::MAX_BYTES) {
+                throw new \RuntimeException("$label file must be a PDF, image or Office document up to " . (SafeUpload::MAX_BYTES / 1024 / 1024) . ' MB.');
+            }
             $pending[$attr] = $f;
         }
 
@@ -550,8 +611,7 @@ class DcController extends Controller
 
         // Pass 2: persist files to disk.
         foreach ($pending as $attr => $f) {
-            $clean = preg_replace('/[^a-zA-Z0-9._-]/', '', $f->baseName);
-            $name  = time() . '_' . $clean . '.' . $f->extension;
+            $name  = 'dc_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . strtolower((string) $f->extension);
             $path  = $uploadDir . $name;
             if ($f->saveAs($path)) {
                 $doc->$attr = 'uploads/dc_documents/' . $name;

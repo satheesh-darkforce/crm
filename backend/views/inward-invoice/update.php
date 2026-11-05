@@ -1,4 +1,24 @@
 <?php
-$this->title = 'Edit Inward Invoice — #' . $model->invoice_number;
-echo $this->render('_form', compact('model', 'vendor', 'ledgerCategories', 'paymentCategories'));
+/**
+ * @var \yii\web\View $this
+ * @var \backend\models\InwardInvoice $model
+ * @var \backend\models\Vendor $vendor
+ * @var array $lines, $expenses, $ledgerGroups, $paymentTypes, $paymentLedgers
+ */
+
+use yii\bootstrap5\Html;
+
+$this->title = 'Edit Inward Invoice';
 ?>
+<div class="ui-page inward-invoice-update">
+    <div class="ui-head">
+        <div>
+            <h1>Edit inward invoice</h1>
+            <div class="ui-sub"><?= Html::encode($model->getOldAttribute('invoice_number')) ?> · <?= Html::encode($vendor->company_name) ?></div>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', ['view', 'id' => $model->id], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
+    </div>
+    <?= $this->render('_form', compact('model', 'vendor', 'lines', 'expenses', 'ledgerGroups', 'paymentTypes', 'paymentLedgers')) ?>
+</div>

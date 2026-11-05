@@ -62,7 +62,13 @@ class InvoiceReceipt extends ActiveRecord
               'cheque_amount', 'bank_amount', 'paypal_amount'], 'number', 'min' => 0],
             [['receipt_date', 'cash_date', 'cheque_date', 'cheque_deposit_date',
               'bank_date', 'paypal_payment_date', 'created_date'], 'safe'],
-            [['payment_remarks'], 'string'],
+            [['payment_remarks'], 'string', 'max' => 5000],
+            [['receipt_amount'], 'number', 'min' => 0.01, 'tooSmall' => 'Enter the amount received.'],
+            [['payment_mode'], 'in', 'range' => array_keys(self::modeOptions()), 'message' => 'Choose how the payment was made.'],
+            [['receipt_date', 'cash_date', 'cheque_date', 'cheque_deposit_date', 'bank_date', 'paypal_payment_date'], 'date', 'format' => 'php:Y-m-d',
+                'message' => '{attribute} must be a date (YYYY-MM-DD).'],
+            [['receipt_date', 'cash_date', 'cheque_deposit_date', 'bank_date', 'paypal_payment_date'], 'compare', 'compareValue' => date('Y-m-d'),
+                'operator' => '<=', 'type' => 'string', 'message' => '{attribute} cannot be in the future.'],
             [['receipt_no', 'cheque_sender_bank', 'cheque_no', 'cheque_received_bank',
               'cheque_received_ac_no', 'bank_sender_bank', 'bank_ref_no',
               'bank_received_bank', 'bank_received_ac_no',
@@ -74,11 +80,21 @@ class InvoiceReceipt extends ActiveRecord
     {
         return [
             'receipt_amount'  => 'Amount',
-            'receipt_date'    => 'Receipt Date',
+            'receipt_date'    => 'Receipt date',
+            'cash_date'       => 'Cash date',
+            'cheque_date'     => 'Cheque date',
+            'cheque_deposit_date' => 'Deposit date',
+            'bank_date'       => 'Transfer date',
+            'paypal_payment_date' => 'PayPal date',
             'payment_mode'    => 'Payment Mode',
             'bank_ref_no'     => 'Transaction Ref No.',
             'payment_remarks' => 'Remarks',
         ];
+    }
+
+    public static function modeOptions(): array
+    {
+        return [self::MODE_BANK => 'Bank transfer', self::MODE_CHEQUE => 'Cheque', self::MODE_CASH => 'Cash', self::MODE_PAYPAL => 'PayPal', self::MODE_OTHERS => 'Others'];
     }
 
     public static function modeLabel(int $mode): string

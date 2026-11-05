@@ -8,10 +8,14 @@ use kartik\date\DatePicker;
 
 $this->title = 'Update Payslip Upload';
 ?>
-<div class="payslip-upload-update">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0 fw-semibold"><?= Html::encode($this->title) ?></h5>
-        <?= Html::a('Back', ['index'], ['class' => 'btn btn-secondary btn-sm']) ?>
+<div class="ui-page payslip-upload-update">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($this->title) ?></h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('Back', ['index'], ['class' => 'btn btn-secondary btn-sm']) ?>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm" style="max-width:520px">

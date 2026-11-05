@@ -2,6 +2,7 @@
 
 namespace backend\models;
 
+use backend\components\GuardedAttributes;
 use yii\db\ActiveRecord;
 
 /**
@@ -21,6 +22,14 @@ use yii\db\ActiveRecord;
  */
 class DeliveryDetail extends ActiveRecord
 {
+    use GuardedAttributes;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['id', 'dc_id', 'status', 'created_at'];
+    }
+
     public static function tableName(): string
     {
         return 'delivery_details';

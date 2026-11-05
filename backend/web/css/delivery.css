@@ -1,0 +1,26 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Quotations, Delivery challans, Purchase orders, Delivery products —
+   loaded by DeliveryAsset on top of page-ui.css. Module-specific pieces only.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ui-page .num { font-variant-numeric: tabular-nums; }
+.ui-page .mono { font-family: var(--bs-font-monospace); font-size: .85em; letter-spacing: .02em; }
+
+/* Cancelled rows fade back */
+.ui-page .ui-table tr.is-cancelled td:not(.cell-actions) { opacity: .55; }
+
+/* ── Long DC / quotation forms: legacy section markup rendered in the kit's look ── */
+.ui-page .form-wrapper { padding: 0; background: none; }
+.ui-page .section-block { background: #fff; border: 1px solid var(--app-border); border-radius: var(--app-radius); padding: 1.1rem 1.25rem; margin-bottom: 1rem; box-shadow: var(--app-shadow-sm, 0 1px 2px rgba(15,23,42,.05)); }
+.ui-page .section-header { display: flex; align-items: center; gap: .6rem; margin: -1.1rem -1.25rem 1rem; padding: .7rem 1.25rem; border-bottom: 1px solid var(--app-border); }
+.ui-page .section-header h4 { margin: 0; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--app-text-strong); }
+.ui-page .header-icon { width: 26px; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; font-size: .75rem; background: rgba(13,148,136,.12); color: var(--app-accent); }
+.ui-page .custom-form .form-label, .ui-page .section-block .form-label { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--app-text-muted); margin-bottom: .3rem; }
+.ui-page .section-block .form-control:not(.form-control-lg), .ui-page .section-block .form-select { font-size: .875rem; padding: .3rem .6rem; min-height: calc(1.5em + .6rem + 2px); }
+.ui-page .table-container { border: 1px solid var(--app-border); border-radius: var(--app-radius); overflow-x: auto; }
+.ui-page #product-table thead { background: var(--bs-table-bg, #f8fafc); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--app-text-muted); }
+.ui-page .action-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; padding: .9rem 1.25rem; background: #fff; border: 1px solid var(--app-border); border-radius: var(--app-radius); }
+.ui-page .action-footer .btn { padding: .375rem 1.25rem; font-size: .875rem; border-radius: var(--bs-border-radius); box-shadow: none; }
+.ui-page .required > label::after, .ui-page .required label.form-label::after { content: " *"; color: var(--app-danger); font-weight: 700; }
+.ui-page .required-mark { color: var(--app-danger); font-weight: 700; }
+.ui-page .serial-number { min-height: 36px; }

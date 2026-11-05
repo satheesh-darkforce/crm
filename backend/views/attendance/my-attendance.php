@@ -15,23 +15,15 @@ $models     = $dataProvider->getModels();
 $pagination = $dataProvider->getPagination();
 $total      = $dataProvider->getTotalCount();
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
-</style>
 
 <?php \yii\widgets\Pjax::begin(['id' => 'my-attendance-pjax', 'timeout' => 5000]); ?>
-<div class="my-attendance">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page my-attendance">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">My Attendance</h5>
-            <small class="text-muted"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></small>
+            <h1>My Attendance</h1>
+            <div class="ui-sub"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></div>
         </div>
-        <div class="d-flex gap-2">
+        <div class="ui-actions">
             <?php /*
               Check In / Check Out buttons hidden per user request.
               Re-enable by replacing the `if (false)` below with `if (!empty($devId))`.
@@ -43,11 +35,13 @@ $total      = $dataProvider->getTotalCount();
                     <?= Html::a('Check In', ['check-in'], [
                         'class' => 'btn btn-success btn-sm',
                         'data-confirm' => 'Are you sure you want to check in now?',
+                        'data-method'  => 'post',
                     ]) ?>
                 <?php elseif ($todayRecord && !$todayRecord->out_time): ?>
                     <?= Html::a('Check Out', ['check-out'], [
                         'class' => 'btn btn-danger btn-sm',
                         'data-confirm' => 'Are you sure you want to check out now?',
+                        'data-method'  => 'post',
                     ]) ?>
                 <?php endif; ?>
             <?php endif; ?>

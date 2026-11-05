@@ -10,6 +10,8 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Yii;
+use yii\filters\VerbFilter;
+use backend\assets\InventoryAsset;
 use yii\data\ActiveDataProvider;
 use yii\db\Transaction;
 use yii\web\NotFoundHttpException;
@@ -18,6 +20,28 @@ use yii\web\UploadedFile;
 
 class DomainController extends Controller
 {
+    public function behaviors(): array
+    {
+        return array_merge(parent::behaviors(), [
+            'verbs' => [
+                'class'   => VerbFilter::class,
+                'actions' => [
+                    'delete'                 => ['POST'],
+                    'delete-renewal-history' => ['POST'],
+                    'add-followup'           => ['POST'],
+                    'change-status'          => ['POST'],
+                ],
+            ],
+        ]);
+    }
+
+    /** Full pages get the Inventory module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        InventoryAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     public function actionIndex(): string
     {
         $query = Domain::find()
@@ -148,15 +172,24 @@ class DomainController extends Controller
         $model->created_at = date('Y-m-d H:i:s');
         $model->created_by = Yii::$app->user->id;
 
-        if ($model->save()) {
-            // Mirror Yii1 logic: update domain status based on follow-up status
-            if ($model->followup_status == 1) {
-                $domain->domain_status = 3; // "Need Follow"
-            } elseif ($model->followup_status == 2) {
-                $domain->domain_status = 1; // "Live"
+        if ($model->validate()) {
+            $tx = Yii::$app->db->beginTransaction();
+            try {
+                $model->save(false);
+                // Mirror Yii1 logic: update domain status based on follow-up status
+                if ((int)$model->followup_status === 1) {
+                    $domain->domain_status = 3; // "Need Follow"
+                } elseif ((int)$model->followup_status === 2) {
+                    $domain->domain_status = 1; // "Live"
+                }
+                $domain->save(false);
+                $tx->commit();
+                Yii::$app->session->setFlash('success', 'Follow-up logged.');
+            } catch (\Throwable $e) {
+                $tx->rollBack();
+                Yii::error('Domain follow-up failed: ' . $e->getMessage(), __METHOD__);
+                Yii::$app->session->setFlash('error', 'Could not save the follow-up. Please try again.');
             }
-            $domain->save(false);
-            Yii::$app->session->setFlash('success', 'Follow-up logged.');
         } else {
             Yii::$app->session->setFlash('error', 'Could not save follow-up: ' . implode(', ', \yii\helpers\ArrayHelper::getColumn($model->errors, 0)));
         }
@@ -222,12 +255,21 @@ class DomainController extends Controller
                     }
                 }
 
-                if ($model->save(false)) {
+                $tx = Yii::$app->db->beginTransaction();
+                try {
+                    $model->save(false);
                     // Push new expiry onto the domain (matches Yii1)
                     $domain->expiry_date = $model->expiry_date;
+                    $domain->updated_at  = date('Y-m-d H:i:s');
+                    $domain->updated_by  = Yii::$app->user->id;
                     $domain->save(false);
+                    $tx->commit();
                     Yii::$app->session->setFlash('success', 'Renewal recorded.');
                     return $this->redirect(['index']);
+                } catch (\Throwable $e) {
+                    $tx->rollBack();
+                    Yii::error('Domain renewal failed: ' . $e->getMessage(), __METHOD__);
+                    Yii::$app->session->setFlash('error', 'Could not save the renewal. Please try again.');
                 }
             }
         }
@@ -272,8 +314,13 @@ class DomainController extends Controller
         $id     = (int)Yii::$app->request->post('id');
         $status = (int)Yii::$app->request->post('status');
         $m = Domain::findOne(['id' => $id, 'status' => 1]);
-        if (!$m) return $this->asJson(['success' => false]);
+        if (!$m) return $this->asJson(['success' => false, 'message' => 'Domain not found.']);
+        if (!array_key_exists($status, Domain::domainStatusLabels())) {
+            return $this->asJson(['success' => false, 'message' => 'Select a valid status.']);
+        }
         $m->domain_status = $status;
+        $m->updated_at    = date('Y-m-d H:i:s');
+        $m->updated_by    = Yii::$app->user->id;
         $m->save(false);
         return $this->asJson(['success' => true]);
     }
@@ -395,6 +442,14 @@ class DomainController extends Controller
                 Yii::$app->session->setFlash('error', 'Please select a file to import.');
                 return $this->refresh();
             }
+            if (!in_array(strtolower((string)$file->extension), ['xlsx', 'xls', 'csv'], true)) {
+                Yii::$app->session->setFlash('error', 'Upload an Excel (.xlsx, .xls) or CSV file.');
+                return $this->refresh();
+            }
+            if ($file->size > 5 * 1024 * 1024) {
+                Yii::$app->session->setFlash('error', 'The file is larger than 5 MB.');
+                return $this->refresh();
+            }
 
             try {
                 $spreadsheet = IOFactory::load($file->tempName);
@@ -440,7 +495,10 @@ class DomainController extends Controller
                         }
                     }
 
-                    if (count($errors) === 0) {
+                    if (count($errors) === 0 && $imported === 0) {
+                        $transaction->rollBack();
+                        Yii::$app->session->setFlash('warning', 'No domain rows were found in the file (the first row is treated as the header).');
+                    } elseif (count($errors) === 0) {
                         $transaction->commit();
                         Yii::$app->session->setFlash('success', "Successfully imported {$imported} domains.");
                         return $this->redirect(['index']);
@@ -452,12 +510,14 @@ class DomainController extends Controller
                         }
                         Yii::$app->session->setFlash('error', "Import failed with " . count($errors) . " errors:\n" . $errorMsg);
                     }
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     $transaction->rollBack();
-                    Yii::$app->session->setFlash('error', 'Import error: ' . $e->getMessage());
+                    Yii::error('Domain import failed: ' . $e->getMessage(), __METHOD__);
+                    Yii::$app->session->setFlash('error', 'The import could not be completed. Nothing was saved.');
                 }
-            } catch (\Exception $e) {
-                Yii::$app->session->setFlash('error', 'File read error: ' . $e->getMessage());
+            } catch (\Throwable $e) {
+                Yii::error('Domain import read failed: ' . $e->getMessage(), __METHOD__);
+                Yii::$app->session->setFlash('error', 'The file could not be read. Check that it is a valid Excel or CSV file.');
             }
 
             return $this->refresh();

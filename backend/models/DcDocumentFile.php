@@ -2,6 +2,7 @@
 
 namespace backend\models;
 
+use backend\components\GuardedAttributes;
 use yii\db\ActiveRecord;
 
 /**
@@ -24,6 +25,14 @@ use yii\db\ActiveRecord;
  */
 class DcDocumentFile extends ActiveRecord
 {
+    use GuardedAttributes;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['dc_id', 'quotation_path', 'invoice_path', 'po_path', 'status'];
+    }
+
     public static function tableName(): string
     {
         return 'dc_document_files';

@@ -12,20 +12,16 @@ $this->title = 'All Employees';
 $req       = Yii::$app->request;
 $hasFilter = $req->get('name') || $req->get('designation') || $req->get('email') || $req->get('mobile');
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-</style>
 
-<div class="employee-index">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page employee-index">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">All Employees</h5>
-            <small class="text-muted"><?= $pagination->totalCount ?> staff member<?= $pagination->totalCount != 1 ? 's' : '' ?></small>
+            <h1>All Employees</h1>
+            <div class="ui-sub"><?= $pagination->totalCount ?> staff member<?= $pagination->totalCount != 1 ? 's' : '' ?></div>
         </div>
-        <?= Html::a('+ Add Employee', ['/developer/create'], ['class' => 'btn btn-primary btn-sm']) ?>
+        <div class="ui-actions">
+            <?= Html::a('+ Add Employee', ['/developer/create'], ['class' => 'btn btn-primary btn-sm']) ?>
+        </div>
     </div>
 
     <!-- Filters -->

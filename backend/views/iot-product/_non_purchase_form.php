@@ -22,10 +22,14 @@ foreach ($products as $p) {
 }
 $productOptionsJson = json_encode($productOptions);
 ?>
-<div class="non-purchase-form">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= Html::encode($this->title) ?></h5>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['non-purchased'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+<div class="ui-page non-purchase-form">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($this->title) ?></h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['non-purchased'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm">

@@ -131,11 +131,8 @@ class UserAccess
             'client-quotation/add-po',
             'client-quotation/complete-quote',
             'client-quotation/download-po',
-            // Dashboard drill-down pages are implicit — they come along with
-            // quotation-dashboard/index (which gates visibility of the tiles
-            // that link to them). Not worth exposing as separate toggles.
-            'quotation-dashboard/list-dc',
-            'quotation-dashboard/view-dc',
+            // Dashboard drill-downs (list-dc / view-dc) come with
+            // quotation-dashboard/index via checkAccess()'s implicit children.
             'dc/get-next-dc-no',
             'dc/get-client-info',
             'delivery-product/ajax-create',
@@ -630,24 +627,23 @@ class UserAccess
             return true;
         }
 
-        // Routes that any authenticated user may call — these are utility
-        // actions invoked as the last step of multiple permitted workflows
-        // (e.g. inward-DC add-return ends by hitting dc/challan-pdf to
-        // download the auto-generated outward DC). Gating them per-role
-        // would 403 users mid-flow on actions they implicitly already have.
-        $alwaysAllowed = [
-            'dc/view',
-            'dc/challan-pdf',
-        ];
-        if (in_array($route, $alwaysAllowed, true)) {
-            return true;
-        }
-
         // Implicit children: if the user has the parent route granted, these
         // child routes come along automatically — no separate checkbox needed.
         // Map is one-way (parents are never children) so the recursive
         // checkAccess() below cannot loop.
+        //
+        // DC view / PDF used to be allowed for every logged-in user (clients
+        // included), exposing any challan by id. They now come with any DC
+        // workflow permission instead — still no separate checkbox needed.
+        $dcPages = ['dc/view', 'dc/challan-pdf'];
         $implicitChildren = [
+            'dc/index'                  => $dcPages,
+            'dc/create'                 => $dcPages,
+            'dc/update'                 => $dcPages,
+            'dc/inward-index'           => $dcPages,
+            'dc/create-inward'          => $dcPages,
+            'dc/add-return'             => $dcPages,
+            'quotation-dashboard/index' => array_merge($dcPages, ['quotation-dashboard/list-dc', 'quotation-dashboard/view-dc']),
             'client-quotation/index' => [
                 'client-quotation/view',
                 'client-quotation/download-latest',

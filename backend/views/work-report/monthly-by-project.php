@@ -11,181 +11,110 @@
 /** @var \backend\models\Project[] $projects */
 /** @var \backend\models\ClientModel[] $clients */
 
-use kartik\date\DatePicker;
-use kartik\select2\Select2;
+use backend\models\Task;
+use common\components\UserAccess;
 use yii\bootstrap5\Html;
 use yii\helpers\ArrayHelper;
 use yii\helpers\Url;
 
 $this->title = 'Project based monthly work report';
 
-$fmt = fn(?int $s): string => $s > 0 ? sprintf('%02d:%02d', intdiv($s, 3600), intdiv($s % 3600, 60)) : '—';
+$period    = date('d M Y', strtotime($fromDate)) . ' – ' . date('d M Y', strtotime($toDate));
+$hasFilter = $projFilter || $cliFilter || Yii::$app->request->get('from_date') || Yii::$app->request->get('to_date');
+$canDetail = UserAccess::checkAccess('work-report/project-detail');
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-</style>
+<div class="ui-page work-report-monthly-project">
+    <?= $this->render('@backend/views/_ui/_head', [
+        'title'   => 'Time by project',
+        'sub'     => $period . ' · ' . count($rows) . ' project' . (count($rows) == 1 ? '' : 's'),
+        'meta'    => '<span class="ui-total">Total <strong>' . Task::hm($grandTotal) . '</strong> hrs</span>',
+        'route'   => 'monthly-by-project',
+        'filters' => [
+            ['type' => 'date', 'name' => 'from_date', 'label' => 'From', 'col' => 'col-lg-2 col-md-4 col-6'],
+            ['type' => 'date', 'name' => 'to_date', 'label' => 'To', 'col' => 'col-lg-2 col-md-4 col-6'],
+            ['type' => 'select', 'name' => 'project_id', 'label' => 'Project', 'data' => ArrayHelper::map($projects, 'id', 'title'), 'placeholder' => 'All projects'],
+            ['type' => 'select', 'name' => 'client_id', 'label' => 'Client', 'data' => ArrayHelper::map($clients, 'id', 'client_name'), 'placeholder' => 'All clients'],
+            ['type' => 'html', 'col' => 'col-12 order-last', 'html' => '<div class="form-text mt-0">Without From / To this page shows the current month.</div>'],
+        ],
+    ]) ?>
 
-<div class="work-report-monthly-project">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h5 class="mb-0 fw-semibold">Monthly by Project</h5>
-            <small class="text-muted"><?= date('d M Y', strtotime($fromDate)) ?> – <?= date('d M Y', strtotime($toDate)) ?></small>
-        </div>
-        <?php if ($grandTotal > 0): ?>
-        <span class="badge bg-primary-subtle text-primary border" style="font-size:.85rem">
-            Grand Total: <?= $fmt($grandTotal) ?> hrs
-        </span>
-        <?php endif; ?>
-    </div>
-
-    <!-- Filters -->
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body py-2 px-3">
-            <form method="get" class="row g-2 align-items-center">
-                <div class="col-md-3">
-                    <?= Select2::widget([
-                        'name'          => 'project_id',
-                        'value'         => $projFilter,
-                        'data'          => ArrayHelper::map($projects, 'id', 'title'),
-                        'options'       => ['placeholder' => 'All Projects'],
-                        'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
-                    ]) ?>
-                </div>
-                <div class="col-md-3">
-                    <?= Select2::widget([
-                        'name'          => 'client_id',
-                        'value'         => $cliFilter,
-                        'data'          => ArrayHelper::map($clients, 'id', 'client_name'),
-                        'options'       => ['placeholder' => 'All Clients'],
-                        'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
-                    ]) ?>
-                </div>
-                <div class="col-md-2">
-                    <?= DatePicker::widget([
-                        'name'          => 'from_date',
-                        'value'         => $fromDate,
-                        'type'          => DatePicker::TYPE_INPUT,
-                        'options'       => ['id' => 'filter-from-date', 'placeholder' => 'From', 'class' => 'form-control form-control-sm'],
-                        'pluginOptions' => ['autoclose' => true, 'format' => 'yyyy-mm-dd'],
-                    ]) ?>
-                </div>
-                <div class="col-md-2">
-                    <?= DatePicker::widget([
-                        'name'          => 'to_date',
-                        'value'         => $toDate,
-                        'type'          => DatePicker::TYPE_INPUT,
-                        'options'       => ['id' => 'filter-to-date', 'placeholder' => 'To', 'class' => 'form-control form-control-sm'],
-                        'pluginOptions' => ['autoclose' => true, 'format' => 'yyyy-mm-dd'],
-                    ]) ?>
-                    <div id="to-date-error" class="text-danger" style="font-size:.75rem;display:none">To date cannot be before From date.</div>
-                </div>
-                <div class="col-auto">
-                    <button class="btn btn-secondary btn-sm" id="filter-btn">Filter</button>
-                    <?= Html::a('Clear', ['monthly-by-project'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
-                </div>
-            </form>
-<script>
-(function(){var $f=$('#filter-from-date'),$t=$('#filter-to-date'),$e=$('#to-date-error'),$b=$('#filter-btn');function p(v){var d=new Date(v);return v&&!isNaN(d)?d:null;}function v(){var f=p($f.val()),t=p($t.val());if(f&&t&&t<f){$e.show();$b.prop('disabled',true);return false;}$e.hide();$b.prop('disabled',false);return true;}$f.on('changeDate change',function(){var fv=$f.val();$t.datepicker('setStartDate',fv||null);if(p(fv)&&p($t.val())&&p($t.val())<p(fv)){$t.val('').datepicker('update');}v();});$t.on('changeDate change',v);$f.closest('form').on('submit',function(){return v();});}());
-</script>
-        </div>
-    </div>
-
-    <!-- Table -->
     <div class="card border-0 shadow-sm">
         <div class="table-responsive">
-            <table class="table list-table mb-0">
+            <table class="table list-table ui-table stack mb-0">
                 <thead class="table-light">
-                    <tr>
-                        <th style="width:40px">#</th>
-                        <th>Project</th>
-                        <th>Client</th>
-                        <th class="text-center">Entries</th>
-                        <th class="text-center">Total Hours</th>
-                        <th style="width:80px">Details</th>
-                    </tr>
+                <tr>
+                    <th style="width:40px">#</th>
+                    <th>Project</th>
+                    <th>Client</th>
+                    <th class="text-end">Entries</th>
+                    <th class="text-end">Time</th>
+                    <th style="width:140px">Share</th>
+                    <?php if ($canDetail): ?><th class="text-end" style="width:56px"><span class="visually-hidden">Details</span></th><?php endif; ?>
+                </tr>
                 </thead>
                 <tbody>
-                <?php if (empty($rows)): ?>
-                    <tr><td colspan="5" class="text-center text-muted py-5">No records found.</td></tr>
-                <?php else: ?>
-                    <?php foreach ($rows as $i => $row): ?>
-                    <?php
-                        $proj = $projMap[$row['project_id']] ?? null;
-                        $cli  = $cliMap[$row['client_id']]  ?? null;
-                    ?>
-                    <tr>
-                        <td class="text-muted"><?= $i + 1 ?></td>
-                        <td class="fw-semibold"><?= Html::encode($proj ? $proj->title : '—') ?></td>
-                        <td class="text-muted small"><?= Html::encode($cli ? $cli->client_name : '—') ?></td>
-                        <td class="text-center text-muted small"><?= (int)$row['entry_count'] ?></td>
-                        <td class="text-center fw-semibold text-primary"><?= $fmt((int)$row['total_secs']) ?></td>
-                        <td>
-                            <button type="button"
-                                    class="btn btn-outline-primary btn-sm js-proj-detail"
-                                    style="font-size:.75rem;padding:.2rem .5rem"
-                                    data-project-id="<?= $row['project_id'] ?>"
-                                    data-from="<?= Html::encode($fromDate) ?>"
-                                    data-to="<?= Html::encode($toDate) ?>"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#projectDetailModal">
-                                Details
-                            </button>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
+                <?php if (!$rows): ?>
+                    <tr class="ui-empty-row"><td colspan="7" class="ui-empty-cell">
+                        <?= $this->render('@backend/views/_ui/_empty', $hasFilter
+                            ? ['icon' => 'search', 'title' => 'No work matches your search', 'text' => 'Try a wider date range or fewer filters.',
+                               'action' => Html::a('Clear search', ['monthly-by-project'], ['class' => 'btn btn-outline-secondary btn-sm'])]
+                            : ['icon' => 'folder-open', 'title' => 'No work logged this month', 'text' => 'Time per project appears here as reports come in.']) ?>
+                    </td></tr>
                 <?php endif; ?>
-                </tbody>
-                <?php if (!empty($rows)): ?>
-                <tfoot class="table-light">
+                <?php foreach ($rows as $i => $row):
+                    $proj = $projMap[$row['project_id']] ?? null;
+                    $cli  = $cliMap[$row['client_id']] ?? null;
+                    $secs = (int)$row['total_secs'];
+                    $pct  = $grandTotal > 0 ? $secs * 100 / $grandTotal : 0;
+                ?>
                     <tr>
-                        <td colspan="4" class="text-end fw-semibold" style="font-size:.82rem">Grand Total</td>
-                        <td class="text-center fw-bold text-primary"><?= $fmt($grandTotal) ?></td>
-                        <td></td>
+                        <td class="cell-num muted"><?= $i + 1 ?></td>
+                        <td class="cell-title"><?= Html::encode($proj->title ?? 'No project') ?></td>
+                        <td class="small" data-label="Client"><?= Html::encode($cli->client_name ?? '—') ?></td>
+                        <td class="text-end num" data-label="Entries"><?= number_format((int)$row['entry_count']) ?></td>
+                        <td class="text-end" data-label="Time"><strong class="num"><?= Task::hm($secs) ?></strong></td>
+                        <td data-label="Share">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="ui-bar flex-fill" role="presentation"><span style="width:<?= round(min(100, $pct), 1) ?>%"></span></div>
+                                <span class="small text-muted num"><?= number_format($pct, 1) ?>%</span>
+                            </div>
+                        </td>
+                        <?php if ($canDetail): ?>
+                        <td class="cell-actions text-end">
+                            <?php if ($row['project_id']): ?>
+                            <button type="button" class="btn btn-outline-secondary act-btn" data-ui-modal="#projectDetailModal"
+                                    data-url="<?= Url::to(['project-detail', 'id' => (int)$row['project_id'], 'from_date' => $fromDate, 'to_date' => $toDate]) ?>"
+                                    title="Time per employee" aria-label="Time per employee on <?= Html::encode($proj->title ?? 'this project') ?>">
+                                <i class="fas fa-users"></i>
+                            </button>
+                            <?php endif; ?>
+                        </td>
+                        <?php endif; ?>
                     </tr>
+                <?php endforeach; ?>
+                </tbody>
+                <?php if ($rows): ?>
+                <tfoot class="table-light">
+                <tr>
+                    <td colspan="4" class="text-end fw-semibold small">Total</td>
+                    <td class="text-end fw-bold num"><?= Task::hm($grandTotal) ?></td>
+                    <td colspan="<?= $canDetail ? 2 : 1 ?>"></td>
+                </tr>
                 </tfoot>
                 <?php endif; ?>
             </table>
         </div>
     </div>
-</div>
 
-<!-- Project Detail Modal -->
-<div class="modal fade" id="projectDetailModal" tabindex="-1" aria-labelledby="projectDetailModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h6 class="modal-title fw-semibold" id="projectDetailModalLabel">Developer Breakdown</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body p-0" id="projectDetailBody">
-                <div class="text-center text-muted py-4">Loading&hellip;</div>
-            </div>
-            <div class="modal-footer py-2">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+    <div class="modal fade" id="projectDetailModal" tabindex="-1" aria-labelledby="projectDetailModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-semibold" id="projectDetailModalTitle">Time per employee</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0"></div>
             </div>
         </div>
     </div>
 </div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var modal = document.getElementById('projectDetailModal');
-    modal.addEventListener('show.bs.modal', function (event) {
-        var btn       = event.relatedTarget;
-        var projectId = btn ? btn.getAttribute('data-project-id') : null;
-        var fromDate  = btn ? btn.getAttribute('data-from') : '';
-        var toDate    = btn ? btn.getAttribute('data-to') : '';
-        var body      = document.getElementById('projectDetailBody');
-        body.innerHTML = '<div class="text-center text-muted py-4">Loading&hellip;</div>';
-        if (!projectId) return;
-        fetch('<?= Url::to(['/work-report/project-detail']) ?>?id=' + projectId + '&from_date=' + fromDate + '&to_date=' + toDate, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(function (r) { return r.text(); })
-        .then(function (html) { body.innerHTML = html; })
-        .catch(function () { body.innerHTML = '<p class="text-danger text-center py-3">Failed to load details.</p>'; });
-    });
-});
-</script>

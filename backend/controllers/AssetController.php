@@ -14,6 +14,8 @@ use backend\models\AssetUpload;
 use backend\models\Developer;
 use backend\models\Vendor;
 use Yii;
+use yii\filters\VerbFilter;
+use backend\assets\InventoryAsset;
 use yii\data\ActiveDataProvider;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -21,6 +23,50 @@ use yii\web\UploadedFile;
 
 class AssetController extends Controller
 {
+    public function behaviors(): array
+    {
+        return array_merge(parent::behaviors(), [
+            'verbs' => [
+                'class'   => VerbFilter::class,
+                'actions' => [
+                    'delete'                  => ['POST'],
+                    'delete-upload'           => ['POST'],
+                    'delete-maintenance'      => ['POST'],
+                    'delete-maintenance-bill' => ['POST'],
+                    'delete-handover'         => ['POST'],
+                    'save-master'             => ['POST'],
+                    'delete-master'           => ['POST'],
+                    'add-vendor'              => ['POST'],
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Developers get some helper routes by default; the ones that change data
+     * still need the matching primary right.
+     */
+    public function beforeAction($action): bool
+    {
+        if (!parent::beforeAction($action)) {
+            return false;
+        }
+        $needs = [
+            'delete-upload' => ['asset/create', 'asset/update'],
+        ][$action->id] ?? null;
+        if ($needs !== null && !array_filter($needs, fn($r) => \common\components\UserAccess::checkAccess($r))) {
+            throw new \yii\web\ForbiddenHttpException('You are not allowed to perform this action.');
+        }
+        return true;
+    }
+
+    /** Full pages get the Inventory module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        InventoryAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     // ─── Assets List ──────────────────────────────────────────────────────────
 
     public function actionIndex(): string
@@ -208,23 +254,8 @@ class AssetController extends Controller
                 $model->gpay_number  = null;
                 $model->bank_number  = null;
             }
-            $billFile = UploadedFile::getInstanceByName('invoice_bill_file');
-            if ($billFile) {
-                $allowedBill = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'doc', 'docx'];
-                $ext = strtolower($billFile->extension);
-                if (in_array($ext, $allowedBill, true) && $billFile->size <= 10 * 1024 * 1024) {
-                    $uploadDir = Yii::getAlias('@webroot/uploads/assets_maintenance/');
-                    if (!is_dir($uploadDir)) @mkdir($uploadDir, 0775, true);
-                    $filename = 'assets_maintenance' . uniqid() . '_' . time() . '.' . $ext;
-                    try {
-                        $billFile->saveAs($uploadDir . $filename);
-                        $model->invoice_bill = 'uploads/assets_maintenance/' . $filename;
-                    } catch (\Throwable $e) {
-                        Yii::error("Maintenance bill upload failed: {$e->getMessage()}", 'asset');
-                    }
-                }
-            }
-            if ($model->save()) {
+            // Validate first (it clears errors), then take the bill.
+            if ($model->validate() && ((int)$model->payment_type === 1 || $this->attachMaintenanceBill($model)) && $model->save(false)) {
                 Yii::$app->session->setFlash('success', 'Maintenance record added successfully.');
                 $subKey = Yii::$app->request->post('sub_key', '1');
                 if ($subKey === '0') {
@@ -232,7 +263,7 @@ class AssetController extends Controller
                 }
                 return $this->redirect(['maintenance']);
             }
-            Yii::$app->session->setFlash('error', 'Failed to save maintenance record: ' . implode(', ', $model->getFirstErrors()));
+            Yii::$app->session->setFlash('error', 'Please fix the highlighted fields.');
         }
 
         return $this->render('_maintenance_form', compact('model', 'assets', 'developers'));
@@ -251,36 +282,14 @@ class AssetController extends Controller
                 $model->service_cost = null;
                 $model->gpay_number  = null;
                 $model->bank_number  = null;
-                $model->invoice_bill = null;
-            } else {
-                $billFile = UploadedFile::getInstanceByName('invoice_bill_file');
-                if ($billFile) {
-                    $allowedBill = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'doc', 'docx'];
-                    $ext = strtolower($billFile->extension);
-                    if (in_array($ext, $allowedBill, true) && $billFile->size <= 10 * 1024 * 1024) {
-                        $uploadDir = Yii::getAlias('@webroot/uploads/assets_maintenance/');
-                        if (!is_dir($uploadDir)) @mkdir($uploadDir, 0775, true);
-                        $filename = 'assets_maintenance' . uniqid() . '_' . time() . '.' . $ext;
-                        try {
-                            $billFile->saveAs($uploadDir . $filename);
-                            $model->invoice_bill = 'uploads/assets_maintenance/' . $filename;
-                        } catch (\Throwable $e) {
-                            Yii::error("Maintenance bill upload failed: {$e->getMessage()}", 'asset');
-                            $model->invoice_bill = $existingBill;
-                        }
-                    } else {
-                        $model->invoice_bill = $existingBill;
-                    }
-                } else {
-                    // Keep existing bill if no new file uploaded
-                    $model->invoice_bill = $existingBill;
-                }
             }
-            if ($model->save()) {
+            $model->invoice_bill = (int)$model->payment_type === 1 ? null : $existingBill;
+            // Validate first (it clears errors), then take the bill.
+            if ($model->validate() && ((int)$model->payment_type === 1 || $this->attachMaintenanceBill($model)) && $model->save(false)) {
                 Yii::$app->session->setFlash('success', 'Maintenance record updated successfully.');
                 return $this->redirect(['maintenance']);
             }
-            Yii::$app->session->setFlash('error', 'Failed to update maintenance record: ' . implode(', ', $model->getFirstErrors()));
+            Yii::$app->session->setFlash('error', 'Please fix the highlighted fields.');
         }
 
         return $this->render('_maintenance_form', compact('model', 'assets', 'developers'));
@@ -382,21 +391,9 @@ class AssetController extends Controller
                 return $this->render('_handover_form', compact('model', 'assets', 'developers', 'locations'));
             }
 
-            foreach ($assetIds as $aid) {
-                $exists = AssetHandover::find()
-                    ->where(['status' => 1, 'out_date' => null])
-                    ->andWhere(['or',
-                        ['like', 'asset_id', "[$aid]"],
-                        ['like', 'asset_id', "[$aid,"],
-                        ['like', 'asset_id', ",$aid,"],
-                        ['like', 'asset_id', ",$aid]"],
-                    ])
-                    ->exists();
-                if ($exists) {
-                    $asset = Asset::findOne($aid);
-                    Yii::$app->session->setFlash('error', 'Asset "' . ($asset->product_name ?? $aid) . '" is already assigned to an employee.');
-                    return $this->render('_handover_form', compact('model', 'assets', 'developers', 'locations'));
-                }
+            if (($problem = $this->handoverAssetProblem($assetIds, null)) !== null) {
+                Yii::$app->session->setFlash('error', $problem);
+                return $this->render('_handover_form', compact('model', 'assets', 'developers', 'locations'));
             }
 
             $post['asset_id'] = json_encode(array_values($assetIds));
@@ -427,10 +424,14 @@ class AssetController extends Controller
         $locations  = AssetLocation::find()->where(['status' => 1])->orderBy('loc')->all();
 
         if (Yii::$app->request->isPost && $model->load(Yii::$app->request->post())) {
-            if (is_array($model->asset_id)) {
-                $model->asset_id = json_encode(array_values(array_filter(array_map('intval', $model->asset_id))));
-            }
-            if (!$model->out_date) {
+            $held = array_map('intval', (array)(json_decode((string)$model->getOldAttribute('asset_id'), true) ?: []));
+            $ids = is_array($model->asset_id) ? $model->asset_id : (json_decode((string)$model->asset_id, true) ?: []);
+            $ids = array_values(array_filter(array_map('intval', (array)$ids)));
+            $model->asset_id = json_encode($ids);
+            $problem = $ids ? $this->handoverAssetProblem($ids, (int)$model->id, $held) : 'Please select at least one asset.';
+            if ($problem !== null) {
+                $model->addError('asset_id', $problem);
+            } elseif (!$model->out_date) {
                 $model->addError('out_date', 'Return date is required.');
             } elseif ($model->validate()) {
                 if ($model->save(false)) {
@@ -619,32 +620,40 @@ class AssetController extends Controller
         // the modal actually works; long names kept as fallback for back-compat.
         switch ($type) {
             case 'brand':
-                $m = $id ? AssetBrand::findOne($id) : new AssetBrand();
+                $m = $id ? AssetBrand::findOne(['id' => $id, 'status' => 1]) : new AssetBrand();
+                if ($m === null) { break; }
                 $m->brand_name = $name; $m->status = 1; $m->modified = $now; break;
             case 'cat':
             case 'category':
-                $m = $id ? AssetCategory::findOne($id) : new AssetCategory();
+                $m = $id ? AssetCategory::findOne(['id' => $id, 'status' => 1]) : new AssetCategory();
+                if ($m === null) { break; }
                 $m->name = $name; $m->status = 1; $m->modified = $now; $m->modified_by = $userId; break;
             case 'subcat':
             case 'subcategory':
                 $catId = (int)Yii::$app->request->post('cat_id', 0);
-                if (!$catId) {
+                if (!$catId || !AssetCategory::find()->where(['id' => $catId, 'status' => 1])->exists()) {
                     return $this->asJson(['success' => false, 'message' => 'Please select a parent category.']);
                 }
-                $m = $id ? AssetSubcategory::findOne($id) : new AssetSubcategory();
+                $m = $id ? AssetSubcategory::findOne(['id' => $id, 'status' => 1]) : new AssetSubcategory();
+                if ($m === null) { break; }
                 $m->name = $name;
                 $m->category_id = $catId;
                 $m->status = 1; $m->modified = $now; $m->modified_by = $userId; break;
             case 'loc':
             case 'location':
-                $m = $id ? AssetLocation::findOne($id) : new AssetLocation();
+                $m = $id ? AssetLocation::findOne(['id' => $id, 'status' => 1]) : new AssetLocation();
+                if ($m === null) { break; }
                 $m->loc = $name; $m->status = 1; $m->modified = $now; break;
             case 'tags':
             case 'tag':
-                $m = $id ? AssetTag::findOne($id) : new AssetTag();
+                $m = $id ? AssetTag::findOne(['id' => $id, 'status' => 1]) : new AssetTag();
+                if ($m === null) { break; }
                 $m->name = $name; $m->status = 1; $m->modified = $now; $m->modified_by = $userId; break;
             default:
                 return $this->asJson(['success' => false, 'message' => 'Unknown type.']);
+        }
+        if ($m === null) {
+            return $this->asJson(['success' => false, 'message' => 'That entry no longer exists. Reload the page.']);
         }
 
         if (!$m->validate()) {
@@ -756,6 +765,67 @@ class AssetController extends Controller
         if (empty($model->model)) { $model->model = null; }
     }
 
+    /**
+     * Stores an uploaded maintenance bill (field "invoice_bill_file") on the model.
+     * No file: keeps the current bill. Bad file: adds a form error and returns false.
+     */
+    private function attachMaintenanceBill(AssetMaintenance $model): bool
+    {
+        $file = UploadedFile::getInstanceByName('invoice_bill_file');
+        if (!$file || $file->error === UPLOAD_ERR_NO_FILE) {
+            return true;
+        }
+        $ext = strtolower((string)$file->extension);
+        if ($file->error !== UPLOAD_ERR_OK) {
+            $model->addError('invoice_bill', 'The bill could not be uploaded. Please try again.');
+            return false;
+        }
+        if (!in_array($ext, ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'doc', 'docx'], true)) {
+            $model->addError('invoice_bill', 'Bill must be a PDF, image or Word file.');
+            return false;
+        }
+        if ($file->size > 10 * 1024 * 1024) {
+            $model->addError('invoice_bill', 'Bill must be 10 MB or smaller.');
+            return false;
+        }
+        $dir = Yii::getAlias('@webroot/uploads/assets_maintenance/');
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        $name = 'assets_maintenance' . uniqid() . '_' . time() . '.' . $ext;
+        if (!is_dir($dir) || !is_writable($dir) || !@$file->saveAs($dir . $name)) {
+            Yii::error('Maintenance bill save failed: ' . $dir . $name, 'asset');
+            $model->addError('invoice_bill', 'The bill could not be saved. Please try again.');
+            return false;
+        }
+        $model->invoice_bill = 'uploads/assets_maintenance/' . $name;
+        return true;
+    }
+
+    /**
+     * Null when every asset can be handed over: it exists, is active, and is not
+     * out on another open handover (one without a return date). Otherwise a message.
+     */
+    private function handoverAssetProblem(array $assetIds, ?int $exceptHandoverId, array $alreadyHeld = []): ?string
+    {
+        $assetIds = array_values(array_unique(array_map('intval', $assetIds)));
+        $names    = Asset::find()->select(['product_name', 'id'])->where(['id' => $assetIds])->andWhere(['or', ['status' => 1], ['id' => $alreadyHeld]])->indexBy('id')->column();
+        if (count($names) !== count($assetIds)) {
+            return 'One of the selected assets no longer exists. Reload the page and try again.';
+        }
+        $open = AssetHandover::find()->select(['id', 'asset_id'])->where(['status' => 1, 'out_date' => null]);
+        if ($exceptHandoverId) {
+            $open->andWhere(['!=', 'id', $exceptHandoverId]);
+        }
+        foreach ($open->asArray()->all() as $row) {
+            $taken = array_map('intval', (array)(json_decode((string)$row['asset_id'], true) ?: []));
+            foreach (array_intersect($assetIds, $taken) as $aid) {
+                return 'Asset "' . $names[$aid] . '" is already assigned to an employee.';
+            }
+        }
+        return null;
+    }
+
     /** Handle asset file uploads (bill, warranty, amc, product image) */
     private function handleAssetUploads(Asset $model): void
     {
@@ -777,20 +847,24 @@ class AssetController extends Controller
         $uploadDir = Yii::getAlias('@webroot/uploads/assets_bill/');
         if (!is_dir($uploadDir) && !@mkdir($uploadDir, 0775, true)) {
             Yii::error("Cannot create upload directory: $uploadDir", 'asset');
+            if (UploadedFile::getInstancesByName('billupload') || UploadedFile::getInstancesByName('warrantyupload') || UploadedFile::getInstancesByName('amcupload') || UploadedFile::getInstancesByName('product_image_upload')) {
+                Yii::$app->session->setFlash('warning', 'The asset was saved, but its files could not be stored (upload folder unavailable). Please contact the administrator.');
+            }
             return;
         }
 
+        $rejected = [];
         foreach ($uploadMap as $inputName => $uploadType) {
             $files = UploadedFile::getInstancesByName($inputName);
             if (empty($files)) continue;
             foreach ($files as $file) {
                 $ext = strtolower($file->extension);
                 if (!in_array($ext, $allowedExtensions[$uploadType], true)) {
-                    Yii::warning("Asset upload rejected: invalid extension '$ext' for upload type $uploadType", 'asset');
+                    $rejected[] = $file->name . ' (file type not allowed)';
                     continue;
                 }
                 if ($file->size > $maxFileSize) {
-                    Yii::warning("Asset upload rejected: file too large ({$file->size} bytes)", 'asset');
+                    $rejected[] = $file->name . ' (over 5 MB)';
                     continue;
                 }
                 $prefix = match($uploadType) {
@@ -801,7 +875,7 @@ class AssetController extends Controller
                 };
                 $filename = $prefix . uniqid() . '_' . $model->id . '.' . $ext;
                 try {
-                    if ($file->saveAs($uploadDir . $filename)) {
+                    if (@$file->saveAs($uploadDir . $filename)) {
                         $upload = new AssetUpload();
                         $upload->asset_id    = $model->id;
                         $upload->type        = $ext;
@@ -815,6 +889,9 @@ class AssetController extends Controller
                     Yii::error("Asset upload failed: {$e->getMessage()}", 'asset');
                 }
             }
+        }
+        if ($rejected) {
+            Yii::$app->session->setFlash('warning', 'Some files were not attached: ' . implode(', ', $rejected) . '.');
         }
     }
 

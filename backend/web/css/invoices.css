@@ -1,0 +1,40 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Invoices, Inward invoices, Bank details — loaded by InvoiceAsset on top
+   of page-ui.css. Only module-specific pieces live here.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ui-page .num { font-variant-numeric: tabular-nums; }
+.ui-page .mono { font-family: var(--bs-font-monospace); font-size: .85em; letter-spacing: .02em; }
+
+/* Bank account cards */
+.ui-page .bank-card { height: 100%; }
+.ui-page .bank-card.is-default { border: 1px solid var(--app-accent) !important; box-shadow: inset 3px 0 0 var(--app-accent) !important; }
+.ui-page .bank-card .card-body { display: flex; flex-direction: column; gap: .75rem; }
+.ui-page .bank-card dl { display: grid; grid-template-columns: 9rem 1fr; gap: .35rem .75rem; margin: 0; font-size: .85rem; }
+.ui-page .bank-card dt { font-weight: 500; color: var(--app-text-muted); }
+.ui-page .bank-card dd { margin: 0; overflow-wrap: anywhere; }
+.ui-page .bank-card .bank-actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: .5rem; }
+@media (max-width: 575.98px) {
+    .ui-page .bank-card dl { grid-template-columns: 1fr; gap: 0; }
+    .ui-page .bank-card dd { margin-bottom: .4rem; }
+}
+
+/* Required marker on group labels (radio groups use a span, not a label) */
+.ui-page .ui-form .required > span.form-label::after { content: " *"; color: var(--app-danger); font-weight: 700; }
+
+/* Totals panel */
+.ui-page .inv-totals { display: grid; grid-template-columns: 1fr auto; gap: .45rem 1rem; align-items: center; font-size: .9rem; }
+.ui-page .inv-totals dt { font-weight: 500; color: var(--app-text-muted); }
+.ui-page .inv-totals dd { margin: 0; text-align: right; }
+.ui-page .inv-totals .is-net { border-top: 1px solid var(--app-border); padding-top: .55rem; font-size: 1.05rem; font-weight: 700; color: var(--app-text-strong); }
+
+/* Line editor: inputs fill their cells; Select2 ledger keeps small height */
+.ui-page .inward-lines td { vertical-align: top; }
+.ui-page .inward-lines .select2-container .select2-selection--single { min-height: calc(1.5em + .5rem + 2px); }
+@media (max-width: 767.98px) {
+    .ui-page .inward-lines tbody td[data-label] input { max-width: 60%; }
+}
+
+/* Invoice list: cancelled rows fade back */
+.ui-page .ui-table tr.is-cancelled td:not(.cell-actions) { opacity: .55; }
+.ui-page .ui-table tr.is-cancelled .cell-title a { text-decoration: line-through; }

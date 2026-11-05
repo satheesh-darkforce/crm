@@ -9,7 +9,7 @@ use yii\db\ActiveRecord;
  * @property int    $project_id
  * @property int    $developer_id
  * @property int    $consumption_type   (1=Issued, 2=Return)
- * @property int    $consumption_status (0=Pending, 1=Approved, 2=Rejected)
+ * @property int    $consumption_status (1=Requested, 2=Issued)
  * @property string $created_at
  * @property string $requested_date
  * @property string $approved_at
@@ -18,6 +18,17 @@ use yii\db\ActiveRecord;
  */
 class IotConsumption extends ActiveRecord
 {
+    use \backend\components\GuardedAttributes;
+
+    const STATUS_REQUESTED = 1;
+    const STATUS_ISSUED    = 2;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['consumption_type', 'consumption_status', 'approved_at', 'approved_by', 'created_at', 'status'];
+    }
+
     public static function tableName(): string { return 'iot_consumption'; }
 
     public function rules(): array
@@ -26,10 +37,14 @@ class IotConsumption extends ActiveRecord
             [['project_id', 'developer_id', 'consumption_type', 'requested_date'], 'required'],
             [['project_id', 'developer_id', 'consumption_type', 'consumption_status', 'approved_by', 'status'], 'integer'],
             [['consumption_type'], 'in', 'range' => [1, 2]],
-            [['consumption_status'], 'in', 'range' => [0, 1, 2]],
+            [['consumption_status'], 'in', 'range' => [self::STATUS_REQUESTED, self::STATUS_ISSUED]],
+            [['project_id'], 'exist', 'targetClass' => Project::class, 'targetAttribute' => 'id', 'filter' => ['status' => 1], 'message' => 'Select a valid project.'],
+            [['developer_id'], 'exist', 'targetClass' => Developer::class, 'targetAttribute' => 'id', 'filter' => ['status' => 1], 'message' => 'Select a valid employee.'],
             [['created_at', 'approved_at'], 'safe'],
             [['requested_date'], 'date', 'format' => 'php:Y-m-d'],
-            [['requested_date'], 'compare', 'compareValue' => date('Y-m-d'), 'operator' => '>=', 'message' => 'Required date cannot be in the past.'],
+            [['requested_date'], 'compare', 'compareValue' => date('Y-m-d'), 'operator' => '>=', 'message' => 'Required date cannot be in the past.',
+                // Old requests keep their past date unless it is edited.
+                'when' => fn($m) => $m->isNewRecord || substr((string)$m->getOldAttribute('requested_date'), 0, 10) !== (string)$m->requested_date],
         ];
     }
 

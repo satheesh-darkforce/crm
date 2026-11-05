@@ -55,7 +55,6 @@ foreach ($permissions as $route) {
 .detail-label{font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:#6c757d;font-weight:600;margin-bottom:.15rem}
 .detail-value{font-size:.9rem;color:#212529}
 .perm-badge{font-size:.72rem;padding:.2rem .45rem}
-
 /* Employee Details — themed card with gradient header + grouped info tiles */
 .emp-detail-card{border:0;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(15,23,42,.06)}
 .emp-detail-banner{
@@ -96,15 +95,14 @@ foreach ($permissions as $route) {
 .emp-tile.tile-wide{grid-column:1/-1}
 </style>
 
-<div class="employee-view">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div class="d-flex align-items-center gap-3">
-            <span class="emp-avatar-lg"><?= Html::encode($initials) ?></span>
-            <div>
-                <h5 class="mb-0 fw-semibold"><?= Html::encode($model->employee_name) ?></h5>
-                <small class="text-muted"><?= Html::encode($model->designation) ?></small>
-            </div>
+<div class="ui-page employee-view">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($model->employee_name) ?></h1>
+            <div class="ui-sub"><?= Html::encode($model->designation) ?></div>
         </div>
+        <div class="ui-actions">
+            </div>
         <div class="d-flex gap-2 flex-wrap">
             <?= Html::a('<i class="fas fa-pen"></i> Edit', ['update', 'id' => $model->id], ['class' => 'btn btn-warning btn-sm', 'encode' => false]) ?>
             <?= Html::a('<i class="fas fa-key"></i> Permissions', ['permission', 'id' => $model->id], ['class' => 'btn btn-info btn-sm', 'encode' => false]) ?>
@@ -114,6 +112,7 @@ foreach ($permissions as $route) {
                 'data-method' => 'post',
                 'data-confirm' => 'Deactivate ' . Html::encode($model->employee_name) . '?',
             ]) ?>
+        </div>
         </div>
     </div>
 

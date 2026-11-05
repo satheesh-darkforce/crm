@@ -2,12 +2,14 @@
 
 namespace backend\controllers;
 
+use backend\assets\ProjectAsset;
 use backend\models\Amc;
 use backend\models\AmcRenew;
 use backend\models\ClientModel;
 use backend\models\Project;
 use Yii;
 use yii\data\SqlDataProvider;
+use yii\filters\VerbFilter;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
@@ -15,7 +17,7 @@ use yii\web\Response;
  * AMC (Annual Maintenance Charge) module.
  *
  * Workflow:
- *  - A completed project (project_status = 2) can be enrolled in AMC
+ *  - A completed project (project_status = 3) can be enrolled in AMC
  *    (project.amc = 1).
  *  - "Start AMC" creates an `amc` row (amc_status = Active) holding the
  *    warranty period + end date.
@@ -24,13 +26,32 @@ use yii\web\Response;
  */
 class AmcController extends Controller
 {
-    /**
-     * Main `project` table status value for "Completed".
-     * NOTE: this is 3 here (1=Inprogress, 2=Waiting to assign, 3=Completed,
-     * 4=Hold) — it is NOT the Project::PROJECT_STATUS_* constants, which
-     * belong to the separate project-management module's status scheme.
-     */
-    const PROJECT_COMPLETED = 3;
+    /** `project` table status for "Completed" (1=In progress, 2=Waiting to assign, 3=Completed, 4=Hold). */
+    const PROJECT_COMPLETED = Project::PROJECT_STATUS_COMPLETED;
+
+    public function behaviors(): array
+    {
+        return array_merge(parent::behaviors(), [
+            'verbs' => [
+                'class'   => VerbFilter::class,
+                'actions' => ['end' => ['POST'], 'remove' => ['POST']],
+            ],
+        ]);
+    }
+
+    /** Full pages get the Projects/AMC stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        ProjectAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
+    /** Trimmed string query value; arrays from tampered URLs become ''. */
+    private function q(string $key): string
+    {
+        $v = Yii::$app->request->get($key, '');
+        return is_string($v) ? mb_substr(trim($v), 0, 255) : '';
+    }
 
     /**
      * SQL expression for an AMC row's current (live) end date: the latest
@@ -46,8 +67,8 @@ class AmcController extends Controller
     // ---------------------------------------------------------------------
     public function actionProjects(): string
     {
-        $clientF = (string) Yii::$app->request->get('client_id', '');
-        $titleF  = trim((string) Yii::$app->request->get('title', ''));
+        $clientF = $this->q('client_id');
+        $titleF  = $this->q('title');
 
         $where  = "p.status = 1 AND p.amc = 1 AND p.project_status = " . self::PROJECT_COMPLETED;
         $params = [];
@@ -79,9 +100,9 @@ class AmcController extends Controller
     // ---------------------------------------------------------------------
     public function actionCompletedProjects(): string
     {
-        $clientF = (string) Yii::$app->request->get('client_id', '');
-        $titleF  = trim((string) Yii::$app->request->get('title', ''));
-        $amcF    = (string) Yii::$app->request->get('amc', '');
+        $clientF = $this->q('client_id');
+        $titleF  = $this->q('title');
+        $amcF    = $this->q('amc');
 
         $where  = "p.status = 1 AND p.project_status = " . self::PROJECT_COMPLETED;
         $params = [];
@@ -203,13 +224,13 @@ class AmcController extends Controller
      */
     private function renderAmcList(string $view, int $amcStatus): string
     {
-        $clientF = (string) Yii::$app->request->get('client_id', '');
-        $titleF  = trim((string) Yii::$app->request->get('title', ''));
-        $typeF   = (string) Yii::$app->request->get('charge_type', '');
-        $warrantyF = (string) Yii::$app->request->get('warranty', '');
-        $stateF    = (string) Yii::$app->request->get('state', '');
-        $startF    = trim((string) Yii::$app->request->get('amc_start', ''));
-        $endF      = trim((string) Yii::$app->request->get('amc_end', ''));
+        $clientF = $this->q('client_id');
+        $titleF  = $this->q('title');
+        $typeF   = $this->q('charge_type');
+        $warrantyF = $this->q('warranty');
+        $stateF    = $this->q('state');
+        $startF    = $this->q('amc_start');
+        $endF      = $this->q('amc_end');
 
         // Sanitize the date filters and enforce end >= start (drop the end date
         // when it falls before the start date).
@@ -286,8 +307,8 @@ class AmcController extends Controller
     // ---------------------------------------------------------------------
     public function actionRenewList(): string
     {
-        $clientF = (string) Yii::$app->request->get('client_id', '');
-        $titleF  = trim((string) Yii::$app->request->get('title', ''));
+        $clientF = $this->q('client_id');
+        $titleF  = $this->q('title');
 
         $curEnd = $this->currentEndExpr('a');
         $where  = "a.status = 1 AND a.amc_status = 1
@@ -396,11 +417,16 @@ class AmcController extends Controller
     public function actionEnd(int $id): Response
     {
         $amc = $this->findAmc($id);
-        $amc->amc_status  = Amc::AMC_ENDED;
+        if ((int)$amc->amc_status === Amc::AMC_ENDED) {
+            Yii::$app->session->setFlash('info', 'This AMC had already ended.');
+            return $this->redirect(['view', 'id' => $amc->id]);
+        }
+        $amc->amc_status   = Amc::AMC_ENDED;
         $amc->updated_date = date('Y-m-d H:i:s');
         $amc->save(false);
-        Yii::$app->session->setFlash('success', 'AMC ended.');
-        return $this->redirect(Yii::$app->request->referrer ?: ['active']);
+        $title = Project::find()->select('title')->where(['id' => $amc->project_id])->scalar();
+        Yii::$app->session->setFlash('success', 'AMC ended' . ($title ? " for \"$title\"" : '') . '. It is now listed under Ended AMC.');
+        return $this->redirect(['view', 'id' => $amc->id]);
     }
 
     // ---------------------------------------------------------------------
@@ -408,11 +434,25 @@ class AmcController extends Controller
     // ---------------------------------------------------------------------
     public function actionRemove(int $project_id): Response
     {
-        Project::updateAll(['amc' => 0], ['id' => $project_id]);
-        // Soft-delete any AMC contracts for this project.
-        Amc::updateAll(['status' => 0, 'updated_date' => date('Y-m-d H:i:s')], ['project_id' => $project_id]);
-        Yii::$app->session->setFlash('success', 'Project removed from AMC.');
-        return $this->redirect(Yii::$app->request->referrer ?: ['projects']);
+        $project = Project::findOne(['id' => $project_id, 'status' => 1]);
+        if (!$project) {
+            throw new NotFoundHttpException('Project not found.');
+        }
+        $tx = Yii::$app->db->beginTransaction();
+        try {
+            Project::updateAll(['amc' => 0], ['id' => $project_id]);
+            // Soft-delete any AMC contracts for this project.
+            $contracts = Amc::updateAll(['status' => 0, 'updated_date' => date('Y-m-d H:i:s')], ['project_id' => $project_id, 'status' => 1]);
+            $tx->commit();
+        } catch (\Throwable $e) {
+            $tx->rollBack();
+            Yii::error('Remove from AMC failed: ' . $e->getMessage(), __METHOD__);
+            Yii::$app->session->setFlash('error', 'The project could not be removed from AMC. Please try again.');
+            return $this->redirect(['projects']);
+        }
+        Yii::$app->session->setFlash('success', "\"{$project->title}\" was removed from AMC"
+            . ($contracts ? " and its $contracts contract record(s) were archived." : '.'));
+        return $this->redirect(['projects']);
     }
 
     // ---------------------------------------------------------------------

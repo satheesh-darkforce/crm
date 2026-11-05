@@ -34,10 +34,14 @@ if (!$isNew && $model->asset_id) {
     }
 }
 ?>
-<div class="asset-maintenance-form">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= $this->title ?></h5>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['maintenance'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+<div class="ui-page asset-maintenance-form">
+    <div class="ui-head">
+        <div>
+            <h1><?= $this->title ?></h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['maintenance'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <p class="mb-2"><strong>Fields with <span class="text-danger">*</span> are required.</strong></p>
@@ -159,7 +163,8 @@ if (!$isNew && $model->asset_id) {
                                     <button type="button" class="btn btn-outline-danger btn-sm py-0 px-1" id="delete-existing-bill" data-id="<?= $model->id ?>" style="font-size:.65rem"><i class="fas fa-times"></i></button>
                                 </div>
                             <?php endif; ?>
-                            <input type="file" name="invoice_bill_file" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx">
+                            <input type="file" name="invoice_bill_file" class="form-control form-control-sm<?= $model->hasErrors('invoice_bill') ? ' is-invalid' : '' ?>" accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx">
+                            <?php if ($model->hasErrors('invoice_bill')): ?><div class="invalid-feedback d-block"><?= Html::encode($model->getFirstError('invoice_bill')) ?></div><?php endif; ?>
                             <small class="text-muted">Max 10 MB (pdf, jpg, jpeg, png, doc, docx)</small>
                         </div>
                     </div>

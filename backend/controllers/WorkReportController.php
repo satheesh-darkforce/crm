@@ -2,6 +2,8 @@
 
 namespace backend\controllers;
 
+use backend\assets\TaskAsset;
+use backend\components\TaskAccess;
 use backend\models\Attendance;
 use backend\models\ClientModel;
 use backend\models\Developer;
@@ -13,6 +15,8 @@ use PhpOffice\PhpSpreadsheet\Writer\Xls;
 use Yii;
 use yii\data\ActiveDataProvider;
 use yii\db\Expression;
+use yii\filters\VerbFilter;
+use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
@@ -21,6 +25,80 @@ use yii\web\Response;
  */
 class WorkReportController extends Controller
 {
+    /** Query parameters the reports read; cleaned once in beforeAction(). */
+    private const DATE_PARAMS = ['date', 'from_date', 'to_date'];
+    private const ID_PARAMS   = ['developer_id', 'project_id', 'client_id'];
+    private const MATRIX_MAX_DAYS = 62;
+    private const MULTI_ID_ACTIONS = ['overall', 'export-overall-report'];
+
+    public function behaviors(): array
+    {
+        return array_merge(parent::behaviors(), [
+            'verbs' => ['class' => VerbFilter::class, 'actions' => ['delete' => ['POST']]],
+        ]);
+    }
+
+    /**
+     * Normalise report filters for every action: dates become Y-m-d (unreadable
+     * ones are dropped with a notice instead of turning into 1970-01-01), ids
+     * must be digits, arrays from tampered URLs are discarded, and a reversed
+     * from/to range is swapped.
+     */
+    public function beforeAction($action): bool
+    {
+        if (!parent::beforeAction($action)) {
+            return false;
+        }
+        $req     = Yii::$app->request;
+        $params  = $req->getQueryParams();
+        $ignored = [];
+        // Arrays only where a page takes multi-select ids; elsewhere (int)[...] would read as 1.
+        $multi = in_array($action->id, self::MULTI_ID_ACTIONS, true);
+        foreach ($params as $key => $value) {
+            if (!is_array($value)) {
+                continue;
+            }
+            if ($multi && in_array($key, self::ID_PARAMS, true)) {
+                $params[$key] = array_values(array_filter($value, fn($v) => is_string($v) && ctype_digit($v)));
+            } else {
+                unset($params[$key]);
+            }
+        }
+        foreach (self::DATE_PARAMS as $key) {
+            if (!isset($params[$key]) || trim((string)$params[$key]) === '') {
+                continue;
+            }
+            $ts = strtotime(trim((string)$params[$key]));
+            if ($ts === false || (int)date('Y', $ts) < 2000 || (int)date('Y', $ts) > 2100) {
+                $ignored[] = str_replace('_', ' ', $key);
+                unset($params[$key]);
+            } else {
+                $params[$key] = date('Y-m-d', $ts);
+            }
+        }
+        foreach (self::ID_PARAMS as $key) {
+            if (isset($params[$key]) && !is_array($params[$key]) && $params[$key] !== '' && !ctype_digit((string)$params[$key])) {
+                $ignored[] = str_replace('_', ' ', $key);
+                unset($params[$key]);
+            }
+        }
+        if (!empty($params['from_date']) && !empty($params['to_date']) && $params['to_date'] < $params['from_date']) {
+            [$params['from_date'], $params['to_date']] = [$params['to_date'], $params['from_date']];
+        }
+        $req->setQueryParams($params);
+        if ($ignored && !$req->isAjax) {
+            Yii::$app->session->setFlash('warning', 'Ignored an invalid filter value (' . implode(', ', array_unique($ignored)) . ').');
+        }
+        return true;
+    }
+
+    /** Full pages get the Tasks / Work Reports stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        TaskAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     public function actionIndex(): string
     {
         $query = WorkReport::find()
@@ -204,10 +282,15 @@ class WorkReportController extends Controller
 
         if (Yii::$app->request->isPost) {
             $post = Yii::$app->request->post('WorkReport', []);
+            $post = is_array($post) ? array_map(fn($v) => is_scalar($v) ? (string)$v : null, $post) : [];
 
             // Admin can pick developer; non-admin uses own developer_id
             if ($isAdmin) {
                 $model->developer_id = $post['developer_id'] ?? null;
+            }
+            if (!$model->developer_id) {
+                Yii::$app->session->setFlash('error', 'Your login is not linked to an employee record, so work reports cannot be filed. Ask an admin to link it.');
+                return $this->redirect($this->listRoute());
             }
             $model->project_id   = $post['project_id'] ?? null;
             $model->date         = $post['date'] ?? date('Y-m-d');
@@ -216,10 +299,9 @@ class WorkReportController extends Controller
             $model->from_time    = $post['from_time'] ?? null;
             $model->to_time      = $post['to_time'] ?? null;
 
-            // Parse HH:MM total_time into seconds (matching Yii1 format)
-            $ttRaw   = $post['total_time'] ?? '00:00';
-            $ttParts = explode(':', $ttRaw);
-            $model->total_time = ((int)($ttParts[0] ?? 0)) * 3600 + ((int)($ttParts[1] ?? 0)) * 60;
+            // Total time arrives as HH:MM (Yii1 format) and is stored in seconds.
+            $secs = $this->parseTotalTime($post['total_time'] ?? '');
+            $model->total_time = $secs ?? 0;
 
             // Auto-fill client from project
             if ($model->project_id) {
@@ -233,18 +315,16 @@ class WorkReportController extends Controller
             $model->last_updated_time = null;
             $model->data_source       = WorkReport::SOURCE_WEB;
 
-            if ($model->total_time <= 0) {
-                Yii::$app->session->setFlash('error', 'Total time must be at least one minute.');
-            } elseif ($model->save()) {
-                Yii::$app->session->setFlash('success', 'Successfully saved your work report.');
-                // Match Yii1 actionCreate which redirected to myworkreports.
-                // Admins land on the company-wide index; others on their own list
-                // — avoids "You do not have permission to access this page" when a
-                // developer without 'work-report/index' submits a report.
-                return $this->redirect([$isAdmin ? 'index' : 'my-work-reports']);
-            } else {
-                $errors = implode(', ', array_map(fn($e) => is_array($e) ? implode(', ', $e) : $e, $model->getFirstErrors()));
-                Yii::$app->session->setFlash('error', $errors);
+            $valid = $model->validate();
+            if ($secs === null) {
+                $model->clearErrors('total_time');
+                $model->addError('total_time', 'Enter the total time as HH:MM (e.g. 02:30).');
+                $valid = false;
+            }
+            if ($valid && $model->save(false)) {
+                Yii::$app->session->setFlash('success', 'Work report saved for ' . date('d M Y', strtotime($model->date)) . '.');
+                // Yii1 redirected to My Work Reports; those with the company-wide list land there.
+                return $this->redirect($this->listRoute());
             }
         }
 
@@ -267,14 +347,15 @@ class WorkReportController extends Controller
 
     public function actionUpdate(int $id): string|Response
     {
-        $model    = $this->findModel($id);
+        $model    = $this->findModel($id, true);
         $userType = Yii::$app->user->identity->usertype ?? 2;
         $isAdmin  = ($userType == 1 || $userType == 4);
 
         if (Yii::$app->request->isPost) {
             $post = Yii::$app->request->post('WorkReport', []);
+            $post = is_array($post) ? array_map(fn($v) => is_scalar($v) ? (string)$v : null, $post) : [];
 
-            $model->date        = isset($post['date']) && trim($post['date']) !== '' ? date('Y-m-d', strtotime($post['date'])) : $model->date;
+            $model->date        = isset($post['date']) && trim($post['date']) !== '' ? trim($post['date']) : $model->date;
             $model->project_id  = isset($post['project_id']) ? (int)$post['project_id'] : $model->project_id;
             $model->task        = $post['task'] ?? $model->task;
             $model->description = $post['description'] ?? $model->description;
@@ -287,8 +368,12 @@ class WorkReportController extends Controller
             }
 
             // BUG-9 fix: preserve task_id if submitted (don't lose task system link)
+            // Only a task assigned to this report's employee can be linked.
             if (isset($post['task_id']) && (int)$post['task_id'] > 0) {
-                $model->task_id = (int)$post['task_id'];
+                $devUser = Developer::find()->select('user_id')->where(['id' => (int)$model->developer_id])->scalar();
+                if ($devUser && \backend\models\Task::find()->where(['id' => (int)$post['task_id'], 'status' => 1, 'assigned_to' => (int)$devUser])->exists()) {
+                    $model->task_id = (int)$post['task_id'];
+                }
             }
 
             // Resolve client from project
@@ -297,31 +382,27 @@ class WorkReportController extends Controller
                 $model->client_id = $project->client_id ?: null;
             }
 
-            // Parse total_time HH:MM -> seconds (matching Yii1 format)
+            // Total time arrives as HH:MM (Yii1 format) and is stored in seconds.
+            $secs = null;
             if (isset($post['total_time']) && trim($post['total_time']) !== '') {
-                $parts = explode(':', $post['total_time']);
-                $model->total_time = ((int)($parts[0] ?? 0)) * 3600 + ((int)($parts[1] ?? 0)) * 60;
+                $secs = $this->parseTotalTime($post['total_time']);
+                if ($secs !== null) {
+                    $model->total_time = $secs;
+                }
             }
 
             $model->updated_by        = Yii::$app->user->id;
             $model->last_updated_time = date('Y-m-d H:i:s');
 
-            if ($model->save()) {
-                Yii::$app->session->setFlash('success', 'Work report updated successfully.');
-
-                if ($isAdmin) {
-                    return $this->redirect(['index']);
-                }
-                return $this->redirect(['my-work-reports']);
+            $valid = $model->validate();
+            if (isset($post['total_time']) && trim($post['total_time']) !== '' && $secs === null) {
+                $model->addError('total_time', 'Enter the total time as HH:MM (e.g. 02:30).');
+                $valid = false;
             }
-
-            // BUG-7 fix: show detailed validation errors in flash
-            $errorDetails = implode('; ', array_map(
-                fn($field, $errs) => $field . ': ' . implode(', ', $errs),
-                array_keys($model->getErrors()),
-                $model->getErrors()
-            ));
-            Yii::$app->session->setFlash('error', 'Failed to update work report. ' . $errorDetails);
+            if ($valid && $model->save(false)) {
+                Yii::$app->session->setFlash('success', 'Work report updated.');
+                return $this->redirect($this->listRoute());
+            }
         }
 
         $projects   = Project::find()->where(['status' => 1])->orderBy('title')->all();
@@ -386,9 +467,8 @@ class WorkReportController extends Controller
             ->where(['wr.status' => 1])
             ->orderBy(['wr.date' => SORT_DESC, 'wr.work_id' => SORT_DESC]);
 
-        if ($clientId) {
-            $query->andWhere(['wr.client_id' => $clientId]);
-        }
+        // A login without a client record must see nothing — never every client's reports.
+        $query->andWhere($clientId ? ['wr.client_id' => $clientId] : '0=1');
 
         if ($fromDate = Yii::$app->request->get('from_date')) {
             $query->andWhere(['>=', 'wr.date', date('Y-m-d', strtotime($fromDate))]);
@@ -433,15 +513,11 @@ class WorkReportController extends Controller
 
     public function actionDelete(int $id): Response
     {
-        if (!Yii::$app->request->isPost) {
-            throw new \yii\web\BadRequestHttpException('POST required.');
-        }
-        $wr         = $this->findModel($id);
-        $wr->status = 0;
-        $wr->save(false);
+        $wr = $this->findModel($id, true);
+        $wr->updateAttributes(['status' => 0]);
 
-        Yii::$app->session->setFlash('success', 'Work report removed.');
-        return $this->redirect(['index']);
+        Yii::$app->session->setFlash('success', 'Work report of ' . date('d M Y', strtotime($wr->date)) . ' removed.');
+        return $this->redirect($this->listRoute());
     }
 
     // ── Yesterday's Reports ──────────────────────────────────────────────────
@@ -503,6 +579,12 @@ class WorkReportController extends Controller
 
         $fromDate = date('Y-m-d', strtotime($fromDate));
         $toDate   = date('Y-m-d', strtotime($toDate));
+
+        // One column per day: keep the grid readable (and the query small).
+        if ((strtotime($toDate) - strtotime($fromDate)) / 86400 > self::MATRIX_MAX_DAYS - 1) {
+            $toDate = date('Y-m-d', strtotime($fromDate . ' +' . (self::MATRIX_MAX_DAYS - 1) . ' days'));
+            Yii::$app->session->setFlash('warning', 'The monthly grid shows up to ' . self::MATRIX_MAX_DAYS . ' days, so it ends on ' . date('d M Y', strtotime($toDate)) . '.');
+        }
 
         // Collect all dates in range
         $dates = [];
@@ -892,6 +974,9 @@ class WorkReportController extends Controller
 
         $fromDate = date('Y-m-d', strtotime($fromDate));
         $toDate   = date('Y-m-d', strtotime($toDate));
+        if ((strtotime($toDate) - strtotime($fromDate)) / 86400 > self::MATRIX_MAX_DAYS - 1) {
+            $toDate = date('Y-m-d', strtotime($fromDate . ' +' . (self::MATRIX_MAX_DAYS - 1) . ' days'));
+        }
 
         // Collect date range
         $dates = [];
@@ -1305,13 +1390,44 @@ class WorkReportController extends Controller
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private function findModel(int $id): WorkReport
+    /**
+     * Load an active work report the current user may see, or 404 (also for
+     * reports they may not see, so ids cannot be probed).
+     *  - managers and anyone with the company-wide list (work-report/index): all reports
+     *  - employees: their own reports
+     *  - clients: reports filed against their company
+     * With $forEdit, clients can never edit and employees only their own.
+     */
+    private function findModel(int $id, bool $forEdit = false): WorkReport
     {
         $model = WorkReport::findOne(['work_id' => $id, 'status' => 1]);
-        if (!$model) {
+        $user  = Yii::$app->user->identity;
+        $seesAll = TaskAccess::isManager() || \common\components\UserAccess::checkAccess('work-report/index');
+        $own     = $model && $user && (int)$model->developer_id > 0 && (int)$model->developer_id === (int)$user->getDeveloperId();
+        $client  = $model && $user && $user->isClient() && ($user->client->id ?? null) !== null && (int)$model->client_id === (int)$user->client->id;
+
+        if (!$model || !($seesAll || $own || $client)) {
             throw new NotFoundHttpException('Work report not found.');
         }
+        if ($forEdit && !($seesAll || $own)) {
+            throw new ForbiddenHttpException('You can only change your own work reports.');
+        }
         return $model;
+    }
+
+    /** Where to go after saving/deleting: the list this user can open. */
+    private function listRoute(): array
+    {
+        return \common\components\UserAccess::checkAccess('work-report/index') ? ['index'] : ['my-work-reports'];
+    }
+
+    /** "HH:MM" from the form → seconds, or null when it is not a valid duration. */
+    private function parseTotalTime($raw): ?int
+    {
+        if (!is_string($raw) || !preg_match('/^(\d{1,2}):([0-5]\d)$/', trim($raw), $m)) {
+            return null;
+        }
+        return (int)$m[1] * 3600 + (int)$m[2] * 60;
     }
 
     // ── Export: Overall Report (Excel) ────────────────────────────────────────

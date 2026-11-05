@@ -42,16 +42,16 @@ $lateOpts = [
     'office' => 'Office Work (not late)',
 ];
 ?>
-<div class="change-attendance">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page change-attendance">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Change Attendance</h5>
-            <small class="text-muted">
-                <?= Html::encode($model->developer->developer_name ?? '—') ?>
-                &mdash; <?= Html::encode(date('d M Y (l)', strtotime($model->attendance_date))) ?>
-            </small>
+            <h1>Change Attendance</h1>
+            <div class="ui-sub"><?= Html::encode($model->developer->developer_name ?? '—') ?>
+                &mdash; <?= Html::encode(date('d M Y (l)', strtotime($model->attendance_date))) ?></div>
         </div>
-        <?= Html::a('&larr; Back', $backUrl, ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('&larr; Back', $backUrl, ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <!-- Current status -->

@@ -59,7 +59,10 @@ class Amc extends ActiveRecord
             [['project_id', 'client_id', 'start_date', 'warranty_period', 'charge_type'], 'required'],
             [['project_id', 'client_id', 'warranty_period', 'charge_type', 'amc_status', 'status', 'created_by'], 'integer'],
             // Warranty may be 0 = no warranty (AMC active immediately from start date).
-            [['warranty_period'], 'integer', 'min' => 0, 'tooSmall' => 'Warranty period cannot be negative.'],
+            [['warranty_period'], 'integer', 'min' => 0, 'max' => 600,
+                'tooSmall' => 'Warranty period cannot be negative.', 'tooBig' => 'Warranty period cannot exceed 600 months.'],
+            [['description'], 'trim'],
+            [['description'], 'string', 'max' => 2000],
             [['charge_type'], 'in', 'range' => [self::CHARGE_PERCENTAGE, self::CHARGE_AMOUNT]],
 
             // Percentage required only when charge_type = Percentage

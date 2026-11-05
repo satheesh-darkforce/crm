@@ -11,6 +11,13 @@ use yii\web\Response;
 
 class RfidCardController extends Controller
 {
+    /** Full pages get the HR module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        \backend\assets\HrAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     public function actionIndex(): string
     {
         $query = RfidCard::find()->with('developer')->where(['>=', 'rfid_cards.status', 0])->orderBy('id DESC');

@@ -35,13 +35,15 @@ $lopAmt   = ($gross > 0 && $totalLop > 0) ? round(($gross / $daysInMonth) * $tot
 .salary-cell { font-weight:700; color:#198754; }
 </style>
 
-<div class="payslip-update">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page payslip-update">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Update Payslip</h5>
-            <small class="text-muted"><?= Html::encode($devName) ?> &nbsp;|&nbsp; <?= Html::encode($monthStr) ?></small>
+            <h1>Update Payslip</h1>
+            <div class="ui-sub"><?= Html::encode($devName) ?> &nbsp;|&nbsp; <?= Html::encode($monthStr) ?></div>
         </div>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['view', 'id' => $model->id], ['class' => 'btn btn-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['view', 'id' => $model->id], ['class' => 'btn btn-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
     <form method="post" action="<?= Url::to(['payslip/update', 'id' => $model->id]) ?>">
         <?= Html::hiddenInput(Yii::$app->request->csrfParam, Yii::$app->request->csrfToken) ?>

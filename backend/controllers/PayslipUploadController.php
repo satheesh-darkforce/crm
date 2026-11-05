@@ -16,6 +16,13 @@ use yii\web\UploadedFile;
 
 class PayslipUploadController extends Controller
 {
+    /** Full pages get the HR module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        \backend\assets\HrAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     /**
      * Admin list — matches Yii1 uploadpayslip/admin.
      * Filters: month_year (YYYY-MM).
@@ -209,6 +216,11 @@ class PayslipUploadController extends Controller
 
             $file = UploadedFile::getInstance($model, 'file_path');
 
+            if ($file && !in_array(strtolower((string) $file->extension), ['csv', 'xls', 'xlsx'], true)) {
+                Yii::$app->session->setFlash('error', 'Upload the payslip sheet as CSV, XLS or XLSX.');
+                return $this->render('create', compact('model'));
+            }
+
             if ($file) {
                 // Validate CSV via PhpSpreadsheet
                 $spreadsheet = IOFactory::load($file->tempName);
@@ -228,7 +240,7 @@ class PayslipUploadController extends Controller
                 if (!is_dir($dir)) {
                     mkdir($dir, 0750, true);
                 }
-                $filename = $model->month_year . '_' . date('Y-m-d-h-i-s-A') . '.' . $file->extension;
+                $filename = preg_replace('/[^0-9-]/', '', (string) $model->month_year) . '_' . date('Y-m-d-h-i-s-A') . '.' . strtolower((string) $file->extension);
                 $file->saveAs($dir . $filename);
                 $model->file_path = '/uploads/upload_payslip/' . $filename;
 
@@ -280,6 +292,11 @@ class PayslipUploadController extends Controller
 
             $file = UploadedFile::getInstance($model, 'file_path');
 
+            if ($file && !in_array(strtolower((string) $file->extension), ['csv', 'xls', 'xlsx'], true)) {
+                Yii::$app->session->setFlash('error', 'Upload the payslip sheet as CSV, XLS or XLSX.');
+                return $this->render('update', compact('model'));
+            }
+
             if ($file) {
                 // Validate CSV via PhpSpreadsheet
                 $spreadsheet = IOFactory::load($file->tempName);
@@ -299,7 +316,7 @@ class PayslipUploadController extends Controller
                 if (!is_dir($dir)) {
                     mkdir($dir, 0750, true);
                 }
-                $filename = uniqid() . '_' . $file->name;
+                $filename = uniqid() . '_' . bin2hex(random_bytes(3)) . '.' . strtolower((string) $file->extension);
                 $file->saveAs($dir . $filename);
                 $model->file_path = '/uploads/upload_payslip/' . $filename;
 
@@ -444,6 +461,7 @@ class PayslipUploadController extends Controller
      */
     public function actionViewPayslip(int $id, string $emp_code = ''): string
     {
+        $emp_code = $this->allowedEmpCode($emp_code);
         $this->layout = false;
         $model = $this->findModel($id);
         return $this->generatePayslipHtml($model, $emp_code);
@@ -454,6 +472,7 @@ class PayslipUploadController extends Controller
      */
     public function actionDownloadPayslip(int $id, string $emp_code = '')
     {
+        $emp_code = $this->allowedEmpCode($emp_code);
         $model = $this->findModel($id);
         $html  = $this->generatePayslipHtml($model, $emp_code, true);
 
@@ -725,6 +744,22 @@ class PayslipUploadController extends Controller
         ]);
 
         return $this->render('developer', compact('dataProvider'));
+    }
+
+    /**
+     * view-payslip / download-payslip are developer defaults: anyone without upload
+     * rights only ever gets their own employee code, whatever the URL says.
+     */
+    private function allowedEmpCode(string $empCode): string
+    {
+        if (\backend\components\HrAccess::canManage(['payslip-upload/index', 'payslip-upload/create', 'payslip-upload/update'])) {
+            return $empCode;
+        }
+        $own = \backend\models\Developer::find()->select('emp_code')->where(['user_id' => Yii::$app->user->id, 'status' => 1])->scalar();
+        if (!$own) {
+            throw new NotFoundHttpException('Payslip not found.');
+        }
+        return (string)$own;
     }
 
     private function findModel(int $id): UploadPayslip

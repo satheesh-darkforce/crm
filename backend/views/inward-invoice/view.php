@@ -2,199 +2,155 @@
 /** @var \yii\web\View $this */
 /** @var \backend\models\InwardInvoice $model */
 
+use backend\models\InwardInvoice;
+use backend\models\Vendor;
+use common\components\UserAccess;
 use yii\bootstrap5\Html;
 use yii\helpers\Url;
 
-$this->title = 'Inward Invoice #' . $model->invoice_number;
+$this->title = 'Inward Invoice ' . $model->invoice_number;
 
-$typeLabels  = \backend\models\Vendor::typeLabels();
-$typeColors  = [1 => 'primary', 2 => 'success', 3 => 'info'];
-$roleLabels  = [1 => 'Actual Invoice', 2 => 'Provisional'];
-$roleColors  = [1 => 'success', 2 => 'warning'];
-$payLabels   = [0 => 'Not Paid', 1 => 'Paid'];
-$payColors   = [0 => 'danger', 1 => 'success'];
-
-$lineItems  = $model->lineItems;
-$expenses   = $model->expenses;
-$attachments = $model->attachments;
-$baseUrl    = Yii::$app->request->baseUrl;
-$convertUrl = Url::to(['convert-to-invoice', 'id' => $model->id]);
+$lines    = $model->lineItems;
+$expenses = $model->expenses;
+$extra    = array_sum(array_map(fn($e) => (float)$e->item_total, $expenses));
+$inr      = fn($v) => '₹' . number_format((float)$v, 2);
+$isProv   = (int)$model->invoice_role === InwardInvoice::ROLE_PROVISIONAL;
+$isPaid   = (int)$model->payment_status === InwardInvoice::PAY_PAID && $model->payment_status !== null;
+$vendor   = $model->vendor;
+$taxCols  = array_filter(['sgst' => 'SGST', 'cgst' => 'CGST', 'igst' => 'IGST'], fn($k) => (float)$model->{$k . '_amount'} > 0
+    || array_filter($lines, fn($d) => (float)$d->{$k . '_amount'} > 0), ARRAY_FILTER_USE_KEY);
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.sec-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6c757d}
-</style>
-
-<div class="inward-invoice-view">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+<div class="ui-page inward-invoice-view">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">#<?= Html::encode($model->invoice_number) ?></h5>
-            <small>
-                <span class="badge bg-<?= $roleColors[$model->invoice_role] ?? 'secondary' ?>"><?= $roleLabels[$model->invoice_role] ?? '—' ?></span>
-                <?php if ($model->invoice_role == 2): ?>
-                    <button class="btn btn-sm btn-outline-success ms-1" id="btn-convert" style="font-size:.72rem;padding:.1rem .4rem">Convert to Actual</button>
-                <?php endif; ?>
-            </small>
+            <h1><?= Html::encode($model->invoice_number) ?>
+                <span class="ui-pill tone-<?= $isProv ? 'warning' : 'success' ?> align-middle"><?= InwardInvoice::roleOptions()[(int)$model->invoice_role] ?? '—' ?></span>
+                <span class="ui-pill tone-<?= $model->getPaymentTone() ?> align-middle"><?= Html::encode($model->getPaymentLabel()) ?></span>
+            </h1>
+            <div class="ui-sub"><?= Html::encode($vendor->company_name ?? 'Vendor removed') ?> · <?= $model->invoice_date ? date('d M Y', strtotime($model->invoice_date)) : '—' ?></div>
         </div>
-        <div class="d-flex gap-2">
-            <?= Html::a('<i class="fas fa-pen"></i> Edit', ['update', 'id' => $model->id], ['class' => 'btn btn-sm btn-outline-primary', 'encode' => false]) ?>
-            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-sm btn-outline-secondary', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?php if ($isProv && UserAccess::checkAccess('inward-invoice/convert-to-invoice')): ?>
+                <button type="button" class="btn btn-outline-success btn-sm" data-ii-convert="<?= $model->id ?>" data-url="<?= Url::to(['convert-to-invoice', 'id' => $model->id]) ?>">
+                    <i class="fas fa-check-double me-1"></i>Mark actual</button>
+            <?php endif; ?>
+            <?php if (UserAccess::checkAccess('inward-invoice/update')): ?>
+                <?= Html::a('<i class="fas fa-pen me-1"></i>Edit', ['update', 'id' => $model->id], ['class' => 'btn btn-outline-primary btn-sm', 'encode' => false]) ?>
+            <?php endif; ?>
+            <?php if (UserAccess::checkAccess('inward-invoice/delete')): ?>
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary btn-sm act-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More actions">&#8942;</button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                        <li><?= Html::a('<i class="fas fa-trash fa-fw me-1"></i>Delete', ['delete', 'id' => $model->id], ['class' => 'dropdown-item text-danger', 'encode' => false,
+                            'data' => ['method' => 'post', 'confirm' => 'Delete inward invoice ' . $model->invoice_number . ' (' . $inr($model->net_total) . ')?']]) ?></li>
+                    </ul>
+                </div>
+            <?php endif; ?>
+            <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
+    </div>
+
+    <div class="ui-tiles">
+        <div class="ui-tile is-accent"><div class="t-label">Net total</div><div class="t-value num"><?= $inr($model->net_total) ?></div>
+            <div class="t-sub">Sub total <?= $inr($model->grand_total) ?></div></div>
+        <div class="ui-tile"><div class="t-label">GST</div><div class="t-value num"><?= $inr((float)$model->sgst_amount + (float)$model->cgst_amount + (float)$model->igst_amount) ?></div>
+            <div class="t-sub"><?= $taxCols ? implode(' + ', $taxCols) : 'No GST' ?></div></div>
+        <div class="ui-tile"><div class="t-label">Paid</div><div class="t-value num"><?= $isPaid ? $inr($model->payment_amount) : '—' ?></div>
+            <div class="t-sub"><?= $isPaid ? ($model->payment_date ? date('d M Y', strtotime($model->payment_date)) : 'Date not set') . ((float)$model->tds_amount ? ' · TDS ' . $inr($model->tds_amount) : '') : Html::encode($model->getPaymentLabel()) ?></div></div>
+        <div class="ui-tile"><div class="t-label">Vendor</div><div class="t-value"><?= Html::encode($vendor->company_name ?? '—') ?></div>
+            <div class="t-sub"><?= Html::encode(Vendor::typeLabels()[(int)($vendor->vendor_type ?? 0)] ?? '') ?><?= !empty($vendor->gst_no) ? ' · ' . Html::encode($vendor->gst_no) : '' ?></div></div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header ui-section">Items <span class="ui-section-meta"><?= count($lines) ?></span></div>
+        <div class="table-responsive">
+            <table class="table list-table ui-table stack mb-0">
+                <thead class="table-light">
+                <tr>
+                    <th style="width:36px">#</th>
+                    <th>Item</th>
+                    <th class="text-end">Qty</th>
+                    <th class="text-end">Rate</th>
+                    <th class="text-end">Amount</th>
+                    <?php foreach ($taxCols as $label): ?><th class="text-end"><?= $label ?></th><?php endforeach; ?>
+                    <th class="text-end">Total</th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php if (!$lines): ?>
+                    <tr class="ui-empty-row"><td colspan="<?= 6 + count($taxCols) ?>" class="ui-empty-cell"><?= $this->render('@backend/views/_ui/_empty', ['icon' => 'list', 'title' => 'No items', 'small' => true]) ?></td></tr>
+                <?php endif; ?>
+                <?php foreach ($lines as $i => $d): ?>
+                    <tr>
+                        <td class="cell-num muted"><?= $i + 1 ?></td>
+                        <td class="cell-title"><?= Html::encode($d->product) ?>
+                            <div class="small text-muted fw-normal"><?= implode(' · ', array_filter([$d->hsn ? 'HSN ' . Html::encode($d->hsn) : '', Html::encode($d->ledger->title ?? '')])) ?></div></td>
+                        <td class="text-end num" data-label="Qty"><?= (float)$d->qty ?></td>
+                        <td class="text-end num" data-label="Rate"><?= $inr($d->price_per_qty) ?></td>
+                        <td class="text-end num" data-label="Amount"><?= $inr($d->item_total) ?></td>
+                        <?php foreach ($taxCols as $k => $label): ?>
+                            <td class="text-end num small" data-label="<?= $label ?>"><?= (float)$d->{$k . '_amount'} ? $inr($d->{$k . '_amount'}) . ' <span class="text-muted">(' . (float)$d->{$k . '_percent'} . '%)</span>' : '—' ?></td>
+                        <?php endforeach; ?>
+                        <td class="text-end num fw-semibold" data-label="Total"><?= $inr($d->total_amount) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
     </div>
 
     <div class="row g-3">
-        <!-- Invoice Info -->
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header py-2"><strong class="small">Invoice Details</strong></div>
-                <div class="card-body py-3">
-                    <table class="table table-sm table-borderless mb-0">
-                        <tr><th class="text-muted" style="width:40%">Vendor</th><td><?= Html::encode($model->vendor->company_name ?? '—') ?>
-                            <?php if ($model->vendor): ?>
-                                <span class="badge bg-<?= $typeColors[$model->vendor->vendor_type] ?? 'secondary' ?> ms-1" style="font-size:.7rem"><?= $typeLabels[$model->vendor->vendor_type] ?? '' ?></span>
-                            <?php endif; ?>
-                        </td></tr>
-                        <tr><th class="text-muted">Invoice No</th><td><?= Html::encode($model->invoice_number) ?></td></tr>
-                        <tr><th class="text-muted">Date</th><td><?= $model->invoice_date ? date('d M Y', strtotime($model->invoice_date)) : '—' ?></td></tr>
-                        <tr><th class="text-muted">Title</th><td><?= Html::encode($model->title ?: '—') ?></td></tr>
-                        <tr><td colspan="2"><hr class="my-1"></td></tr>
-                        <tr><th class="text-muted">Grand Total</th><td>₹<?= number_format((float)$model->grand_total, 2) ?></td></tr>
-                        <tr><th class="text-muted">SGST</th><td>₹<?= number_format((float)$model->sgst_amount, 2) ?></td></tr>
-                        <tr><th class="text-muted">CGST</th><td>₹<?= number_format((float)$model->cgst_amount, 2) ?></td></tr>
-                        <tr><th class="text-muted">IGST</th><td>₹<?= number_format((float)$model->igst_amount, 2) ?></td></tr>
-                        <?php if (!empty($expenses)): ?>
-                        <tr><th class="text-muted">Extra Expenses</th><td>₹<?= number_format(array_sum(array_map(fn($e) => (float)$e->item_total, $expenses)), 2) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if ((float)$model->round_off != 0): ?>
-                        <tr><th class="text-muted">Round Off</th><td>₹<?= number_format((float)$model->round_off, 2) ?></td></tr>
-                        <?php endif; ?>
-                        <tr><th class="fw-bold">Net Total</th><td class="fw-bold text-primary">₹<?= number_format((float)$model->net_total, 2) ?></td></tr>
-                    </table>
+        <div class="col-lg-7">
+            <?php if ($expenses): ?>
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header ui-section">Extra expenses</div>
+                <table class="table ui-detail mb-0">
+                    <?php foreach ($expenses as $ex): ?>
+                        <tr><th scope="row"><?= Html::encode($ex->product) ?><div class="small text-muted fw-normal"><?= Html::encode($ex->ledger->title ?? '') ?></div></th><td class="text-end num"><?= $inr($ex->item_total) ?></td></tr>
+                    <?php endforeach; ?>
+                </table>
+            </div>
+            <?php endif; ?>
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header ui-section">Payment</div>
+                <table class="table ui-detail mb-0">
+                    <tr><th scope="row">Status</th><td><span class="ui-pill tone-<?= $model->getPaymentTone() ?>"><?= Html::encode($model->getPaymentLabel()) ?></span></td></tr>
+                    <?php if ($isPaid): ?>
+                        <tr><th scope="row">Paid from</th><td><?= Html::encode(trim(($model->paymentCategory->title ?? '') . ' · ' . ($model->paymentLedger->title ?? ''), ' ·') ?: '—') ?></td></tr>
+                        <tr><th scope="row">Payment date</th><td><?= $model->payment_date ? date('d M Y', strtotime($model->payment_date)) : '—' ?></td></tr>
+                        <tr><th scope="row">Amount paid</th><td class="num"><?= $inr($model->payment_amount) ?></td></tr>
+                        <tr><th scope="row">TDS deducted</th><td class="num"><?= (float)$model->tds_amount ? $inr($model->tds_amount) : '—' ?></td></tr>
+                    <?php endif; ?>
+                    <tr><th scope="row">Remarks</th><td><?= trim((string)$model->payment_remarks) !== '' ? nl2br(Html::encode($model->payment_remarks)) : '<span class="text-muted">—</span>' ?></td></tr>
+                    <?php if ($model->title): ?><tr><th scope="row">Title</th><td><?= Html::encode($model->title) ?></td></tr><?php endif; ?>
+                </table>
+            </div>
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header ui-section">Attachments</div>
+                <div class="card-body">
+                    <?php if (!$model->attachments): ?>
+                        <span class="small text-muted">No files attached.</span>
+                    <?php endif; ?>
+                    <?php foreach ($model->attachments as $k => $att): ?>
+                        <div class="ui-file mb-1"><i class="fas fa-paperclip text-muted me-1" aria-hidden="true"></i>
+                            <?= Html::a('Attachment ' . ($k + 1) . ' (' . strtoupper(pathinfo($att->path, PATHINFO_EXTENSION)) . ')', Url::to('@web' . $att->path), ['target' => '_blank', 'rel' => 'noopener']) ?></div>
+                    <?php endforeach; ?>
                 </div>
             </div>
         </div>
-
-        <!-- Payment Info -->
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header py-2"><strong class="small">Payment</strong></div>
-                <div class="card-body py-3">
-                    <table class="table table-sm table-borderless mb-0">
-                        <tr><th class="text-muted" style="width:40%">Status</th>
-                            <td><span class="badge bg-<?= $payColors[$model->payment_status ?? 0] ?? 'secondary' ?>"><?= $payLabels[$model->payment_status ?? 0] ?? '—' ?></span></td></tr>
-                        <?php if ((int)$model->payment_status === 1): ?>
-                        <tr><th class="text-muted">Payment Date</th><td><?= $model->payment_date ? date('d M Y', strtotime($model->payment_date)) : '—' ?></td></tr>
-                        <tr><th class="text-muted">Payment Amount</th><td>₹<?= number_format((float)$model->payment_amount, 2) ?></td></tr>
-                        <?php if ((float)$model->tds_amount > 0): ?>
-                        <tr><th class="text-muted">TDS Amount</th><td>₹<?= number_format((float)$model->tds_amount, 2) ?></td></tr>
-                        <?php endif; ?>
-                        <?php endif; ?>
-                        <?php if ($model->payment_remarks): ?>
-                        <tr><th class="text-muted">Remarks</th><td><?= Html::encode($model->payment_remarks) ?></td></tr>
-                        <?php endif; ?>
-                    </table>
-
-                    <?php if (!empty($attachments)): ?>
-                    <hr class="my-2">
-                    <div class="sec-title mb-1">Attachments</div>
-                    <?php foreach ($attachments as $ai => $att): ?>
-                        <a href="<?= $att->path ?>" target="_blank" class="small d-block">Attachment <?= $ai + 1 ?></a>
-                    <?php endforeach; ?>
-                    <?php endif; ?>
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header ui-section">Totals</div>
+                <div class="card-body">
+                    <dl class="inv-totals mb-0">
+                        <dt>Sub total</dt><dd class="num"><?= $inr($model->grand_total) ?></dd>
+                        <?php foreach ($taxCols as $k => $label): ?><dt><?= $label ?></dt><dd class="num"><?= $inr($model->{$k . '_amount'}) ?></dd><?php endforeach; ?>
+                        <?php if ($expenses): ?><dt>Extra expenses</dt><dd class="num"><?= $inr($extra) ?></dd><?php endif; ?>
+                        <?php if ((float)$model->round_off): ?><dt>Round off</dt><dd class="num"><?= $inr($model->round_off) ?></dd><?php endif; ?>
+                        <dt class="is-net">Net total</dt><dd class="num is-net"><?= $inr($model->net_total) ?></dd>
+                    </dl>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Line Items -->
-    <div class="card border-0 shadow-sm mt-3">
-        <div class="card-header bg-white py-2"><strong class="small">Line Items</strong> <span class="badge bg-secondary ms-1"><?= count($lineItems) ?></span></div>
-        <div class="table-responsive">
-            <table class="table table-sm list-table mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th style="width:30px">#</th>
-                        <th>Product</th>
-                        <th>HSN</th>
-                        <th class="text-end">Qty</th>
-                        <th class="text-end">Rate</th>
-                        <th class="text-end">Item Total</th>
-                        <th class="text-end">SGST</th>
-                        <th class="text-end">CGST</th>
-                        <th class="text-end">IGST</th>
-                        <th class="text-end">Total</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($lineItems)): ?>
-                        <tr><td colspan="10" class="text-muted text-center py-3">No line items.</td></tr>
-                    <?php else: ?>
-                        <?php foreach ($lineItems as $i => $d): ?>
-                        <tr>
-                            <td class="text-muted"><?= $i + 1 ?></td>
-                            <td><?= Html::encode($d->product) ?></td>
-                            <td class="text-muted small"><?= Html::encode($d->hsn ?: '—') ?></td>
-                            <td class="text-end"><?= $d->qty ?></td>
-                            <td class="text-end">₹<?= number_format((float)$d->price_per_qty, 2) ?></td>
-                            <td class="text-end">₹<?= number_format((float)$d->item_total, 2) ?></td>
-                            <td class="text-end small"><?= (float)$d->sgst_amount > 0 ? '₹' . number_format((float)$d->sgst_amount, 2) . ' (' . $d->sgst_percent . '%)' : '—' ?></td>
-                            <td class="text-end small"><?= (float)$d->cgst_amount > 0 ? '₹' . number_format((float)$d->cgst_amount, 2) . ' (' . $d->cgst_percent . '%)' : '—' ?></td>
-                            <td class="text-end small"><?= (float)$d->igst_amount > 0 ? '₹' . number_format((float)$d->igst_amount, 2) . ' (' . $d->igst_percent . '%)' : '—' ?></td>
-                            <td class="text-end fw-semibold">₹<?= number_format((float)$d->total_amount, 2) ?></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <?php if (!empty($expenses)): ?>
-    <!-- Extra Expenses -->
-    <div class="card border-0 shadow-sm mt-3">
-        <div class="card-header bg-white py-2"><strong class="small">Extra Expenses</strong></div>
-        <div class="table-responsive">
-            <table class="table table-sm list-table mb-0">
-                <thead class="table-light">
-                    <tr><th>#</th><th>Description</th><th>Ledger</th><th class="text-end">Amount</th></tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($expenses as $ei => $ex): ?>
-                    <tr>
-                        <td class="text-muted"><?= $ei + 1 ?></td>
-                        <td><?= Html::encode($ex->product) ?></td>
-                        <td class="small text-muted"><?= Html::encode($ex->ledger->title ?? '—') ?></td>
-                        <td class="text-end fw-semibold">₹<?= number_format((float)$ex->item_total, 2) ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    <?php endif; ?>
 </div>
-
-<?php if ($model->invoice_role == 2): ?>
-<?php $this->registerJs(<<<JS
-jQuery('#btn-convert').on('click', function() {
-    var btn = jQuery(this);
-    Swal.fire({
-        icon: 'question', title: 'Convert to Actual Invoice?',
-        text: 'This will mark this invoice as an actual invoice.',
-        showCancelButton: true, confirmButtonText: 'Yes, convert'
-    }).then(function(r) {
-        if (r.isConfirmed) {
-            jQuery.post('{$convertUrl}', function(resp) {
-                if (resp.status == 1) {
-                    Swal.fire({icon:'success',title:'Success',text:resp.msg,timer:1500,showConfirmButton:false}).then(function(){ location.reload(); });
-                } else {
-                    Swal.fire({icon:'error',title:'Error',text:resp.msg});
-                }
-            }, 'json');
-        }
-    });
-});
-JS, \yii\web\View::POS_READY); ?>
-<?php endif; ?>

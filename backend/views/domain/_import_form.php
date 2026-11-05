@@ -7,10 +7,14 @@ use yii\bootstrap5\ActiveForm;
 $this->title = 'Bulk Import Domains';
 ?>
 
-<div class="domain-import">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h4 class="fw-semibold mb-0">Bulk Import Domains</h4>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back to List', ['index'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
+<div class="ui-page domain-import">
+    <div class="ui-head">
+        <div>
+            <h1>Bulk Import Domains</h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back to List', ['index'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
+        </div>
     </div>
 
     <div class="row">

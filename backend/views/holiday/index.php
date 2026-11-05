@@ -17,15 +17,9 @@ $models     = $dataProvider->getModels();
 $pagination = $dataProvider->getPagination();
 $req = '<span class="text-danger">*</span>';
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-</style>
 
-<div class="holiday-index">
-    <h5 class="fw-semibold mb-3">Manage Holidays</h5>
+<div class="ui-page holiday-index">
+    <div class="ui-head"><div><h1>Manage Holidays</h1></div></div>
 
     <!-- Inline Add Holiday Form (matches Yii1 admin.php panel-heading) -->
     <div class="card border-0 shadow-sm mb-3">

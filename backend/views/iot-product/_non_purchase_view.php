@@ -7,10 +7,12 @@ use yii\bootstrap5\Html;
 
 $this->title = 'Non-Purchase Entry #' . $model->id;
 ?>
-<div class="non-purchase-view">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0">Non-Purchase Entry #<?= $model->id ?></h5>
-        <div class="d-flex gap-2">
+<div class="ui-page non-purchase-view">
+    <div class="ui-head">
+        <div>
+            <h1>Non-Purchase Entry #<?= $model->id ?></h1>
+        </div>
+        <div class="ui-actions">
             <?= Html::a('<i class="fas fa-pen"></i> Edit', ['update-non-purchase', 'id' => $model->id], ['class' => 'btn btn-outline-primary btn-sm', 'encode' => false]) ?>
             <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['non-purchased'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
         </div>

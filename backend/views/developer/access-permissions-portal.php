@@ -82,13 +82,15 @@ if ($isApk) {
 .perm-badge{cursor:pointer;user-select:none}
 </style>
 
-<div class="developer-access-permissions">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page developer-access-permissions">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold"><?= Html::encode($title) ?></h5>
-            <small class="text-muted"><?= Html::encode($developer->developer_name) ?></small>
+            <h1><?= Html::encode($title) ?></h1>
+            <div class="ui-sub"><?= Html::encode($developer->developer_name) ?></div>
         </div>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['view', 'id' => $developer->id], ['class' => 'btn btn-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['view', 'id' => $developer->id], ['class' => 'btn btn-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm">

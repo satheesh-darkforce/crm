@@ -1,0 +1,7 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   HR — employees, attendance, leave, holidays, payslips, allowances, RFID.
+   Loaded by HrAsset on top of page-ui.css. Module-specific pieces only.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ui-page .num { font-variant-numeric: tabular-nums; }
+.ui-page .mono { font-family: var(--bs-font-monospace); font-size: .85em; letter-spacing: .02em; }

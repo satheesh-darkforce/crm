@@ -36,41 +36,78 @@ class Project extends ActiveRecord
     const STATUS_ACTIVE   = 1;
     const STATUS_INACTIVE = 0;
 
-    // project_status values
-    const PROJECT_STATUS_ACTIVE     = 1;
-    const PROJECT_STATUS_COMPLETED  = 2;
-    const PROJECT_STATUS_ON_HOLD    = 3;
-    const PROJECT_STATUS_CANCELLED  = 4;
+    // project_status values (Yii1: 1=Inprogress, 2=Waiting to assign, 3=Completed, 4=Hold)
+    const PROJECT_STATUS_IN_PROGRESS = 1;
+    const PROJECT_STATUS_WAITING     = 2;
+    const PROJECT_STATUS_COMPLETED   = 3;
+    const PROJECT_STATUS_HOLD        = 4;
+    /** Default status for new projects (kept for existing callers). */
+    const PROJECT_STATUS_ACTIVE      = self::PROJECT_STATUS_IN_PROGRESS;
+
+    const TYPE_PRODUCTIVE     = 1;
+    const TYPE_NON_PRODUCTIVE = 2;
+
+    /** Hours are entered in hours and stored in seconds; cap keeps INT(11) safe. */
+    const MAX_ESTIMATION_HOURS = 500000;
+    const MAX_ESTIMATION_COST  = 9999999999;
+    const MAX_PHASE            = 15;
+    const MAX_MILESTONE        = 15;
 
     // industry_type values
     const INDUSTRY_IT  = 1;
     const INDUSTRY_IOT = 2;
+
+    /** Add/Edit Project form: only these fields can be posted (status, phase links etc. are server-set). */
+    const SCENARIO_FORM = 'form';
 
     public static function tableName(): string
     {
         return 'project';
     }
 
+    public function scenarios(): array
+    {
+        $scenarios = parent::scenarios();
+        $scenarios[self::SCENARIO_FORM] = [
+            'client_id', 'title', 'description', 'project_type', 'industry_type',
+            'total_estimation_hours', 'total_estimation_cost', 'employee_id',
+        ];
+        return $scenarios;
+    }
+
     public function rules(): array
     {
+        // Most projects migrated from Yii1 have no estimation hours/cost (Yii1 never
+        // required them). They are required for new projects and cannot be blanked
+        // once set, but a legacy project without them stays editable. The form
+        // marks legacy-empty inputs with data-legacy-empty for the JS mirror.
+        $estimateRequired = fn(string $attr) => fn($m) => $m->isNewRecord
+            || ($m->getOldAttribute($attr) !== null && $m->getOldAttribute($attr) !== '' && (float)$m->getOldAttribute($attr) > 0);
+        $estimateRequiredClient = fn(string $id, string $extra) =>
+            "function (attribute, value) { return !jQuery('#$id').data('legacy-empty') && ($extra); }";
+
         return [
             [['title', 'description', 'color_code'], 'trim'],
             [['client_id', 'title', 'description', 'project_type', 'industry_type'], 'required'],
             // Estimation hours required unless the project is IOT (then optional, defaults to 0).
             [['total_estimation_hours'], 'required',
-                'when'       => function ($model) { return (int)$model->industry_type !== self::INDUSTRY_IOT; },
-                'whenClient' => "function (attribute, value) { return jQuery('#project-industry_type').val() != '2'; }"],
+                'when'       => fn($m) => (int)$m->industry_type !== self::INDUSTRY_IOT && $estimateRequired('total_estimation_hours')($m),
+                'whenClient' => $estimateRequiredClient('total_estimation_hours', "jQuery('#project-industry_type').val() != '2'")],
             [['industry_type'], 'in', 'range' => [self::INDUSTRY_IT, self::INDUSTRY_IOT], 'message' => 'Industry Type must be IT or IOT.'],
             [['industry_type'], 'integer'],
             [['total_estimation_cost'], 'required',
-                'when'       => function ($model) { return (int)$model->project_type !== 2; },
-                'whenClient' => "function (attribute, value) { return jQuery('#project-project_type').val() != '2'; }"],
+                'when'       => fn($m) => (int)$m->project_type !== self::TYPE_NON_PRODUCTIVE && $estimateRequired('total_estimation_cost')($m),
+                'whenClient' => $estimateRequiredClient('total_estimation_cost', "jQuery('#project-project_type').val() != '2'")],
             [['total_estimation_cost'], 'compare', 'compareValue' => 0, 'operator' => '>', 'type' => 'number',
                 'message'    => 'Total Estimation Cost must be greater than 0 for Productive projects.',
-                'when'       => function ($model) { return (int)$model->project_type === 1; },
-                'whenClient' => "function (attribute, value) { return jQuery('#project-project_type').val() == '1'; }"],
+                'when'       => fn($m) => (int)$m->project_type === self::TYPE_PRODUCTIVE
+                    && ($estimateRequired('total_estimation_cost')($m) || ($m->total_estimation_cost !== null && $m->total_estimation_cost !== '')),
+                'whenClient' => "function (attribute, value) { return jQuery('#project-project_type').val() == '1' && (value !== '' || !jQuery('#total_estimation_cost').data('legacy-empty')); }"],
             [['client_id', 'project_type', 'main_project_id', 'phase_value', 'milestone_value', 'milestone_hours', 'milestone_status', 'project_status', 'status'], 'integer'],
             [['project_type'], 'in', 'range' => [1, 2], 'message' => 'Project Type must be Productive or Non Productive.'],
+            [['project_status'], 'in', 'range' => array_keys(self::statusOptions())],
+            [['client_id'], 'exist', 'targetClass' => ClientModel::class, 'targetAttribute' => 'id', 'filter' => ['status' => 1],
+                'message' => 'Select an active client.', 'when' => fn($m) => $m->isNewRecord || (int)$m->getOldAttribute('client_id') !== (int)$m->client_id],
             // total_estimation_hours is stored in SECONDS (hours * 3600). Cap at
             // INT(11) safe max (2,147,483,647) so the DB never overflows.
             // 500,000 hours = 1,800,000,000 seconds — well under the limit.
@@ -82,7 +119,8 @@ class Project extends ActiveRecord
             [['description', 'employee_id'], 'string'],
             [['date', 'lastupdate'], 'safe'],
             [['title', 'color_code'], 'string', 'max' => 255],
-            ['title', 'unique', 'filter' => ['status' => 1], 'message' => 'Project title already exists.'],
+            ['title', 'unique', 'filter' => ['status' => 1], 'message' => 'Project title already exists.',
+                'when' => fn($m) => $m->isNewRecord || strcasecmp(trim((string)$m->getOldAttribute('title')), (string)$m->title) !== 0],
         ];
     }
 
@@ -127,19 +165,60 @@ class Project extends ActiveRecord
         return $this->hasMany(WorkReport::class, ['project_id' => 'id']);
     }
 
-    public function getAttachments(): \yii\db\ActiveQuery
-    {
-        return $this->hasMany(ProjectAttachments::class, ['project_id' => 'id']);
-    }
-
     public function getStatusLabel(): string
     {
-        return match ((int)$this->project_status) {
-            self::PROJECT_STATUS_ACTIVE    => 'Active',
-            self::PROJECT_STATUS_COMPLETED => 'Completed',
-            self::PROJECT_STATUS_ON_HOLD   => 'On Hold',
-            self::PROJECT_STATUS_CANCELLED => 'Cancelled',
-            default                        => 'Unknown',
-        };
+        return self::statusOptions()[(int)$this->project_status] ?? 'Unknown';
+    }
+
+    public static function statusOptions(): array
+    {
+        return [
+            self::PROJECT_STATUS_IN_PROGRESS => 'In progress',
+            self::PROJECT_STATUS_WAITING     => 'Waiting to assign',
+            self::PROJECT_STATUS_COMPLETED   => 'Completed',
+            self::PROJECT_STATUS_HOLD        => 'Hold',
+        ];
+    }
+
+    /** Pill tone for a project status (see .ui-pill in page-ui.css). */
+    public static function statusTone(int $status): string
+    {
+        return [
+            self::PROJECT_STATUS_IN_PROGRESS => 'accent',
+            self::PROJECT_STATUS_WAITING     => 'warning',
+            self::PROJECT_STATUS_COMPLETED   => 'success',
+            self::PROJECT_STATUS_HOLD        => 'danger',
+        ][$status] ?? 'neutral';
+    }
+
+    public static function typeOptions(): array
+    {
+        return [self::TYPE_PRODUCTIVE => 'Productive', self::TYPE_NON_PRODUCTIVE => 'Non Productive'];
+    }
+
+    public static function industryOptions(): array
+    {
+        return [self::INDUSTRY_IT => 'IT', self::INDUSTRY_IOT => 'IOT'];
+    }
+
+    /** Phase / milestone progress (milestone_status). */
+    public static function milestoneStatusOptions(): array
+    {
+        return [0 => 'Not started', 1 => 'In progress', 2 => 'Delivered', 3 => 'Closed'];
+    }
+
+    public static function milestoneStatusTone(int $status): string
+    {
+        return [0 => 'neutral', 1 => 'accent', 2 => 'success', 3 => 'neutral'][$status] ?? 'neutral';
+    }
+
+    /** Estimation hours for display/editing (stored in seconds); raw value if it is not numeric. */
+    public function getEstimationHoursInput(): string
+    {
+        $v = $this->total_estimation_hours;
+        if ($v === null || $v === '') {
+            return '';
+        }
+        return is_numeric($v) ? rtrim(rtrim(number_format((float)$v / 3600, 2, '.', ''), '0'), '.') : (string)$v;
     }
 }

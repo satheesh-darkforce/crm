@@ -15,10 +15,14 @@ $this->title = 'Add Quotation';
 $backUrl = Url::to(['index']);
 ?>
 
-<div class="d-flex justify-content-between mt-4 mb-2">
-    <div><h3>Add Quotation</h3></div>
-    <div><?= Html::a('Back', $backUrl, [
-        'class'   => 'btn btn-secondary',
+<div class="ui-page client-quotation-form">
+<div class="ui-head">
+    <div>
+        <h1>Add quotation</h1>
+        <div class="ui-sub">Quote a client; the number is assigned when you save.</div>
+    </div>
+    <div class="ui-actions"><?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', $backUrl, [
+        'class'   => 'btn btn-outline-secondary btn-sm', 'encode' => false,
         'onclick' => 'event.preventDefault(); window.location.replace(this.href); return false;',
     ]) ?></div>
 </div>
@@ -32,3 +36,4 @@ $backUrl = Url::to(['index']);
     'quotenum' => $quotenum,
     'requireOfficialContactBeforeCreate' => true,
 ]) ?>
+</div>

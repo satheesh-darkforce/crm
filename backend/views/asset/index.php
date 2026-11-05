@@ -25,28 +25,19 @@ $vendorMap  = array_column($vendors, 'company_name', 'id');
 $tagMap     = array_column($tags, 'name', 'id');
 $req        = Yii::$app->request;
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
-</style>
 
-<div class="asset-index">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page asset-index">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Assets</h5>
-            <small class="text-muted"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></small>
+            <h1>Assets</h1>
+            <div class="ui-sub"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></div>
         </div>
-        <div class="d-flex gap-2">
+        <div class="ui-actions">
             <?= Html::a('+ Add Asset', ['create'], ['class' => 'btn btn-primary btn-sm']) ?>
             <?= Html::a('<i class="fas fa-tag"></i> Lookup Tables', ['categories'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
         </div>
     </div>
 
-    <!-- Flash messages -->
     <!-- Filters -->
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-body py-2 px-3">

@@ -24,6 +24,16 @@ use yii\web\UploadedFile;
  */
 class DeveloperController extends Controller
 {
+    /** Full pages get the HR module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        \backend\assets\HrAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
+    /** Routes that make someone an employee manager (explicit grants only, never defaults). */
+    private const MANAGE_ROUTES = ['developer/index', 'developer/update', 'developer/create', 'developer/ex-employees'];
+
     public function actionIndex(): string
     {
         $query = Developer::find()->where(['status' => 1])->orderBy(['id' => SORT_ASC]);
@@ -48,6 +58,8 @@ class DeveloperController extends Controller
 
     public function actionView(int $id): string
     {
+        // developer/view is a developer default: their own profile only, unless they manage employees.
+        \backend\components\HrAccess::ensureOwnOrManager($id, self::MANAGE_ROUTES, 'Employee');
         $model           = $this->findModel($id, false);
         $currentMonthAll = WorkReport::getByEmployee($id, 1);
         $lastMonthAll    = WorkReport::getByEmployee($id, 2);
@@ -777,6 +789,10 @@ class DeveloperController extends Controller
             return $this->asJson(['status' => 0, 'msg' => 'Invalid PIN.']);
         }
 
+        // Only your own PIN (admins / sub-admins may manage anyone's). Stops password guessing on others.
+        if (!\backend\components\HrAccess::isManager() && !\backend\components\HrAccess::isOwn($developerId)) {
+            return $this->asJson(['status' => 0, 'msg' => 'You can only change your own PIN.']);
+        }
         $developer = Developer::findOne(['id' => $developerId, 'status' => 1]);
         if (!$developer) {
             return $this->asJson(['status' => 0, 'msg' => 'Invalid user.']);
@@ -807,6 +823,10 @@ class DeveloperController extends Controller
             return $this->asJson(['status' => 0, 'msg' => 'Invalid input.']);
         }
 
+        // Only your own PIN (admins / sub-admins may manage anyone's). Stops password guessing on others.
+        if (!\backend\components\HrAccess::isManager() && !\backend\components\HrAccess::isOwn($developerId)) {
+            return $this->asJson(['status' => 0, 'msg' => 'You can only change your own PIN.']);
+        }
         $developer = Developer::findOne(['id' => $developerId, 'status' => 1]);
         if (!$developer) {
             return $this->asJson(['status' => 0, 'msg' => 'Invalid user.']);

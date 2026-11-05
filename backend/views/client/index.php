@@ -1,321 +1,213 @@
 <?php
 /** @var \yii\web\View $this */
 /** @var \yii\data\ArrayDataProvider $dataProvider */
-/** @var string $searchName */
-/** @var string $clientName */
-/** @var string $companyName */
-/** @var string $phone */
-/** @var string $email */
-/** @var string $gstNo */
-/** @var string $clientType */
+/** @var array $filters  name, client_name, company_name, phone, email_id, gst_no, client_type */
 
+use backend\models\ClientModel;
+use common\components\UserAccess;
 use yii\bootstrap5\Html;
 use yii\helpers\Url;
 use yii\widgets\LinkPager;
 
 $this->title = 'Clients';
 
-// work_report.total_time is stored in SECONDS (Yii1 parity).
-// Render as HH:MM, matching Yii1's Utility::convertSecondsToHours().
-$fmt = fn(?int $secs): string => ($secs > 0)
-    ? sprintf('%02d:%02d', intdiv($secs, 3600), intdiv($secs % 3600, 60))
-    : '—';
+// work_report.total_time is stored in SECONDS — render as HH:MM (Yii1 Utility::convertSecondsToHours()).
+$fmt = fn(int $secs): string => $secs > 0 ? sprintf('%02d:%02d', intdiv($secs, 3600), intdiv($secs % 3600, 60)) : '—';
 
-$typeLabels = [1 => 'Inter-State', 2 => 'Intra-State', 3 => 'International'];
-$typeColors = [1 => 'primary', 2 => 'info', 3 => 'success'];
+$typeLabels = ClientModel::typeOptions();
+$typeTones  = [ClientModel::TYPE_INTERSTATE => 'accent', ClientModel::TYPE_INTRASTATE => 'success', ClientModel::TYPE_INTERNATIONAL => 'warning'];
 
-$models = $dataProvider->getModels();
-$pagination = $dataProvider->getPagination();
+$models      = $dataProvider->getModels();
+$pagination  = $dataProvider->getPagination();
+$total       = $dataProvider->getTotalCount();
+$offset      = $pagination ? $pagination->getOffset() : 0;
+$activeCount = count(array_filter($filters, fn($v) => $v !== ''));
+$hasFilters  = $activeCount > 0;
+
+$can = [
+    'create'      => UserAccess::checkAccess('client/create'),
+    'view'        => UserAccess::checkAccess('client/view'),
+    'update'      => UserAccess::checkAccess('client/update'),
+    'reset'       => UserAccess::checkAccess('client/reset-password'),
+    'permissions' => UserAccess::checkAccess('client/access-permissions'),
+    'delete'      => UserAccess::checkAccess('client/delete'),
+    'invoice'     => UserAccess::checkAccess('invoice/create'),
+];
 ?>
-
-<style>
-.client-table th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #6c757d; font-weight: 600; border-bottom: 2px solid #dee2e6; white-space: nowrap; }
-.client-table td { vertical-align: middle; font-size: .875rem; }
-.client-table tbody tr:hover { background: #f8f9ff; }
-.client-table td.client-name-cell { min-width: 160px; max-width: 260px; }
-.client-table td.client-name-cell a.fw-semibold { display: inline-block; word-break: break-word; overflow-wrap: anywhere; white-space: normal; line-height: 1.25; }
-.action-btn { padding: .2rem .55rem; font-size: .78rem; }
-.pagination { --bs-pagination-font-size: .825rem; }
-.pagination .page-link { border-radius: 6px !important; margin: 0 2px; }
-/* Keep global layout's overflow:visible on desktop so the action dropdown
-   can escape the table; only enable horizontal scroll on narrow screens
-   where the 9-column table actually overflows (overflow-x:auto would
-   otherwise force overflow-y to clip the dropdown). */
-@media (max-width: 767.98px) {
-    .client-index .table-responsive { overflow-x: auto !important; }
-    .client-table { min-width: 720px; }
-    .client-table td { font-size: .82rem; }
-}
-</style>
-
-<div class="client-index">
-
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page client-index">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Clients</h5>
-            <small class="text-muted"><?= count($models) ?> of <?= $dataProvider->getTotalCount() ?> clients</small>
+            <h1>Clients</h1>
+            <div class="ui-sub"><?= number_format($total) ?> active client<?= $total == 1 ? '' : 's' ?><?= $hasFilters ? ' matching your search' : '' ?> · most recent work first</div>
         </div>
-        <?= Html::a('+ Add Client', ['create'], ['class' => 'btn btn-primary btn-sm']) ?>
+        <div class="ui-actions">
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#client-search"
+                    aria-expanded="<?= $hasFilters ? 'true' : 'false' ?>" aria-controls="client-search">
+                <i class="fas fa-search me-1"></i>Search<?php if ($hasFilters): ?> <span class="ui-count ms-1"><?= $activeCount ?></span><?php endif; ?>
+            </button>
+            <?php if ($can['create']): ?>
+                <?= Html::a('<i class="fas fa-plus me-1"></i>Add Client', ['create'], ['class' => 'btn btn-primary btn-sm', 'encode' => false]) ?>
+            <?php endif; ?>
+        </div>
     </div>
 
-    <!-- Filters (Yii1 parity: client_name, company_name, phone, email, gst, type) -->
-    <?php
-    $hasAnyFilter = ($searchName !== '' || $clientName !== '' || $companyName !== ''
-        || $phone !== '' || $email !== '' || $gstNo !== '' || $clientType !== '');
-    ?>
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body py-2 px-3">
-            <form method="get" action="<?= Url::to(['index']) ?>" class="row g-2 align-items-end">
-                <div class="col-6 col-md-2">
-                    <label class="form-label small mb-1">Client Name</label>
-                    <input type="text" name="client_name" value="<?= Html::encode($clientName) ?>"
-                           class="form-control form-control-sm" placeholder="Client name…">
-                </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label small mb-1">Company</label>
-                    <input type="text" name="company_name" value="<?= Html::encode($companyName) ?>"
-                           class="form-control form-control-sm" placeholder="Company…">
-                </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label small mb-1">Phone</label>
-                    <input type="text" name="phone" value="<?= Html::encode($phone) ?>"
-                           class="form-control form-control-sm" placeholder="Phone…">
-                </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label small mb-1">Email</label>
-                    <input type="text" name="email_id" value="<?= Html::encode($email) ?>"
-                           class="form-control form-control-sm" placeholder="Email…">
-                </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label small mb-1">GST No.</label>
-                    <input type="text" name="gst_no" value="<?= Html::encode($gstNo) ?>"
-                           class="form-control form-control-sm" placeholder="GST…">
-                </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label small mb-1">Type</label>
-                    <select name="client_type" class="form-select form-select-sm">
-                        <option value="">All</option>
-                        <option value="1" <?= $clientType === '1' ? 'selected' : '' ?>>Inter-State</option>
-                        <option value="2" <?= $clientType === '2' ? 'selected' : '' ?>>Intra-State</option>
-                        <option value="3" <?= $clientType === '3' ? 'selected' : '' ?>>International</option>
-                    </select>
-                </div>
-                <div class="col-12 d-flex gap-2 align-items-center">
-                    <button class="btn btn-secondary btn-sm">Search</button>
-                    <?php if ($hasAnyFilter): ?>
-                        <?= Html::a('Clear', ['index'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
+    <div class="collapse <?= $hasFilters ? 'show' : '' ?>" id="client-search">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body py-3">
+                <form method="get" action="<?= Url::to(['index']) ?>" class="row g-2 align-items-end">
+                    <?php foreach (['client_name' => ['Client Name', 'Client name'], 'company_name' => ['Company', 'Company name'],
+                                    'phone' => ['Phone', 'Phone number'], 'email_id' => ['Email', 'name@company.com'],
+                                    'gst_no' => ['GST No.', 'e.g. 33ABCDE1234F1Z5']] as $field => [$label, $ph]): ?>
+                    <div class="col-lg-2 col-md-4 col-sm-6">
+                        <label class="form-label small mb-1" for="client-filter-<?= $field ?>"><?= $label ?></label>
+                        <input type="text" id="client-filter-<?= $field ?>" name="<?= $field ?>" value="<?= Html::encode($filters[$field]) ?>"
+                               class="form-control form-control-sm" maxlength="100" placeholder="<?= $ph ?>">
+                    </div>
+                    <?php endforeach; ?>
+                    <div class="col-lg-2 col-md-4 col-sm-6">
+                        <label class="form-label small mb-1" for="client-filter-type">Type</label>
+                        <?= Html::dropDownList('client_type', $filters['client_type'], $typeLabels, ['class' => 'form-select form-select-sm', 'prompt' => 'All', 'id' => 'client-filter-type']) ?>
+                    </div>
+                    <?php if ($filters['name'] !== ''): ?>
+                        <?= Html::hiddenInput('name', $filters['name']) ?>
                     <?php endif; ?>
-                </div>
-            </form>
+                    <div class="col-12 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-search me-1"></i>Search</button>
+                        <?= Html::a('Reset', ['index'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
-    <!-- Table card -->
     <div class="card border-0 shadow-sm">
         <div class="table-responsive">
-            <table class="table client-table mb-0">
+            <table class="table list-table ui-table stack mb-0">
                 <thead class="table-light">
-                    <tr>
-                        <th style="width:40px">#</th>
-                        <th>Client</th>
-                        <th>Company</th>
-                        <th>Contact</th>
-                        <th>Type</th>
-                        <th class="text-center">Last Work</th>
-                        <th class="text-center">Cur Month</th>
-                        <th class="text-center">Prev Month</th>
-                        <th class="text-end" style="width:80px">Actions</th>
-                    </tr>
+                <tr>
+                    <th style="width:40px">#</th>
+                    <th>Client</th>
+                    <th>Contact</th>
+                    <th>Type</th>
+                    <th class="text-center">Last Work</th>
+                    <th class="text-center" title="Hours logged this month"><?= date('M') ?> Hrs</th>
+                    <th class="text-center" title="Hours logged last month"><?= date('M', strtotime(date('Y-m-01') . ' -1 month')) ?> Hrs</th>
+                    <th class="text-end" style="width:56px"><span class="visually-hidden">Actions</span></th>
+                </tr>
                 </thead>
                 <tbody>
-                <?php if (empty($models)): ?>
-                    <tr>
-                        <td colspan="9" class="text-center text-muted py-5">
-                            No clients found.
-                            <?= $searchName ? Html::a('Clear search', ['index']) : '' ?>
-                        </td>
-                    </tr>
-                <?php else: ?>
+                <?php if (!$models): ?>
+                    <tr class="ui-empty-row"><td colspan="8" class="ui-empty-cell">
+                        <?php if ($hasFilters): ?>
+                            <?= $this->render('@backend/views/_ui/_empty', [
+                                'icon' => 'search', 'title' => 'No clients match your search', 'text' => 'Try fewer or different search terms.',
+                                'action' => Html::a('Clear search', ['index'], ['class' => 'btn btn-outline-secondary btn-sm']),
+                            ]) ?>
+                        <?php else: ?>
+                            <?= $this->render('@backend/views/_ui/_empty', [
+                                'icon' => 'building', 'title' => 'No clients yet', 'text' => 'Clients you add get a portal login and appear here.',
+                                'action' => $can['create'] ? Html::a('<i class="fas fa-plus me-1"></i>Add Client', ['create'], ['class' => 'btn btn-primary btn-sm', 'encode' => false]) : null,
+                            ]) ?>
+                        <?php endif; ?>
+                    </td></tr>
+                <?php endif; ?>
+                <?php foreach ($models as $i => $row): ?>
                     <?php
-                    foreach ($models as $i => $row):
-                        $type = (int)($row['client_type'] ?? 0);
+                    $type     = (int)($row['client_type'] ?? 0);
+                    $name     = (string)($row['client_name'] ?? '');
+                    $curSecs  = (int)$row['cur_month_secs'];
+                    $lastSecs = (int)$row['last_month_secs'];
                     ?>
                     <tr>
-                        <td class="text-muted"><?= $pagination ? ($pagination->getOffset() + $i + 1) : ($i + 1) ?></td>
-
-                        <!-- Client name -->
-                        <td class="client-name-cell">
-                            <a href="<?= Url::to(['view', 'id' => $row['id']]) ?>"
-                               class="fw-semibold text-decoration-none text-dark">
-                                <?= Html::encode($row['client_name']) ?>
-                            </a>
-                        </td>
-
-                        <td><?= Html::encode($row['company_name']) ?></td>
-
-                        <!-- Contact -->
-                        <td>
-                            <?php if ($row['phone']): ?>
-                                <div class="text-muted small"><?= Html::encode($row['phone']) ?></div>
-                            <?php endif; ?>
-                            <?php if ($row['email_id']): ?>
-                                <div class="text-muted small"><?= Html::encode($row['email_id']) ?></div>
-                            <?php endif; ?>
-                        </td>
-
-                        <!-- Type badge -->
-                        <td>
-                            <?php if ($type && isset($typeLabels[$type])): ?>
-                                <span class="badge bg-<?= $typeColors[$type] ?? 'secondary' ?> bg-opacity-10 text-<?= $typeColors[$type] ?? 'secondary' ?> border border-<?= $typeColors[$type] ?? 'secondary' ?>" style="font-size:.72rem">
-                                    <?= $typeLabels[$type] ?>
-                                </span>
+                        <td class="cell-num muted"><?= $offset + $i + 1 ?></td>
+                        <td class="cell-title wrap">
+                            <?php if ($can['view']): ?>
+                                <?= Html::a(Html::encode($name ?: '-'), ['view', 'id' => $row['id']], ['class' => 'text-reset text-decoration-none']) ?>
                             <?php else: ?>
-                                <span class="text-muted">—</span>
+                                <?= Html::encode($name ?: '-') ?>
+                            <?php endif; ?>
+                            <?php if ($row['company_name'] && strcasecmp(trim($row['company_name']), trim($name)) !== 0): ?>
+                                <div class="sub"><?= Html::encode($row['company_name']) ?></div>
                             <?php endif; ?>
                         </td>
-
-                        <!-- Work stats -->
-                        <td class="text-center">
-                            <?php if ($row['last_work_date']): ?>
-                                <span class="badge bg-light text-dark border"><?= date('d M Y', strtotime($row['last_work_date'])) ?></span>
+                        <td class="small wrap" data-label="Contact">
+                            <?php $contact = array_filter([trim((string)$row['phone']), trim((string)$row['email_id'])]); ?>
+                            <?= $contact ? implode('<br>', array_map([Html::class, 'encode'], $contact)) : '<span class="muted">—</span>' ?>
+                        </td>
+                        <td data-label="Type">
+                            <?php if (isset($typeLabels[$type])): ?>
+                                <span class="ui-pill plain tone-<?= $typeTones[$type] ?>"><?= $typeLabels[$type] ?></span>
                             <?php else: ?>
-                                <span class="text-muted">—</span>
+                                <span class="ui-pill plain" title="Not set — edit the client to choose a type">Not set</span>
                             <?php endif; ?>
                         </td>
-                        <td class="text-center fw-semibold <?= $row['cur_month_secs'] > 0 ? 'text-success' : 'text-muted' ?>">
-                            <?= $fmt((int)$row['cur_month_secs']) ?>
+                        <td class="text-center small nowrap" data-label="Last Work">
+                            <?= $row['last_work_date'] ? date('d M Y', strtotime($row['last_work_date'])) : '<span class="muted">—</span>' ?>
                         </td>
-                        <td class="text-center text-muted">
-                            <?= $fmt((int)$row['last_month_secs']) ?>
-                        </td>
-
-                        <!-- Actions dropdown -->
-                        <td class="text-end">
+                        <td class="text-center nowrap <?= $curSecs > 0 ? 'fw-semibold text-success' : 'muted' ?>" data-label="<?= date('M') ?> Hrs"><?= $fmt($curSecs) ?></td>
+                        <td class="text-center nowrap muted" data-label="<?= date('M', strtotime(date('Y-m-01') . ' -1 month')) ?> Hrs"><?= $fmt($lastSecs) ?></td>
+                        <td class="cell-actions text-end">
                             <div class="dropdown">
-                                <button class="btn btn-outline-secondary action-btn dropdown-toggle"
-                                        type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                    &#8942;
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="min-width:180px;font-size:.825rem">
-                                    <li>
-                                        <?= Html::a('<i class="fas fa-eye"></i> View Details', ['view', 'id' => $row['id']],
-                                            ['class' => 'dropdown-item', 'encode' => false]) ?>
-                                    </li>
-                                    <li>
-                                        <?= Html::a('<i class="fas fa-pen"></i> Edit Client', ['update', 'id' => $row['id']],
-                                            ['class' => 'dropdown-item', 'encode' => false]) ?>
-                                    </li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><span class="dropdown-header" style="font-size:.7rem">INVOICES</span></li>
-                                    <li>
-                                        <?= Html::a('<i class="fas fa-file-alt"></i> Add Tax Invoice',
-                                            ['/invoice/create', 'client_id' => $row['id'], 'invoice_role' => 1],
-                                            ['class' => 'dropdown-item', 'encode' => false]) ?>
-                                    </li>
-                                    <li>
-                                        <?= Html::a('<i class="fas fa-clipboard"></i> Add Proforma Invoice',
-                                            ['/invoice/create', 'client_id' => $row['id'], 'invoice_role' => 2],
-                                            ['class' => 'dropdown-item', 'encode' => false]) ?>
-                                    </li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><span class="dropdown-header" style="font-size:.7rem">ACCOUNT</span></li>
-                                    <li>
-                                        <a class="dropdown-item" href="#"
-                                           data-bs-toggle="modal"
-                                           data-bs-target="#resetModal"
-                                           data-id="<?= $row['id'] ?>"
-                                           data-name="<?= Html::encode($row['client_name']) ?>">
-                                            <i class="fas fa-key"></i> Reset Password
-                                        </a>
-                                    </li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><span class="dropdown-header" style="font-size:.7rem">PERMISSIONS</span></li>
-                                    <li>
-                                        <?= Html::a('<i class="fas fa-key"></i> Portal Permissions',
-                                            ['access-permissions', 'id' => $row['id']],
-                                            ['class' => 'dropdown-item', 'encode' => false]) ?>
-                                    </li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li>
-                                        <?= Html::a('<i class="fas fa-ban"></i> Deactivate',
-                                            ['delete', 'id' => $row['id']],
-                                            [
-                                                'class'       => 'dropdown-item text-danger',
-                                                'encode'      => false,
-                                                'data-method' => 'post',
-                                                'data-confirm'=> 'Deactivate ' . Html::encode($row['client_name']) . '?',
-                                            ]
-                                        ) ?>
-                                    </li>
+                                <button class="btn btn-outline-secondary act-btn dropdown-toggle" type="button"
+                                        data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false"
+                                        aria-label="Actions for <?= Html::encode($name) ?>">&#8942;</button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="min-width:200px">
+                                    <?php if ($can['view']): ?>
+                                        <li><?= Html::a('<i class="fas fa-eye me-2"></i>View', ['view', 'id' => $row['id']], ['class' => 'dropdown-item', 'encode' => false]) ?></li>
+                                    <?php endif; ?>
+                                    <?php if ($can['update']): ?>
+                                        <li><?= Html::a('<i class="fas fa-pen me-2"></i>Edit', ['update', 'id' => $row['id']], ['class' => 'dropdown-item', 'encode' => false]) ?></li>
+                                    <?php endif; ?>
+                                    <?php if ($can['invoice']): ?>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><h6 class="dropdown-header">Invoices</h6></li>
+                                        <li><?= Html::a('<i class="fas fa-file-alt me-2"></i>Add Tax Invoice', ['/invoice/create', 'client_id' => $row['id'], 'invoice_role' => 1], ['class' => 'dropdown-item', 'encode' => false]) ?></li>
+                                        <li><?= Html::a('<i class="fas fa-clipboard me-2"></i>Add Proforma Invoice', ['/invoice/create', 'client_id' => $row['id'], 'invoice_role' => 2], ['class' => 'dropdown-item', 'encode' => false]) ?></li>
+                                    <?php endif; ?>
+                                    <?php if ($can['reset'] || $can['permissions']): ?>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><h6 class="dropdown-header">Portal account</h6></li>
+                                    <?php endif; ?>
+                                    <?php if ($can['reset']): ?>
+                                        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#resetModal"
+                                               data-url="<?= Url::to(['reset-password', 'id' => $row['id']]) ?>" data-name="<?= Html::encode($name) ?>" data-return="index">
+                                            <i class="fas fa-key me-2"></i>Reset Password</a></li>
+                                    <?php endif; ?>
+                                    <?php if ($can['permissions']): ?>
+                                        <li><?= Html::a('<i class="fas fa-user-shield me-2"></i>Portal Permissions', ['access-permissions', 'id' => $row['id']], ['class' => 'dropdown-item', 'encode' => false]) ?></li>
+                                    <?php endif; ?>
+                                    <?php if ($can['delete']): ?>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><?= Html::a('<i class="fas fa-ban me-2"></i>Deactivate', ['delete', 'id' => $row['id']], [
+                                            'class' => 'dropdown-item text-danger', 'encode' => false,
+                                            'data'  => ['method' => 'post', 'confirm' => 'Deactivate "' . $name . '"? The client is hidden from lists and can no longer log in to the portal.'],
+                                        ]) ?></li>
+                                    <?php endif; ?>
                                 </ul>
                             </div>
                         </td>
                     </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
+                <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
-
-        <!-- Pagination footer -->
-        <?php if ($pagination && $pagination->pageCount > 1): ?>
-        <div class="card-footer bg-white border-top-0 py-2 d-flex justify-content-between align-items-center">
-            <small class="text-muted">
-                Showing <?= $pagination->getOffset() + 1 ?>–<?= min($pagination->getOffset() + $pagination->pageSize, $dataProvider->getTotalCount()) ?>
-                of <?= $dataProvider->getTotalCount() ?>
-            </small>
-            <?php echo LinkPager::widget([
-                'pagination'        => $pagination,
-                'options'           => ['class' => 'pagination mb-0'],
-                'linkOptions'       => ['class' => 'page-link'],
+        <?php if ($pagination && $pagination->getPageCount() > 1): ?>
+        <div class="card-footer bg-white ui-pager">
+            <small class="text-muted">Showing <?= $offset + 1 ?>–<?= $offset + count($models) ?> of <?= number_format($total) ?></small>
+            <?= LinkPager::widget([
+                'pagination' => $pagination,
+                'options' => ['class' => 'pagination pagination-sm mb-0'],
                 'linkContainerOptions' => ['class' => 'page-item'],
-                'disabledListItemSubTagOptions' => ['tag' => 'a', 'class' => 'page-link'],
-                'activePageCssClass'  => 'active',
-                'disabledPageCssClass'=> 'disabled',
-                'maxButtonCount'    => 7,
-                'firstPageLabel'    => '«',
-                'lastPageLabel'     => '»',
-                'prevPageLabel'     => '‹',
-                'nextPageLabel'     => '›',
-            ]);
-            ?>
+                'linkOptions' => ['class' => 'page-link'],
+                'disabledListItemSubTagOptions' => ['tag' => 'span', 'class' => 'page-link'],
+                'maxButtonCount' => 5,
+                'firstPageLabel' => '«', 'lastPageLabel' => '»', 'prevPageLabel' => '‹', 'nextPageLabel' => '›',
+            ]) ?>
         </div>
         <?php endif; ?>
     </div>
-</div>
 
-<!-- Reset Password Modal -->
-<div class="modal fade" id="resetModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-sm">
-        <div class="modal-content">
-            <form method="post" id="resetForm" action="">
-                <?= Html::hiddenInput(Yii::$app->request->csrfParam, Yii::$app->request->getCsrfToken()) ?>
-                <div class="modal-header">
-                    <h6 class="modal-title fw-semibold">Reset Password</h6>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted small mb-2">Client: <strong id="resetClientName"></strong></p>
-                    <input type="password" name="new_password" class="form-control form-control-sm"
-                           placeholder="New password" required minlength="6" autocomplete="new-password">
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-sm btn-warning">Reset</button>
-                </div>
-            </form>
-        </div>
-    </div>
+    <?php if ($can['reset']): ?>
+        <?= $this->render('_reset-password-modal') ?>
+    <?php endif; ?>
 </div>
-
-<script>
-document.getElementById('resetModal').addEventListener('show.bs.modal', function(e) {
-    var btn    = e.relatedTarget;
-    var id     = btn.getAttribute('data-id');
-    var name   = btn.getAttribute('data-name');
-    var url    = <?= json_encode(Url::to(['/client/reset-password'])) ?>;
-    document.getElementById('resetClientName').textContent = name;
-    document.getElementById('resetForm').action = url + '?id=' + id;
-});
-</script>

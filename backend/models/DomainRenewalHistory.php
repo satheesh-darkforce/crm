@@ -22,11 +22,22 @@ use yii\db\ActiveRecord;
  */
 class DomainRenewalHistory extends ActiveRecord
 {
+    use \backend\components\GuardedAttributes;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['domain_id', 'created_by', 'updated_by', 'status', 'created_at', 'updated_at', 'update_history', 'invoice_attachment'];
+    }
+
     public static function tableName(): string { return 'domain_renewal_history'; }
 
     public function rules(): array
     {
         return [
+            // Dates must be real YYYY-MM-DD values (checked when new or edited).
+            [['renewed_date', 'expiry_date', 'amount_received_date'], 'date', 'format' => 'php:Y-m-d', 'message' => '{attribute} must be a date (YYYY-MM-DD).',
+                'when' => fn($m, $a) => $m->isNewRecord || $m->isAttributeChanged($a, false)],
             [['domain_id', 'renewed_date', 'expiry_date'], 'required'],
             [['amount_received'], 'number', 'min' => 0],
             [['domain_id', 'created_by', 'updated_by', 'with_gst', 'mode_of_payment', 'status'], 'integer'],

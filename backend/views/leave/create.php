@@ -20,12 +20,16 @@ $req = '<span class="text-danger">*</span>';
 $minDate = $isAdmin ? date('Y-m-d', strtotime('-100 days')) : date('Y-m-d', strtotime('+1 day'));
 $maxDate = date('Y-m-d', strtotime('+30 days'));
 ?>
-<div class="leave-create">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= $this->title ?></h5>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back',
+<div class="ui-page leave-create">
+    <div class="ui-head">
+        <div>
+            <h1><?= $this->title ?></h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back',
             $isAdmin ? ['index'] : ['my-requests'],
             ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <?php if (!$isAdmin && $selfDeveloper): ?>
@@ -148,7 +152,7 @@ $maxDate = date('Y-m-d', strtotime('+30 days'));
         </div>
     </div>
 </div>
-<script>
+<?php $this->registerJs(<<<'JS'
 function allowDecimalNumbers(e) {
     var charCode = (e.which) ? e.which : e.keyCode;
     if (charCode == 46) return true; // allow dot
@@ -166,10 +170,10 @@ $(function(){
     // To Date before it. Clear To Date if it's already before the new From.
     $from.on('changeDate', function (e) {
         if (!e.date) { return; }
-        $to.datepicker('setStartDate', e.date);
+        $to.kvDatepicker('setStartDate', e.date);
         var toVal = $to.val();
         if (toVal && toVal < $from.val()) {
-            $to.datepicker('clearDates');
+            $to.kvDatepicker('clearDates');
         }
     });
 
@@ -189,7 +193,7 @@ $(function(){
         }
     });
 });
-</script>
+JS, \yii\web\View::POS_END); ?>
 <?php $this->registerJs(<<<JS
 // Half Day reveals the Morning/Evening session picker, fixes No. of Days to 0.5,
 // and hides To Date (a half-day leave is a single date).

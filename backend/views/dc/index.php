@@ -1,403 +1,122 @@
 <?php
-
 /** @var yii\web\View $this */
 /** @var yii\data\ActiveDataProvider $dataProvider */
-/** @var array $clientOptions */
-/** @var array $companyOptions */
+/** @var array $clientOptions   name => name */
+/** @var array $companyOptions  name => name */
 
 use common\components\UserAccess;
-use kartik\date\DatePicker;
-use kartik\select2\Select2;
-use yii\bootstrap5\LinkPager;
-use yii\grid\GridView;
-use yii\helpers\Html;
+use yii\bootstrap5\Html;
 use yii\helpers\Url;
 
 $this->title = 'Delivery Challans';
 
-$totalCount = $dataProvider->getTotalCount();
-
-$dcNo     = (string) Yii::$app->request->get('dc_no', '');
-$clientNm = (string) Yii::$app->request->get('client_name', '');
-$compNm   = (string) Yii::$app->request->get('company_name', '');
-$status   = (string) Yii::$app->request->get('status', 'all');
-$dcType   = (string) Yii::$app->request->get('dc_type', '');
-$hasFilter = $dcNo !== '' || $clientNm !== '' || $compNm !== '' || $dcType !== '' || ($status !== '' && $status !== 'all');
+$rows       = $dataProvider->getModels();
+$pagination = $dataProvider->getPagination();
+$total      = $dataProvider->getTotalCount();
+$offset     = $pagination ? $pagination->getOffset() : 0;
+$q          = Yii::$app->request->get();
+$keys       = ['dc_no', 'client_name', 'company_name', 'dc_type', 'status'];
+$hasFilter  = (bool)array_filter(array_intersect_key($q, array_flip($keys)), fn($v) => $v !== '' && $v !== 'all');
+$types      = [1 => ['Returnable', 'warning'], 2 => ['Sale', 'accent'], 3 => ['Service', 'neutral']];
+$can = [
+    'create'  => UserAccess::checkAccess('dc/create'),
+    'view'    => UserAccess::checkAccess('dc/view'),
+    'update'  => UserAccess::checkAccess('dc/update'),
+    'pdf'     => UserAccess::checkAccess('dc/challan-pdf'),
+    'return'  => UserAccess::checkAccess('dc/save-return'),
+    'cancel'  => UserAccess::checkAccess('dc/cancel'),
+];
+$tabs = array_filter([
+    'quotation-dashboard/index' => UserAccess::checkAccess('quotation-dashboard/index') ? 'Dashboard' : null,
+    'dc/index'                  => 'Outward DCs',
+    'dc/inward-index'           => UserAccess::checkAccess('dc/inward-index') ? 'Inward DCs' : null,
+    'delivery-product/index'    => UserAccess::checkAccess('delivery-product/index') ? 'Products' : null,
+]);
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
-</style>
+<div class="ui-page dc-index">
+    <?= $this->render('@backend/views/_ui/_head', [
+        'title'     => 'Delivery challans',
+        'sub'       => number_format($total) . ' outward DC' . ($total == 1 ? '' : 's'),
+        'actions'   => $can['create'] ? Html::a('<i class="fas fa-plus me-1"></i>New DC', ['create'], ['class' => 'btn btn-primary btn-sm', 'encode' => false]) : '',
+        'route'     => 'index',
+        'countKeys' => ['dc_no', 'client_name', 'company_name', 'dc_type'],
+        'filters'   => [
+            ['type' => 'text', 'name' => 'dc_no', 'label' => 'DC no.', 'placeholder' => 'e.g. 1042', 'col' => 'col-lg-2 col-md-4 col-6'],
+            ['type' => 'select', 'name' => 'client_name', 'label' => 'Client', 'data' => $clientOptions, 'placeholder' => 'All clients', 'col' => 'col-lg-3 col-md-8'],
+            ['type' => 'select', 'name' => 'company_name', 'label' => 'Company', 'data' => $companyOptions, 'placeholder' => 'All companies', 'col' => 'col-lg-3 col-md-6'],
+            ['type' => 'dropdown', 'name' => 'dc_type', 'label' => 'Type', 'data' => [1 => 'Returnable', 2 => 'Sale', 3 => 'Service'], 'col' => 'col-lg-2 col-md-3 col-6'],
+            ['type' => 'dropdown', 'name' => 'status', 'label' => 'Status', 'data' => ['active' => 'Active', 'cancelled' => 'Cancelled'], 'col' => 'col-lg-2 col-md-3 col-6'],
+        ],
+    ]) ?>
 
-<div class="dc-index">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h5 class="mb-0 fw-semibold">Delivery Challans</h5>
-            <small class="text-muted"><?= $totalCount ?> record<?= $totalCount != 1 ? 's' : '' ?></small>
-        </div>
-        <div class="d-flex gap-2">
-            <?php if (UserAccess::checkAccess('quotation-dashboard/index')): ?>
-                <?= Html::a('Dashboard', ['/quotation-dashboard/index'], ['class' => 'btn btn-outline-dark btn-sm']) ?>
-            <?php endif; ?>
-            <?php if (UserAccess::checkAccess('dc/create')): ?>
-                <?= Html::a('+ New DC', ['/dc/create'], ['class' => 'btn btn-primary btn-sm']) ?>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <!-- Filters -->
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body py-2 px-3">
-            <form method="get" action="<?= Url::to(['index']) ?>" class="row g-2 align-items-end">
-                <div class="col-6 col-md-4 col-lg-2">
-                    <label class="form-label form-label-sm mb-1 text-muted" style="font-size:.75rem">DC No</label>
-                    <input type="text" name="dc_no" class="form-control form-control-sm" placeholder="e.g. 1042" value="<?= Html::encode($dcNo) ?>">
-                </div>
-                <div class="col-6 col-md-4 col-lg-2">
-                    <label class="form-label form-label-sm mb-1 text-muted" style="font-size:.75rem">Client Name</label>
-                    <?= Select2::widget([
-                        'name' => 'client_name',
-                        'value' => $clientNm,
-                        'data' => $clientOptions,
-                        'options' => ['placeholder' => 'All Clients', 'class' => 'form-control form-control-sm'],
-                        'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
-                    ]) ?>
-                </div>
-                <div class="col-6 col-md-4 col-lg-2">
-                    <label class="form-label form-label-sm mb-1 text-muted" style="font-size:.75rem">Company Name</label>
-                    <?= Select2::widget([
-                        'name' => 'company_name',
-                        'value' => $compNm,
-                        'data' => $companyOptions,
-                        'options' => ['placeholder' => 'All Companies', 'class' => 'form-control form-control-sm'],
-                        'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
-                    ]) ?>
-                </div>
-                <div class="col-6 col-md-4 col-lg-2">
-                    <label class="form-label form-label-sm mb-1 text-muted" style="font-size:.75rem">DC Type</label>
-                    <select name="dc_type" class="form-select form-select-sm">
-                        <option value=""  <?= $dcType === ''  ? 'selected' : '' ?>>All Types</option>
-                        <option value="1" <?= $dcType === '1' ? 'selected' : '' ?>>Returnable</option>
-                        <option value="2" <?= $dcType === '2' ? 'selected' : '' ?>>Sale</option>
-                        <option value="3" <?= $dcType === '3' ? 'selected' : '' ?>>Service</option>
-                    </select>
-                </div>
-                <div class="col-6 col-md-4 col-lg-2">
-                    <label class="form-label form-label-sm mb-1 text-muted" style="font-size:.75rem">Status</label>
-                    <select name="status" class="form-select form-select-sm">
-                        <option value="all"       <?= $status === 'all'       ? 'selected' : '' ?>>All</option>
-                        <option value="active"    <?= $status === 'active'    ? 'selected' : '' ?>>Active</option>
-                        <option value="cancelled" <?= $status === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
-                    </select>
-                </div>
-                <div class="col-12 col-md-4 col-lg-2 d-flex flex-wrap gap-1">
-                    <button class="btn btn-secondary btn-sm">Filter</button>
-                    <?php if ($hasFilter): ?>
-                        <?= Html::a('Clear', ['index'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
-                    <?php endif; ?>
-                </div>
-            </form>
-        </div>
-    </div>
+    <?php if (count($tabs) > 1): ?>
+    <nav class="ui-tabs" aria-label="Delivery">
+        <?php foreach ($tabs as $r => $label): ?>
+            <?= Html::a($label, ['/' . $r], ['class' => $r === 'dc/index' ? 'active' : '', 'aria-current' => $r === 'dc/index' ? 'page' : null]) ?>
+        <?php endforeach; ?>
+    </nav>
+    <?php endif; ?>
 
     <div class="card border-0 shadow-sm">
-        <div style="overflow-x:auto;overflow-y:visible">
-            <?= GridView::widget([
-                'dataProvider' => $dataProvider,
-                'layout' => "{items}<div class='d-flex justify-content-between align-items-center px-3 py-2'><div class='d-none d-sm-block small text-muted'>{summary}</div>{pager}</div>",
-                'tableOptions' => ['class' => 'table list-table mb-0', 'style' => 'min-width:900px;'],
-                'options' => ['tag' => 'div', 'class' => 'dc-list-grid'],
-                'emptyTextOptions' => ['class' => 'text-center text-muted py-5'],
-                'emptyText' => 'No delivery challans found.',
-                'pager' => [
-                    'class' => LinkPager::class,
-                    'maxButtonCount' => 3,
-                    'options' => ['class' => 'pagination pagination-sm mb-0'],
-                    'linkOptions' => ['class' => 'page-link'],
-                    'disabledListItemSubTagOptions' => ['tag' => 'a', 'class' => 'page-link'],
-                ],
-                'columns' => [
-                    [
-                        'class' => 'yii\grid\SerialColumn',
-                        'header' => '#',
-                        'headerOptions' => ['style' => 'width:40px'],
-                        'contentOptions' => ['class' => 'text-muted'],
-                    ],
-                    [
-                        'label' => 'DC No',
-                        'format' => 'raw',
-                        'headerOptions' => ['style' => 'width:110px'],
-                        'value' => fn($m) => '<span class="fw-semibold">' . Html::encode($m->dc_no ?? '—') . '</span>',
-                    ],
-                    [
-                        'label' => 'Client',
-                        'value' => fn($m) => $m->client->client_name ?? '—',
-                        'contentOptions' => ['class' => 'fw-semibold small'],
-                    ],
-                    [
-                        'label' => 'Company',
-                        'value' => fn($m) => $m->client->company_name ?? '—',
-                        'contentOptions' => ['class' => 'small text-muted'],
-                    ],
-                    [
-                        'label' => 'Type',
-                        'format' => 'raw',
-                        'headerOptions' => ['style' => 'width:160px'],
-                        'value' => function ($m) {
-                            $t = (int) $m->dc_type;
-                            $map = [
-                                1 => ['Returnable', 'bg-warning text-dark'],
-                                2 => ['Sale',       'bg-info text-dark'],
-                                3 => ['Service',    'bg-primary'],
-                            ];
-                            [$txt, $cls] = $map[$t] ?? ['—', 'bg-secondary'];
-                            $html = '<span class="badge ' . $cls . '">' . $txt . '</span>';
-                            if ($t === 1) {
-                                $returned = !empty($m->dc_returned_date) && $m->dc_returned_date !== '0000-00-00';
-                                $html .= ' ' . ($returned
-                                    ? '<span class="badge bg-success">Returned</span>'
-                                    : '<span class="badge bg-secondary">Not Returned</span>');
-                            }
-                            return $html;
-                        },
-                    ],
-                    [
-                        'label' => 'DC Date',
-                        'headerOptions' => ['style' => 'width:120px'],
-                        'value' => fn($m) => $m->dc_date ? date('d M Y', strtotime($m->dc_date)) : '—',
-                    ],
-                    [
-                        'label' => 'Status',
-                        'format' => 'raw',
-                        'headerOptions' => ['style' => 'width:100px'],
-                        'value' => function ($m) {
-                            $s = (int) $m->status;
-                            if ($s === 2) return '<span class="badge bg-danger">Cancelled</span>';
-                            if ($s === 3) return '<span class="badge bg-warning text-dark">Draft</span>';
-                            return '<span class="badge bg-success">Active</span>';
-                        },
-                    ],
-                    [
-                        'label' => 'Actions',
-                        'format' => 'raw',
-                        'headerOptions' => ['class' => 'text-center', 'style' => 'width:80px'],
-                        'contentOptions' => ['class' => 'text-center'],
-                        'value' => function ($m) {
-                            $isActive       = (int) $m->status !== 2;
-                            $isReturnable   = (int) $m->dc_type === 1;
-                            $alreadyReturned = !empty($m->dc_returned_date) && $m->dc_returned_date !== '0000-00-00';
-
-                            $items = [];
-                            if (UserAccess::checkAccess('dc/view')) {
-                                $items[] = Html::a('<i class="fas fa-eye me-2"></i>View', ['view', 'id' => $m->id], [
-                                    'class' => 'dropdown-item', 'encode' => false,
-                                ]);
-                            }
-                            if (UserAccess::checkAccess('dc/challan-pdf')) {
-                                $items[] = Html::a('<i class="fas fa-file-pdf me-2"></i>PDF', ['challan-pdf', 'id' => $m->id], [
-                                    'class' => 'dropdown-item', 'encode' => false, 'target' => '_blank',
-                                ]);
-                            }
-                            if (UserAccess::checkAccess('dc/save-return') && $isActive && $isReturnable && !$alreadyReturned) {
-                                $items[] = Html::button('<i class="fas fa-calendar-check me-2"></i>Mark Returned', [
-                                    'type'         => 'button',
-                                    'class'        => 'dropdown-item text-success btn-add-return',
-                                    'data-id'      => $m->id,
-                                    'data-dc-date' => $m->dc_date,
-                                    'encode'       => false,
-                                ]);
-                            }
-                            if (UserAccess::checkAccess('dc/cancel') && $isActive) {
-                                $items[] = '<li><hr class="dropdown-divider"></li>';
-                                $items[] = Html::button('<i class="fas fa-times me-2"></i>Cancel DC', [
-                                    'type'    => 'button',
-                                    'class'   => 'dropdown-item text-danger btn-cancel-dc',
-                                    'data-id' => $m->id,
-                                    'encode'  => false,
-                                ]);
-                            }
-
-                            $menu = '';
-                            foreach ($items as $it) {
-                                $menu .= str_starts_with(trim($it), '<li>') ? $it : '<li>' . $it . '</li>';
-                            }
-                            return '<div class="dropdown">'
-                                 . '<button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions" style="padding:.2rem .45rem;font-size:.78rem;line-height:1.3">&#8942;</button>'
-                                 . '<ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size:.825rem;min-width:180px">' . $menu . '</ul>'
-                                 . '</div>';
-                        },
-                    ],
-                ],
-            ]) ?>
+        <div class="table-responsive">
+            <table class="table list-table ui-table stack mb-0">
+                <thead class="table-light">
+                <tr><th style="width:40px">#</th><th>DC</th><th>Client</th><th>Type</th><th>Status</th><th class="text-end" style="width:56px"><span class="visually-hidden">Actions</span></th></tr>
+                </thead>
+                <tbody>
+                <?php if (!$rows): ?>
+                    <tr class="ui-empty-row"><td colspan="6" class="ui-empty-cell">
+                        <?= $this->render('@backend/views/_ui/_empty', $hasFilter
+                            ? ['icon' => 'search', 'title' => 'No delivery challans match your search', 'action' => Html::a('Clear search', ['index'], ['class' => 'btn btn-outline-secondary btn-sm'])]
+                            : ['icon' => 'truck', 'title' => 'No delivery challans yet', 'text' => 'Challans you raise appear here.',
+                               'action' => $can['create'] ? Html::a('<i class="fas fa-plus me-1"></i>New DC', ['create'], ['class' => 'btn btn-primary btn-sm', 'encode' => false]) : null]) ?>
+                    </td></tr>
+                <?php endif; ?>
+                <?php foreach ($rows as $i => $m):
+                    $t          = (int)$m->dc_type;
+                    $cancelled  = (int)$m->status === 2;
+                    $returnable = $t === 1;
+                    $returned   = !empty($m->dc_returned_date) && $m->dc_returned_date !== '0000-00-00';
+                    $overdue    = $returnable && !$returned && !$cancelled && $m->dc_return_date && strtotime($m->dc_return_date) < strtotime('today');
+                    $no         = $m->dc_no ?: 'Draft';
+                ?>
+                    <tr<?= $cancelled ? ' class="is-cancelled"' : '' ?>>
+                        <td class="cell-num muted"><?= $offset + $i + 1 ?></td>
+                        <td class="cell-title"><span class="mono"><?= $can['view'] ? Html::a('DC ' . Html::encode($no), ['view', 'id' => $m->id], ['class' => 'text-reset']) : 'DC ' . Html::encode($no) ?></span>
+                            <div class="small text-muted fw-normal"><?= $m->dc_date ? date('d M Y', strtotime($m->dc_date)) : '—' ?></div></td>
+                        <td data-label="Client"><span class="cell-stack"><?= Html::encode($m->client->company_name ?? '—') ?><span class="d-block small text-muted"><?= Html::encode($m->client->client_name ?? '') ?></span></span></td>
+                        <td data-label="Type"><span class="cell-stack">
+                            <span class="ui-pill tone-<?= $types[$t][1] ?? 'neutral' ?> plain"><?= $types[$t][0] ?? '—' ?></span>
+                            <?php if ($returnable): ?>
+                                <span class="d-block small mt-1 <?= $overdue ? 'text-danger fw-semibold' : 'text-muted' ?>"><?= $returned ? 'Returned ' . date('d M Y', strtotime($m->dc_returned_date))
+                                    : ($m->dc_return_date ? 'Due back ' . date('d M Y', strtotime($m->dc_return_date)) : 'Not returned') ?></span>
+                            <?php endif; ?>
+                        </span></td>
+                        <td data-label="Status"><?= $cancelled ? '<span class="ui-pill tone-neutral" title="' . Html::encode($m->cancel_reason) . '">Cancelled</span>'
+                            : ($overdue ? '<span class="ui-pill tone-danger">Return overdue</span>' : '<span class="ui-pill tone-success">Active</span>') ?></td>
+                        <td class="cell-actions text-end">
+                            <div class="dropdown">
+                                <button class="btn btn-outline-secondary act-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions for DC <?= Html::encode($no) ?>">&#8942;</button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                    <?php if ($can['view']): ?><li><?= Html::a('<i class="fas fa-eye fa-fw me-1"></i>View', ['view', 'id' => $m->id], ['class' => 'dropdown-item', 'encode' => false]) ?></li><?php endif; ?>
+                                    <?php if ($can['pdf'] && !$cancelled): ?><li><?= Html::a('<i class="fas fa-file-pdf fa-fw me-1"></i>Download PDF', ['challan-pdf', 'id' => $m->id], ['class' => 'dropdown-item', 'encode' => false]) ?></li><?php endif; ?>
+                                    <?php if ($can['return'] && !$cancelled && $returnable && !$returned): ?>
+                                        <li><a href="#" class="dropdown-item" data-dc-return data-id="<?= $m->id ?>" data-no="<?= Html::encode($no) ?>" data-dc-date="<?= Html::encode($m->dc_date) ?>"><i class="fas fa-undo fa-fw me-1"></i>Mark returned</a></li>
+                                    <?php endif; ?>
+                                    <?php if ($can['cancel'] && !$cancelled): ?>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><a href="#" class="dropdown-item text-danger" data-dc-cancel data-id="<?= $m->id ?>" data-no="<?= Html::encode($no) ?>"><i class="fas fa-ban fa-fw me-1"></i>Cancel DC</a></li>
+                                    <?php endif; ?>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
+        <?= $this->render('@backend/views/_ui/_pager', ['pagination' => $pagination, 'total' => $total, 'count' => count($rows), 'noun' => 'DCs']) ?>
     </div>
-</div>
 
-<?php if (UserAccess::checkAccess('dc/save-return')): ?>
-<!-- Mark Returned modal -->
-<div class="modal fade" id="returnDcModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Mark DC as Returned</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="return_dc_id">
-                <div class="mb-3">
-                    <label class="form-label mb-1">Return Date <span class="text-danger">*</span></label>
-                    <?= DatePicker::widget([
-                        'id' => 'return_dc_date',
-                        'name' => 'return_dc_date',
-                        'value' => date('Y-m-d'),
-                        'type' => DatePicker::TYPE_INPUT,
-                        'options' => ['class' => 'form-control form-control-sm', 'autocomplete' => 'off'],
-                        'pluginOptions' => [
-                            'autoclose' => true,
-                            'format' => 'yyyy-mm-dd',
-                            'todayHighlight' => true,
-                        ],
-                    ]) ?>
-                </div>
-                <div class="mb-0">
-                    <label class="form-label mb-1">Description / Remarks</label>
-                    <textarea id="return_dc_desc" class="form-control form-control-sm" rows="3" placeholder="Enter return details..."></textarea>
-                </div>
-                <div class="text-danger small mt-1" id="return_dc_err"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-success btn-sm" id="confirm_return_dc">Save Return</button>
-            </div>
-        </div>
-    </div>
+    <?= $this->render('_action-modals') ?>
 </div>
-<?php
-$saveReturnUrl = Url::to(['/dc/save-return']);
-$this->registerJs(<<<JS
-$(document).on('click', '.btn-add-return', function (e) {
-    e.preventDefault();
-    var dcDate = (($(this).data('dc-date') || '') + '').slice(0, 10);
-    var today  = new Date().toISOString().slice(0, 10);
-    var id     = $(this).data('id');
-    $('#return_dc_id').val(id);
-    $('#return_dc_err').text('');
-    $('#return_dc_desc').val('');
-    var input = $('#return_dc_date');
-    input.data('min-date', dcDate);
-    if (input.length && typeof input.kvDatepicker === 'function') {
-        try {
-            if (dcDate) { input.kvDatepicker('setStartDate', dcDate); }
-            else        { input.kvDatepicker('setStartDate', null); }
-            input.kvDatepicker('update', today);
-        } catch (err) { input.val(today); }
-    } else {
-        input.val(today);
-    }
-    var el = document.getElementById('returnDcModal');
-    if (!el || typeof bootstrap === 'undefined' || !bootstrap.Modal) {
-        console.error('Mark Returned: modal element or Bootstrap not available', { el: !!el, bs: typeof bootstrap });
-        return;
-    }
-    setTimeout(function () {
-        bootstrap.Modal.getOrCreateInstance(el).show();
-    }, 0);
-});
-$('#confirm_return_dc').on('click', function () {
-    var id   = $('#return_dc_id').val();
-    var date = $('#return_dc_date').val();
-    var desc = $('#return_dc_desc').val();
-    if (!date) { $('#return_dc_err').text('Please select a return date.'); return; }
-    var minDate = $('#return_dc_date').data('min-date');
-    if (minDate && date < minDate) {
-        $('#return_dc_err').text('Return date cannot be earlier than the DC date (' + minDate + ').');
-        return;
-    }
-    $.ajax({
-        url: '$saveReturnUrl', type: 'POST', dataType: 'json',
-        data: { id: id, date: date, description: desc, _csrf: (window.yii ? yii.getCsrfToken() : '') },
-        success: function (r) {
-            if (r && r.success) {
-                if (window.Swal) {
-                    Swal.fire({title:'Saved', text:'Return date recorded.', icon:'success',
-                        confirmButtonText:'OK', allowOutsideClick:false}).then(function(){ location.reload(); });
-                } else { location.reload(); }
-                return;
-            }
-            var msg = (r && r.message) ? r.message : 'Unable to save return.';
-            if (window.Swal) Swal.fire({title:'Error', text:msg, icon:'error'}); else alert(msg);
-        },
-        error: function (xhr) {
-            var msg = 'Something went wrong while saving the return.';
-            if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
-            if (window.Swal) Swal.fire({title:'Error', text:msg, icon:'error'}); else alert(msg);
-        }
-    });
-});
-JS);
-?>
-<?php endif; ?>
-
-<?php if (UserAccess::checkAccess('dc/cancel')): ?>
-<!-- Cancel DC modal -->
-<div class="modal fade" id="cancelDcModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Cancel Delivery Challan</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="cancel_dc_id">
-                <label class="form-label mb-1">Reason <span class="text-danger">*</span></label>
-                <textarea id="cancel_dc_reason" class="form-control form-control-sm" rows="3" placeholder="Why is this DC being cancelled?"></textarea>
-                <div class="text-danger small mt-1" id="cancel_dc_err"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-danger btn-sm" id="confirm_cancel_dc">Cancel DC</button>
-            </div>
-        </div>
-    </div>
-</div>
-<?php
-$cancelUrl = Url::to(['/dc/cancel']);
-$this->registerJs(<<<JS
-$(document).on('click', '.btn-cancel-dc', function () {
-    $('#cancel_dc_id').val($(this).data('id'));
-    $('#cancel_dc_reason').val('');
-    $('#cancel_dc_err').text('');
-    new bootstrap.Modal(document.getElementById('cancelDcModal')).show();
-});
-$('#confirm_cancel_dc').on('click', function () {
-    var id     = $('#cancel_dc_id').val();
-    var reason = ($('#cancel_dc_reason').val() || '').trim();
-    if (reason === '') { $('#cancel_dc_err').text('Please enter a reason.'); return; }
-    $.ajax({
-        url: '$cancelUrl', type: 'POST', dataType: 'json',
-        data: { id: id, reason: reason, _csrf: (window.yii ? yii.getCsrfToken() : '') },
-        success: function (r) {
-            if (r && r.success) {
-                if (window.Swal) {
-                    Swal.fire({title:'Cancelled', text: r.message || 'DC cancelled.', icon:'success',
-                        confirmButtonText:'OK', allowOutsideClick:false}).then(function(){ location.reload(); });
-                } else { location.reload(); }
-                return;
-            }
-            var msg = (r && r.message) ? r.message : 'Unable to cancel DC.';
-            if (window.Swal) Swal.fire({title:'Error', text: msg, icon:'error'}); else alert(msg);
-        },
-        error: function (xhr) {
-            var msg = 'Something went wrong while cancelling the DC.';
-            if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
-            if (window.Swal) Swal.fire({title:'Error', text: msg, icon:'error'}); else alert(msg);
-        }
-    });
-});
-JS);
-?>
-<?php endif; ?>

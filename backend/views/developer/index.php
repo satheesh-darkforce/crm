@@ -15,22 +15,14 @@ $models     = $dataProvider->getModels();
 $pagination = $dataProvider->getPagination();
 $total      = $dataProvider->getTotalCount();
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
-</style>
 
-<div class="developer-index">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page developer-index">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Employees</h5>
-            <small class="text-muted"><?= $total ?> employee<?= $total != 1 ? 's' : '' ?></small>
+            <h1>Employees</h1>
+            <div class="ui-sub"><?= $total ?> employee<?= $total != 1 ? 's' : '' ?></div>
         </div>
-        <div class="d-flex gap-2">
+        <div class="ui-actions">
             <?= Html::a('<i class="fas fa-arrow-down"></i> Export Active', ['export-employees'], ['class' => 'btn btn-sm btn-outline-success', 'encode' => false]) ?>
             <?= Html::a('<i class="fas fa-arrow-down"></i> Export Ex-Employees', ['export-ex-employees'], ['class' => 'btn btn-sm btn-outline-secondary', 'encode' => false]) ?>
             <?= Html::a('+ Add Employee', ['create'], ['class' => 'btn btn-primary btn-sm']) ?>

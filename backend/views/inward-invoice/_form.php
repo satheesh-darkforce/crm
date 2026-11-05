@@ -1,677 +1,276 @@
 <?php
 /**
+ * Inward invoice form (create & update). Line maths and payment toggles live in invoices.js;
+ * the server recomputes every total on save.
+ *
  * @var \yii\web\View $this
  * @var \backend\models\InwardInvoice $model
  * @var \backend\models\Vendor $vendor
- * @var \backend\models\AccLedgerCategory[] $ledgerCategories
- * @var \backend\models\AccLedgerCategory[] $paymentCategories
+ * @var \backend\models\InwardInvoiceDetails[] $lines
+ * @var \backend\models\InwardInvoiceDetails[] $expenses
+ * @var array $ledgerGroups    [category title => [ledger id => title]]
+ * @var array $paymentTypes    [category id => title]
+ * @var array $paymentLedgers  [category id => [ledger id => title]]
  */
 
+use backend\components\SafeUpload;
+use backend\models\InwardInvoice;
 use backend\models\Vendor;
 use kartik\date\DatePicker;
+use kartik\select2\Select2;
 use yii\bootstrap5\Html;
-use yii\helpers\ArrayHelper;
 use yii\helpers\Url;
 
 $isNew = $model->isNewRecord;
-$typeLabels  = Vendor::typeLabels();
-$typeColors  = [1 => 'primary', 2 => 'success', 3 => 'info'];
+$type  = (int)$vendor->vendor_type;
+$taxes = match ($type) {
+    Vendor::TYPE_INTRA_STATE => ['sgst' => 'SGST', 'cgst' => 'CGST'],
+    Vendor::TYPE_INTER_STATE => ['igst' => 'IGST'],
+    default                  => [],
+};
+$money = fn($v) => number_format((float)$v, 2, '.', '');
+$err   = fn(string $attr) => $model->hasErrors($attr) ? '<div class="invalid-feedback d-block">' . Html::encode($model->getFirstError($attr)) . '</div>' : '';
+$bad   = fn(string $attr) => $model->hasErrors($attr) ? ' is-invalid' : '';
+$isPaid = (string)$model->payment_status === (string)InwardInvoice::PAY_PAID;
 
-// Tax field enable/disable based on vendor type
-$sgstEnabled = ($vendor->vendor_type == 2);
-$cgstEnabled = ($vendor->vendor_type == 2);
-$igstEnabled = ($vendor->vendor_type == 1);
-$rdSgst = $sgstEnabled ? '' : 'readonly';
-$rdCgst = $cgstEnabled ? '' : 'readonly';
-$rdIgst = $igstEnabled ? '' : 'readonly';
+/** One ledger <select> with categories as groups. */
+$ledgerSelect = function (string $name, $selected, string $cls = '') use ($ledgerGroups) {
+    $html = '<select name="' . $name . '" class="form-select form-select-sm js-ledger ' . $cls . '" aria-label="Ledger"><option value="">No ledger</option>';
+    foreach ($ledgerGroups as $group => $items) {
+        $html .= '<optgroup label="' . Html::encode($group) . '">';
+        foreach ($items as $id => $title) {
+            $html .= '<option value="' . $id . '"' . ((string)$selected === (string)$id ? ' selected' : '') . '>' . Html::encode($title) . '</option>';
+        }
+        $html .= '</optgroup>';
+    }
+    return $html . '</select>';
+};
 
-// Pre-load dropdown data
-$catMap        = ArrayHelper::map($ledgerCategories, 'id', 'title');
-$paymentCatMap = ArrayHelper::map($paymentCategories, 'id', 'title');
+/** A line row; $i is the array index ("__i__" in the template). */
+$lineRow = function ($i, $d) use ($taxes, $ledgerSelect, $money) {
+    $f = fn($k) => 'lines[' . $i . '][' . $k . ']';
+    $html = '<tr class="js-line">'
+        . '<td class="cell-num muted js-sno"></td>'
+        . '<td class="cell-title" style="min-width:220px">'
+        .   '<input type="text" name="' . $f('product') . '" class="form-control form-control-sm js-product" maxlength="5000" placeholder="What was bought" value="' . Html::encode($d->product ?? '') . '" aria-label="Description">'
+        .   '<div class="d-flex gap-1 mt-1"><input type="text" name="' . $f('hsn') . '" class="form-control form-control-sm" style="max-width:110px" maxlength="500" placeholder="HSN/SAC" value="' . Html::encode($d->hsn ?? '') . '" aria-label="HSN or SAC code">'
+        .   '<div class="flex-fill">' . $ledgerSelect($f('ledger_id'), $d->ledger_id ?? '') . '</div></div>'
+        . '</td>'
+        . '<td data-label="Qty"><input type="number" name="' . $f('qty') . '" class="form-control form-control-sm text-end js-qty" step="any" min="0" value="' . Html::encode($d->qty ?? 1) . '" aria-label="Quantity"></td>'
+        . '<td data-label="Rate (₹)"><input type="number" name="' . $f('price_per_qty') . '" class="form-control form-control-sm text-end js-rate" step="0.01" min="0" value="' . Html::encode($d->price_per_qty ?? '') . '" aria-label="Rate"></td>';
+    foreach ($taxes as $k => $label) {
+        $html .= '<td data-label="' . $label . ' %"><input type="number" name="' . $f($k . '_percent') . '" class="form-control form-control-sm text-end js-tax" data-tax="' . $k . '" step="0.01" min="0" max="100" value="' . Html::encode((float)($d->{$k . '_percent'} ?? 0)) . '" aria-label="' . $label . ' percent"></td>';
+    }
+    return $html
+        . '<td class="text-end num fw-semibold js-line-total" data-label="Amount">' . $money($d->total_amount ?? 0) . '</td>'
+        . '<td class="cell-actions text-end"><button type="button" class="btn btn-outline-danger act-btn js-remove-line" title="Remove line" aria-label="Remove line"><i class="fas fa-times"></i></button></td>'
+        . '</tr>';
+};
 
-// Existing items & expenses for edit
-$existingItems    = !$isNew ? ($model->lineItems ?? []) : [];
-$existingExpenses = !$isNew ? ($model->expenses ?? []) : [];
-$existingAttachments = !$isNew ? ($model->attachments ?? []) : [];
-
-$baseUrl   = Yii::$app->request->baseUrl;
-$csrfParam = Yii::$app->request->csrfParam;
-$csrfToken = Yii::$app->request->csrfToken;
+$expenseRow = function ($i, $e) use ($ledgerSelect, $money) {
+    $f = fn($k) => 'expenses[' . $i . '][' . $k . ']';
+    return '<div class="row g-2 align-items-center js-expense mb-2">'
+        . '<div class="col-md-5"><input type="text" name="' . $f('product') . '" class="form-control form-control-sm" maxlength="5000" placeholder="e.g. Courier charges" value="' . Html::encode($e->product ?? '') . '" aria-label="Expense description"></div>'
+        . '<div class="col-md-4">' . $ledgerSelect($f('ledger_id'), $e->ledger_id ?? '') . '</div>'
+        . '<div class="col-md-2 col-9"><input type="number" name="' . $f('amount') . '" class="form-control form-control-sm text-end js-expense-amount" step="0.01" min="0" placeholder="0.00" value="' . Html::encode(isset($e->item_total) && (float)$e->item_total ? $money($e->item_total) : '') . '" aria-label="Expense amount"></div>'
+        . '<div class="col-md-1 col-3 text-end"><button type="button" class="btn btn-outline-danger act-btn js-remove-expense" title="Remove expense" aria-label="Remove expense"><i class="fas fa-times"></i></button></div>'
+        . '</div>';
+};
 ?>
-<style>
-.inv-table th{font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;color:#6c757d;font-weight:600;white-space:nowrap;padding:.35rem .3rem!important}
-.inv-table td{padding:.25rem .3rem!important;vertical-align:middle}
-.inv-table input,.inv-table select,.inv-table textarea{font-size:.8rem!important;padding:.2rem .35rem!important}
-.inv-table .form-control,.inv-table .form-select{min-height:0}
-.summary-row td{border-top:0!important;font-size:.85rem}
-.expense-row td{border-top:0!important;font-size:.85rem;background:#fffdf5}
-</style>
-
-<div class="inward-invoice-form">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= $isNew ? 'Add Inward Invoice' : 'Edit Inward Invoice' ?></h5>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-3 align-items-center small">
+        <span><span class="text-muted">Vendor</span> <strong><?= Html::encode($vendor->company_name) ?></strong></span>
+        <span class="ui-pill tone-<?= $type === Vendor::TYPE_INTRA_STATE ? 'success' : ($type === Vendor::TYPE_INTER_STATE ? 'accent' : 'neutral') ?>"><?= Html::encode(Vendor::typeLabels()[$type] ?? '—') ?></span>
+        <span><span class="text-muted">GSTIN</span> <span class="mono"><?= Html::encode($vendor->gst_no ?: '—') ?></span></span>
+        <span class="text-muted ms-md-auto"><?= $taxes ? implode(' + ', $taxes) . ' applies to this vendor.' : 'No GST applies to international vendors.' ?></span>
     </div>
+</div>
 
-    <!-- Vendor Info -->
+<form id="inward-form" class="js-inward-form" method="post" enctype="multipart/form-data" novalidate
+      data-ledgers="<?= Html::encode(json_encode($paymentLedgers)) ?>">
+    <?= Html::hiddenInput(Yii::$app->request->csrfParam, Yii::$app->request->getCsrfToken()) ?>
+    <?php if ($model->hasErrors()): ?>
+        <div class="alert alert-danger" role="alert">
+            <p class="mb-1">Please fix the following:</p>
+            <ul class="mb-0"><?php foreach ($model->getErrorSummary(true) as $e): ?><li><?= Html::encode($e) ?></li><?php endforeach; ?></ul>
+        </div>
+    <?php endif; ?>
+    <p class="ui-req-note">Fields marked <b>*</b> are required.</p>
+
     <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body py-2">
-            <div class="row g-2 small">
-                <div class="col-md-3"><span class="text-muted">Company:</span> <strong><?= Html::encode($vendor->company_name) ?></strong></div>
-                <div class="col-md-2"><span class="text-muted">Type:</span>
-                    <span class="badge bg-<?= $typeColors[$vendor->vendor_type] ?? 'secondary' ?>"><?= Html::encode($typeLabels[$vendor->vendor_type] ?? '—') ?></span>
-                </div>
-                <div class="col-md-3"><span class="text-muted">GST:</span> <?= Html::encode($vendor->gst_no ?: '—') ?></div>
-                <div class="col-md-4"><span class="text-muted">Address:</span> <?= Html::encode($vendor->address ?: '—') ?></div>
+        <div class="card-header ui-section">Invoice</div>
+        <div class="card-body row g-3 ui-form">
+            <div class="col-md-4 required">
+                <label class="form-label" for="ii-number">Vendor invoice number</label>
+                <input type="text" id="ii-number" name="InwardInvoice[invoice_number]" class="form-control form-control-sm<?= $bad('invoice_number') ?>" maxlength="100" required
+                       value="<?= Html::encode($model->invoice_number) ?>" placeholder="As printed on the bill" autocomplete="off">
+                <?= $err('invoice_number') ?>
+            </div>
+            <div class="col-md-3 required">
+                <label class="form-label" for="ii-date">Invoice date</label>
+                <?= DatePicker::widget([
+                    'name' => 'InwardInvoice[invoice_date]', 'value' => $model->invoice_date, 'type' => DatePicker::TYPE_INPUT,
+                    'options' => ['id' => 'ii-date', 'class' => 'form-control form-control-sm' . $bad('invoice_date'), 'placeholder' => 'YYYY-MM-DD', 'autocomplete' => 'off', 'required' => true],
+                    'pluginOptions' => ['autoclose' => true, 'format' => 'yyyy-mm-dd', 'todayHighlight' => true, 'endDate' => date('Y-m-d')],
+                ]) ?>
+                <?= $err('invoice_date') ?>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label" for="ii-title">Title</label>
+                <input type="text" id="ii-title" name="InwardInvoice[title]" class="form-control form-control-sm" maxlength="5000" value="<?= Html::encode($model->title) ?>" placeholder="What this purchase is for (optional)">
             </div>
         </div>
     </div>
 
-    <form id="inward-invoice-form" method="post" enctype="multipart/form-data">
-        <?= Html::hiddenInput($csrfParam, $csrfToken) ?>
-        <?= Html::hiddenInput('InwardInvoice[vendor_id]', $vendor->id) ?>
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header ui-section d-flex align-items-center">Items <span class="ui-section-meta ms-2">Amounts include tax</span></div>
+        <div class="table-responsive">
+            <table class="table list-table ui-table stack mb-0 inward-lines">
+                <thead class="table-light">
+                <tr>
+                    <th style="width:36px">#</th>
+                    <th>Description · HSN · Ledger</th>
+                    <th class="text-end" style="width:90px">Qty</th>
+                    <th class="text-end" style="width:120px">Rate (₹)</th>
+                    <?php foreach ($taxes as $label): ?><th class="text-end" style="width:90px"><?= $label ?> %</th><?php endforeach; ?>
+                    <th class="text-end" style="width:120px">Amount</th>
+                    <th style="width:44px"><span class="visually-hidden">Remove</span></th>
+                </tr>
+                </thead>
+                <tbody id="ii-lines">
+                <?php foreach ($lines ?: [null] as $i => $d): ?>
+                    <?= $lineRow($i, $d ?? new \backend\models\InwardInvoiceDetails(['qty' => 1])) ?>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <div class="card-body pt-2">
+            <button type="button" class="btn btn-outline-primary btn-sm js-add-line"><i class="fas fa-plus me-1"></i>Add line</button>
+        </div>
+        <template id="ii-line-tpl"><?= $lineRow('__i__', new \backend\models\InwardInvoiceDetails(['qty' => 1])) ?></template>
+    </div>
 
-        <!-- Header Fields -->
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-body py-3">
-                <div class="row g-3">
-                    <div class="col-md-3">
-                        <label class="form-label small fw-semibold">Invoice Number <span class="text-danger">*</span></label>
-                        <input type="text" name="InwardInvoice[invoice_number]" id="invoice_number"
-                               value="<?= Html::encode($model->invoice_number) ?>"
-                               class="form-control form-control-sm" maxlength="255" required>
+    <div class="row g-3 mb-3">
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header ui-section">Extra expenses <span class="ui-section-meta">Freight, packing, etc. — no tax</span></div>
+                <div class="card-body">
+                    <div id="ii-expenses">
+                        <?php foreach ($expenses as $i => $e): ?><?= $expenseRow($i, $e) ?><?php endforeach; ?>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label small fw-semibold">Invoice Date <span class="text-danger">*</span></label>
-                        <?= DatePicker::widget([
-                            'name'    => 'InwardInvoice[invoice_date]',
-                            'value'   => $model->invoice_date ?: date('Y-m-d'),
-                            'type'    => DatePicker::TYPE_INPUT,
-                            'options' => ['class' => 'form-control form-control-sm', 'id' => 'invoice_date', 'readonly' => true],
-                            'pluginOptions' => ['autoclose' => true, 'format' => 'yyyy-mm-dd', 'todayHighlight' => true],
-                        ]) ?>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label small fw-semibold">Title</label>
-                        <input type="text" name="InwardInvoice[title]" id="invoice_title"
-                               value="<?= Html::encode($model->title) ?>"
-                               class="form-control form-control-sm" maxlength="5000" placeholder="Description / purpose">
-                    </div>
+                    <p class="small text-muted mb-2 js-no-expenses"<?= $expenses ? ' hidden' : '' ?>>No extra expenses.</p>
+                    <button type="button" class="btn btn-outline-secondary btn-sm js-add-expense"><i class="fas fa-plus me-1"></i>Add expense</button>
+                    <template id="ii-expense-tpl"><?= $expenseRow('__i__', null) ?></template>
                 </div>
             </div>
         </div>
-
-        <!-- Line Items Table -->
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white py-2"><strong class="small">Line Items</strong></div>
-            <div class="table-responsive">
-                <table class="table table-sm inv-table mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width:30px">#</th>
-                            <th style="width:130px">Ledger Cat</th>
-                            <th style="width:130px">Ledger</th>
-                            <th>Particulars <span class="text-danger">*</span></th>
-                            <th style="width:70px">HSN</th>
-                            <th style="width:70px">Qty <span class="text-danger">*</span></th>
-                            <th style="width:90px">Price/Qty <span class="text-danger">*</span></th>
-                            <th style="width:90px">Item Total</th>
-                            <th style="width:60px">SGST%</th>
-                            <th style="width:80px">SGST Amt</th>
-                            <th style="width:60px">CGST%</th>
-                            <th style="width:80px">CGST Amt</th>
-                            <th style="width:60px">IGST%</th>
-                            <th style="width:80px">IGST Amt</th>
-                            <th style="width:90px">Total Amt</th>
-                            <th style="width:35px"></th>
-                        </tr>
-                    </thead>
-
-                    <!-- Template Row -->
-                    <tbody id="tpl-row">
-                        <tr class="table-warning">
-                            <td class="text-muted text-center">—</td>
-                            <td>
-                                <select id="tpl-ledger-cat" class="form-select form-select-sm">
-                                    <option value="">Category…</option>
-                                    <?php foreach ($catMap as $cid => $ctitle): ?>
-                                        <option value="<?= $cid ?>"><?= Html::encode($ctitle) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </td>
-                            <td>
-                                <select id="tpl-ledger" class="form-select form-select-sm">
-                                    <option value="">Ledger…</option>
-                                </select>
-                            </td>
-                            <td><input type="text" id="tpl-particular" class="form-control form-control-sm" placeholder="Product / Service"></td>
-                            <td><input type="text" id="tpl-hsn" class="form-control form-control-sm"></td>
-                            <td><input type="number" id="tpl-qty" class="form-control form-control-sm" step="0.01" min="0" value="1"></td>
-                            <td><input type="number" id="tpl-rate" class="form-control form-control-sm" step="0.01" min="0"></td>
-                            <td><input type="number" id="tpl-item-total" class="form-control form-control-sm" step="0.01" readonly></td>
-                            <td><input type="number" id="tpl-sgst-pct" class="form-control form-control-sm" step="0.01" min="0" max="100" value="0" <?= $rdSgst ?>></td>
-                            <td><input type="number" id="tpl-sgst-amt" class="form-control form-control-sm" step="0.01" <?= $rdSgst ?>></td>
-                            <td><input type="number" id="tpl-cgst-pct" class="form-control form-control-sm" step="0.01" min="0" max="100" value="0" <?= $rdCgst ?>></td>
-                            <td><input type="number" id="tpl-cgst-amt" class="form-control form-control-sm" step="0.01" <?= $rdCgst ?>></td>
-                            <td><input type="number" id="tpl-igst-pct" class="form-control form-control-sm" step="0.01" min="0" max="100" value="0" <?= $rdIgst ?>></td>
-                            <td><input type="number" id="tpl-igst-amt" class="form-control form-control-sm" step="0.01" <?= $rdIgst ?>></td>
-                            <td><input type="number" id="tpl-total-amt" class="form-control form-control-sm" step="0.01" readonly></td>
-                            <td><button type="button" id="btn-add-row" class="btn btn-sm btn-success fw-bold px-2">+</button></td>
-                        </tr>
-                    </tbody>
-
-                    <!-- Added / Existing Items -->
-                    <tbody id="items-body">
-                        <?php foreach ($existingItems as $idx => $d): ?>
-                        <tr class="item-row">
-                            <td class="sno text-muted text-center"><?= $idx + 1 ?></td>
-                            <td class="small text-muted"><?= Html::encode($d->ledger ? $d->ledger->category->title ?? '' : '') ?></td>
-                            <td class="small text-muted">
-                                <?= Html::encode($d->ledger->title ?? '') ?>
-                                <input type="hidden" name="ledger_ids[]" value="<?= $d->ledger_id ?>">
-                            </td>
-                            <td><input type="text" name="particular[]" class="form-control form-control-sm" value="<?= Html::encode($d->product) ?>"></td>
-                            <td><input type="text" name="hsn[]" class="form-control form-control-sm" value="<?= Html::encode($d->hsn) ?>"></td>
-                            <td><input type="number" name="qty[]" class="form-control form-control-sm r-qty" step="0.01" min="0" value="<?= $d->qty ?>"></td>
-                            <td><input type="number" name="price_per_qty[]" class="form-control form-control-sm r-rate" step="0.01" min="0" value="<?= $d->price_per_qty ?>"></td>
-                            <td><input type="number" name="item_total[]" class="form-control form-control-sm r-item-total" step="0.01" value="<?= $d->item_total ?>" readonly></td>
-                            <td><input type="number" name="sgst_percent[]" class="form-control form-control-sm r-sgst-pct" step="0.01" max="100" value="<?= $d->sgst_percent ?>" <?= $rdSgst ?>></td>
-                            <td><input type="number" name="sgst_amount[]" class="form-control form-control-sm r-sgst-amt" step="0.01" value="<?= $d->sgst_amount ?>" <?= $rdSgst ?>></td>
-                            <td><input type="number" name="cgst_percent[]" class="form-control form-control-sm r-cgst-pct" step="0.01" max="100" value="<?= $d->cgst_percent ?>" <?= $rdCgst ?>></td>
-                            <td><input type="number" name="cgst_amount[]" class="form-control form-control-sm r-cgst-amt" step="0.01" value="<?= $d->cgst_amount ?>" <?= $rdCgst ?>></td>
-                            <td><input type="number" name="igst_percent[]" class="form-control form-control-sm r-igst-pct" step="0.01" max="100" value="<?= $d->igst_percent ?>" <?= $rdIgst ?>></td>
-                            <td><input type="number" name="igst_amount[]" class="form-control form-control-sm r-igst-amt" step="0.01" value="<?= $d->igst_amount ?>" <?= $rdIgst ?>></td>
-                            <td><input type="number" name="total_amount[]" class="form-control form-control-sm r-total-amt" step="0.01" value="<?= $d->total_amount ?>" readonly></td>
-                            <td><button type="button" class="btn btn-sm btn-outline-danger btn-del-row px-2">−</button></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-
-                    <!-- Summary -->
-                    <tbody id="summary-body">
-                        <tr class="summary-row table-light"><td colspan="14" class="text-end fw-semibold">Grand Total <span class="text-danger">*</span></td>
-                            <td><input type="number" name="grandtotal" id="grandtotal" class="form-control form-control-sm fw-bold" step="0.01" value="<?= $model->grand_total ?>" readonly></td><td></td></tr>
-                        <tr class="summary-row"><td colspan="14" class="text-end">SGST Amount<?= $sgstEnabled ? ' <span class="text-danger">*</span>' : '' ?></td>
-                            <td><input type="number" name="sgstamount" id="sgstamount" class="form-control form-control-sm" step="0.01" value="<?= $model->sgst_amount ?>" <?= $sgstEnabled ? '' : 'readonly' ?>></td><td></td></tr>
-                        <tr class="summary-row"><td colspan="14" class="text-end">CGST Amount<?= $cgstEnabled ? ' <span class="text-danger">*</span>' : '' ?></td>
-                            <td><input type="number" name="cgstamount" id="cgstamount" class="form-control form-control-sm" step="0.01" value="<?= $model->cgst_amount ?>" <?= $cgstEnabled ? '' : 'readonly' ?>></td><td></td></tr>
-                        <tr class="summary-row"><td colspan="14" class="text-end">IGST Amount<?= $igstEnabled ? ' <span class="text-danger">*</span>' : '' ?></td>
-                            <td><input type="number" name="igstamount" id="igstamount" class="form-control form-control-sm" step="0.01" value="<?= $model->igst_amount ?>" <?= $igstEnabled ? '' : 'readonly' ?>></td><td></td></tr>
-
-                        <!-- Extra Expenses Header -->
-                        <tr class="expense-row"><td colspan="15" class="text-end">
-                            <button type="button" id="btn-add-expense" class="btn btn-outline-info btn-sm">+ Add Extra Expense</button>
-                        </td><td></td></tr>
-                    </tbody>
-
-                    <!-- Existing Expenses -->
-                    <tbody id="expenses-body">
-                        <?php foreach ($existingExpenses as $ex): ?>
-                        <tr class="expense-row exp-item">
-                            <td></td>
-                            <td colspan="2" class="small text-muted"><?= Html::encode($ex->ledger->title ?? '') ?>
-                                <input type="hidden" name="expense_ledger_id[]" value="<?= $ex->ledger_id ?>"></td>
-                            <td colspan="10">
-                                <input type="text" name="expense_title[]" class="form-control form-control-sm" value="<?= Html::encode($ex->product) ?>" placeholder="Expense label">
-                            </td>
-                            <td colspan="2">
-                                <input type="number" name="expense_amount[]" class="form-control form-control-sm exp-amount" step="0.01" min="0" value="<?= $ex->item_total ?>">
-                            </td>
-                            <td><button type="button" class="btn btn-sm btn-outline-danger btn-del-expense px-2">−</button></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-
-                    <!-- Round Off & Net -->
-                    <tbody>
-                        <tr class="summary-row"><td colspan="14" class="text-end">Round Off</td>
-                            <td><input type="number" name="roundoff" id="round_off" class="form-control form-control-sm" step="0.01" value="<?= $model->round_off ?>"></td><td></td></tr>
-                        <tr class="summary-row table-light"><td colspan="14" class="text-end fw-bold">Net Total <span class="text-danger">*</span></td>
-                            <td><input type="number" name="nettotal" id="nettotal" class="form-control form-control-sm fw-bold" step="0.01" value="<?= $model->net_total ?>" readonly></td><td></td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Payment Section -->
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white py-2"><strong class="small">Payment Information</strong></div>
-            <div class="card-body py-3">
-                <div class="row g-3">
-                    <div class="col-md-2">
-                        <label class="form-label small fw-semibold">Payment Status <span class="text-danger">*</span></label>
-                        <select name="InwardInvoice[payment_status]" id="payment_status" class="form-select form-select-sm">
-                            <option value="">— Select —</option>
-                            <option value="0" <?= $model->payment_status !== null && $model->payment_status !== '' && (int)$model->payment_status === 0 ? 'selected' : '' ?>>Not Paid</option>
-                            <option value="1" <?= (int)$model->payment_status === 1 ? 'selected' : '' ?>>Paid</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Payment details (shown when Paid) -->
-                <div id="payment-details" class="row g-3 mt-1" style="display:<?= (int)$model->payment_status === 1 ? 'flex' : 'none' ?>">
-                    <div class="col-md-2">
-                        <label class="form-label small fw-semibold">Payment Type</label>
-                        <select name="InwardInvoice[payment_type]" id="payment_type" class="form-select form-select-sm">
-                            <option value="">— Select —</option>
-                            <?php foreach ($paymentCatMap as $pid => $ptitle): ?>
-                                <option value="<?= $pid ?>" <?= (int)$model->payment_type === $pid ? 'selected' : '' ?>><?= Html::encode($ptitle) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label small fw-semibold">Payment Ledger <span class="text-danger">*</span></label>
-                        <select name="InwardInvoice[payment_ledger_id]" id="payment_ledger_id" class="form-select form-select-sm">
-                            <option value="">— Select —</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label small fw-semibold">Payment Date</label>
-                        <?= DatePicker::widget([
-                            'name'    => 'InwardInvoice[payment_date]',
-                            'value'   => $model->payment_date ?: '',
-                            'type'    => DatePicker::TYPE_INPUT,
-                            'options' => ['class' => 'form-control form-control-sm', 'id' => 'payment_date', 'readonly' => true],
-                            'pluginOptions' => ['autoclose' => true, 'format' => 'yyyy-mm-dd', 'todayHighlight' => true],
-                        ]) ?>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label small fw-semibold">Payment Amount</label>
-                        <input type="number" name="InwardInvoice[payment_amount]" id="payment_amount"
-                               class="form-control form-control-sm" step="0.01" min="0"
-                               value="<?= $model->payment_amount ?>">
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label small fw-semibold">TDS Amount</label>
-                        <input type="number" name="InwardInvoice[tds_amount]" id="tds_amount"
-                               class="form-control form-control-sm" step="0.01" min="0"
-                               value="<?= $model->tds_amount ?>">
-                    </div>
-                </div>
-
-                <div class="row g-3 mt-1">
-                    <div class="col-md-4">
-                        <label class="form-label small fw-semibold">Payment Remarks</label>
-                        <textarea name="InwardInvoice[payment_remarks]" class="form-control form-control-sm"
-                                  rows="2" maxlength="5000" placeholder="Optional remarks"><?= Html::encode($model->payment_remarks) ?></textarea>
-                    </div>
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header ui-section">Totals</div>
+                <div class="card-body">
+                    <dl class="inv-totals mb-0">
+                        <dt>Sub total</dt><dd class="num js-sum-sub">0.00</dd>
+                        <?php foreach ($taxes as $k => $label): ?><dt><?= $label ?></dt><dd class="num js-sum-<?= $k ?>">0.00</dd><?php endforeach; ?>
+                        <dt>Extra expenses</dt><dd class="num js-sum-extra">0.00</dd>
+                        <dt><label for="ii-round" class="mb-0">Round off</label></dt>
+                        <dd><input type="number" id="ii-round" name="InwardInvoice[round_off]" class="form-control form-control-sm text-end js-round<?= $bad('round_off') ?>" step="0.01" min="-1000" max="1000"
+                                   value="<?= Html::encode($money($model->round_off)) ?>" style="max-width:130px;margin-left:auto"><?= $err('round_off') ?></dd>
+                        <dt class="is-net">Net total</dt><dd class="num is-net">₹ <span class="js-sum-net">0.00</span></dd>
+                    </dl>
+                    <?= $err('net_total') ?>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Attachments -->
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white py-2"><strong class="small">Attachments</strong></div>
-            <div class="card-body py-3">
-                <input type="file" name="attachments[]" multiple class="form-control form-control-sm" style="max-width:400px">
-                <?php if (!empty($existingAttachments)): ?>
-                <table class="table table-sm mt-2 mb-0" style="max-width:500px">
-                    <?php foreach ($existingAttachments as $ai => $att): ?>
-                    <tr id="att-<?= $att->id ?>">
-                        <td class="small">
-                            <a href="<?= $att->path ?>" target="_blank">Attachment <?= $ai + 1 ?></a>
-                        </td>
-                        <td class="text-end">
-                            <button type="button" class="btn btn-sm btn-outline-danger btn-del-att px-2"
-                                    data-id="<?= $att->id ?>"><i class="fas fa-trash-alt"></i></button>
-                        </td>
-                    </tr>
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header ui-section">Payment</div>
+        <div class="card-body row g-3 ui-form">
+            <div class="col-12 required">
+                <span class="form-label d-block" id="ii-pay-label">Payment status</span>
+                <div role="radiogroup" aria-labelledby="ii-pay-label" class="d-flex gap-3">
+                    <?php foreach (InwardInvoice::paymentOptions() as $v => $label): ?>
+                        <div class="form-check">
+                            <input class="form-check-input js-pay-status<?= $bad('payment_status') ?>" type="radio" name="InwardInvoice[payment_status]" id="ii-pay-<?= $v ?>" value="<?= $v ?>"
+                                <?= (string)$model->payment_status === (string)$v ? 'checked' : '' ?>>
+                            <label class="form-check-label" for="ii-pay-<?= $v ?>"><?= $label ?></label>
+                        </div>
                     <?php endforeach; ?>
-                </table>
-                <?php endif; ?>
+                </div>
+                <?= $err('payment_status') ?>
             </div>
-        </div>
-
-        <!-- Submit -->
-        <div class="d-flex gap-2 mb-4">
-            <?= Html::submitButton($isNew ? 'Create Invoice' : 'Save Changes', [
-                'class' => 'btn btn-primary btn-sm px-4',
-                'id'    => 'btn-submit',
-            ]) ?>
-            <?= Html::a('Cancel', ['index'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
-        </div>
-    </form>
-</div>
-
-<!-- Extra Expense Modal -->
-<div class="modal fade" id="expenseModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h6 class="modal-title">Add Extra Expense</h6>
-                <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-2">
-                    <label class="form-label small fw-semibold">Ledger Category</label>
-                    <select id="exp-ledger-cat" class="form-select form-select-sm">
-                        <option value="">— Select —</option>
-                        <?php foreach ($catMap as $cid => $ctitle): ?>
-                            <option value="<?= $cid ?>"><?= Html::encode($ctitle) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label small fw-semibold">Ledger</label>
-                    <select id="exp-ledger" class="form-select form-select-sm">
-                        <option value="">— Select —</option>
-                    </select>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label small fw-semibold">Label / Title</label>
-                    <input type="text" id="exp-title" class="form-control form-control-sm" placeholder="Expense description">
-                </div>
-                <div class="mb-2">
-                    <label class="form-label small fw-semibold">Amount</label>
-                    <input type="number" id="exp-amount" class="form-control form-control-sm" step="0.01" min="0">
+            <div class="col-12 js-paid-fields"<?= $isPaid ? '' : ' hidden' ?>>
+                <div class="row g-3">
+                    <div class="col-md-3 required">
+                        <label class="form-label" for="ii-pay-type">Payment type</label>
+                        <?= Html::dropDownList('InwardInvoice[payment_type]', $model->payment_type, $paymentTypes,
+                            ['id' => 'ii-pay-type', 'class' => 'form-select form-select-sm js-pay-type' . $bad('payment_type'), 'prompt' => 'Select']) ?>
+                        <?= $err('payment_type') ?>
+                    </div>
+                    <div class="col-md-3 required">
+                        <label class="form-label" for="ii-pay-ledger">Paid from</label>
+                        <?= Select2::widget([
+                            'name' => 'InwardInvoice[payment_ledger_id]', 'value' => $model->payment_ledger_id,
+                            'data' => $paymentLedgers[(int)$model->payment_type] ?? [],
+                            'options' => ['id' => 'ii-pay-ledger', 'placeholder' => 'Select ledger', 'class' => 'js-pay-ledger'], 'size' => Select2::SMALL,
+                            'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
+                        ]) ?>
+                        <?= $err('payment_ledger_id') ?>
+                    </div>
+                    <div class="col-md-2 required">
+                        <label class="form-label" for="ii-pay-date">Payment date</label>
+                        <?= DatePicker::widget([
+                            'name' => 'InwardInvoice[payment_date]', 'value' => $model->payment_date, 'type' => DatePicker::TYPE_INPUT,
+                            'options' => ['id' => 'ii-pay-date', 'class' => 'form-control form-control-sm' . $bad('payment_date'), 'placeholder' => 'YYYY-MM-DD', 'autocomplete' => 'off'],
+                            'pluginOptions' => ['autoclose' => true, 'format' => 'yyyy-mm-dd', 'todayHighlight' => true, 'endDate' => date('Y-m-d')],
+                        ]) ?>
+                        <?= $err('payment_date') ?>
+                    </div>
+                    <div class="col-md-2 col-6 required">
+                        <label class="form-label" for="ii-pay-amount">Amount paid (₹)</label>
+                        <input type="number" id="ii-pay-amount" name="InwardInvoice[payment_amount]" class="form-control form-control-sm text-end js-pay-amount<?= $bad('payment_amount') ?>" step="0.01" min="0"
+                               value="<?= (float)$model->payment_amount ? Html::encode($money($model->payment_amount)) : '' ?>">
+                        <?= $err('payment_amount') ?>
+                    </div>
+                    <div class="col-md-2 col-6">
+                        <label class="form-label" for="ii-tds">TDS deducted (₹)</label>
+                        <input type="number" id="ii-tds" name="InwardInvoice[tds_amount]" class="form-control form-control-sm text-end js-tds<?= $bad('tds_amount') ?>" step="0.01" min="0"
+                               value="<?= (float)$model->tds_amount ? Html::encode($money($model->tds_amount)) : '' ?>">
+                        <?= $err('tds_amount') ?>
+                    </div>
+                    <div class="col-12 small text-muted js-pay-hint"></div>
                 </div>
             </div>
-            <div class="modal-footer py-2">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary btn-sm" id="btn-expense-add">Add</button>
+            <div class="col-md-8">
+                <label class="form-label" for="ii-remarks">Remarks</label>
+                <textarea id="ii-remarks" name="InwardInvoice[payment_remarks]" class="form-control form-control-sm" rows="2" maxlength="5000" placeholder="Optional"><?= Html::encode($model->payment_remarks) ?></textarea>
             </div>
         </div>
     </div>
-</div>
 
-<?php
-$autocompleteLedgerUrl = Url::to(['autocomplete-ledger']);
-$getPaymentLedgersUrl  = Url::to(['get-payment-ledgers']);
-$deleteAttachmentUrl   = Url::to(['delete-attachment']);
-$existingPaymentType   = (int)$model->payment_type;
-$existingPaymentLedger = (int)$model->payment_ledger_id;
-$sgstJs = $sgstEnabled ? 'true' : 'false';
-$cgstJs = $cgstEnabled ? 'true' : 'false';
-$igstJs = $igstEnabled ? 'true' : 'false';
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header ui-section">Attachments</div>
+        <div class="card-body">
+            <?php if (!$isNew && $model->attachments): ?>
+                <ul class="list-unstyled mb-3">
+                    <?php foreach ($model->attachments as $k => $att): ?>
+                        <li class="ui-file d-flex align-items-center gap-2 mb-1" id="ii-att-<?= $att->id ?>">
+                            <i class="fas fa-paperclip text-muted" aria-hidden="true"></i>
+                            <?= Html::a('Attachment ' . ($k + 1) . ' (' . strtoupper(pathinfo($att->path, PATHINFO_EXTENSION)) . ')', Url::to('@web' . $att->path), ['target' => '_blank', 'rel' => 'noopener']) ?>
+                            <button type="button" class="btn btn-link btn-sm text-danger p-0 ms-2" data-ii-delete-att="<?= $att->id ?>"
+                                    data-url="<?= Url::to(['delete-attachment', 'id' => $att->id]) ?>">Remove</button>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+            <label class="form-label" for="ii-files">Add files</label>
+            <input type="file" id="ii-files" name="attachments[]" multiple class="form-control form-control-sm" style="max-width:420px" accept="<?= SafeUpload::acceptAttribute() ?>">
+            <div class="form-text">PDF, images, Office files or ZIP; up to <?= SafeUpload::MAX_BYTES / 1024 / 1024 ?> MB each.</div>
+        </div>
+    </div>
 
-$this->registerJs(<<<JS
-var sgstEnabled = {$sgstJs},
-    cgstEnabled = {$cgstJs},
-    igstEnabled = {$igstJs};
-
-/* ── Ledger AJAX helper ──────────────────────────────────── */
-function loadLedgers(categoryId, selectEl, callback) {
-    selectEl.html('<option value="">Loading…</option>');
-    jQuery.post('{$autocompleteLedgerUrl}', {categoryId: categoryId}, function(resp) {
-        selectEl.html('<option value="">Ledger…</option>');
-        if (resp.status == 1 && resp.data) {
-            jQuery.each(resp.data, function(id, title) {
-                selectEl.append('<option value="'+id+'">'+title+'</option>');
-            });
-        }
-        if (callback) callback();
-    }, 'json');
-}
-
-/* ── Template row: category → ledger ─────────────────────── */
-jQuery('#tpl-ledger-cat').on('change', function() {
-    var cid = jQuery(this).val();
-    if (cid) { loadLedgers(cid, jQuery('#tpl-ledger')); }
-    else { jQuery('#tpl-ledger').html('<option value="">Ledger…</option>'); }
-});
-
-/* ── Template row: calculate on input ────────────────────── */
-jQuery('#tpl-qty, #tpl-rate, #tpl-sgst-pct, #tpl-cgst-pct, #tpl-igst-pct, #tpl-sgst-amt, #tpl-cgst-amt, #tpl-igst-amt').on('input', function() {
-    calcTplRow();
-});
-
-function calcTplRow() {
-    var qty  = pf('#tpl-qty'), rate = pf('#tpl-rate');
-    var it   = qty * rate;
-    jQuery('#tpl-item-total').val(it.toFixed(2));
-    // Tax from percentages
-    var sp = pf('#tpl-sgst-pct'), cp = pf('#tpl-cgst-pct'), ip = pf('#tpl-igst-pct');
-    jQuery('#tpl-sgst-amt').val((it * sp / 100).toFixed(2));
-    jQuery('#tpl-cgst-amt').val((it * cp / 100).toFixed(2));
-    jQuery('#tpl-igst-amt').val((it * ip / 100).toFixed(2));
-    var total = it + pf('#tpl-sgst-amt') + pf('#tpl-cgst-amt') + pf('#tpl-igst-amt');
-    jQuery('#tpl-total-amt').val(total.toFixed(2));
-}
-
-/* ── Add row from template ───────────────────────────────── */
-jQuery('#btn-add-row').on('click', function() {
-    var particular = jQuery('#tpl-particular').val().trim();
-    if (!particular) { Swal.fire({icon:'error',title:'Error',text:'Particulars is required.'}); return; }
-    if (pf('#tpl-qty') <= 0) { Swal.fire({icon:'error',title:'Error',text:'Qty must be > 0.'}); return; }
-    if (pf('#tpl-rate') <= 0) { Swal.fire({icon:'error',title:'Error',text:'Price per Qty must be > 0.'}); return; }
-
-    var ledgerId   = jQuery('#tpl-ledger').val() || '';
-    var ledgerText = jQuery('#tpl-ledger option:selected').text() || '';
-    var catText    = jQuery('#tpl-ledger-cat option:selected').text() || '';
-    var rdS = sgstEnabled ? '' : 'readonly', rdC = cgstEnabled ? '' : 'readonly', rdI = igstEnabled ? '' : 'readonly';
-
-    var row = '<tr class="item-row">'
-        + '<td class="sno text-muted text-center"></td>'
-        + '<td class="small text-muted">'+esc(catText)+'</td>'
-        + '<td class="small text-muted">'+esc(ledgerText)+'<input type="hidden" name="ledger_ids[]" value="'+ledgerId+'"></td>'
-        + '<td><input type="text" name="particular[]" class="form-control form-control-sm" value="'+esc(particular)+'"></td>'
-        + '<td><input type="text" name="hsn[]" class="form-control form-control-sm" value="'+esc(jQuery('#tpl-hsn').val())+'"></td>'
-        + '<td><input type="number" name="qty[]" class="form-control form-control-sm r-qty" step="0.01" min="0" value="'+pf('#tpl-qty')+'"></td>'
-        + '<td><input type="number" name="price_per_qty[]" class="form-control form-control-sm r-rate" step="0.01" min="0" value="'+pf('#tpl-rate')+'"></td>'
-        + '<td><input type="number" name="item_total[]" class="form-control form-control-sm r-item-total" step="0.01" value="'+pf('#tpl-item-total')+'" readonly></td>'
-        + '<td><input type="number" name="sgst_percent[]" class="form-control form-control-sm r-sgst-pct" step="0.01" max="100" value="'+pf('#tpl-sgst-pct')+'" '+rdS+'></td>'
-        + '<td><input type="number" name="sgst_amount[]" class="form-control form-control-sm r-sgst-amt" step="0.01" value="'+pf('#tpl-sgst-amt')+'" '+rdS+'></td>'
-        + '<td><input type="number" name="cgst_percent[]" class="form-control form-control-sm r-cgst-pct" step="0.01" max="100" value="'+pf('#tpl-cgst-pct')+'" '+rdC+'></td>'
-        + '<td><input type="number" name="cgst_amount[]" class="form-control form-control-sm r-cgst-amt" step="0.01" value="'+pf('#tpl-cgst-amt')+'" '+rdC+'></td>'
-        + '<td><input type="number" name="igst_percent[]" class="form-control form-control-sm r-igst-pct" step="0.01" max="100" value="'+pf('#tpl-igst-pct')+'" '+rdI+'></td>'
-        + '<td><input type="number" name="igst_amount[]" class="form-control form-control-sm r-igst-amt" step="0.01" value="'+pf('#tpl-igst-amt')+'" '+rdI+'></td>'
-        + '<td><input type="number" name="total_amount[]" class="form-control form-control-sm r-total-amt" step="0.01" value="'+pf('#tpl-total-amt')+'" readonly></td>'
-        + '<td><button type="button" class="btn btn-sm btn-outline-danger btn-del-row px-2">−</button></td>'
-        + '</tr>';
-
-    jQuery('#items-body').append(row);
-    bindRowEvents(jQuery('#items-body tr:last'));
-    clearTemplate();
-    updateSerials();
-    recalcTotals();
-});
-
-/* ── Clear template row ──────────────────────────────────── */
-function clearTemplate() {
-    jQuery('#tpl-ledger-cat').val('');
-    jQuery('#tpl-ledger').html('<option value="">Ledger…</option>');
-    jQuery('#tpl-particular, #tpl-hsn').val('');
-    jQuery('#tpl-qty').val('1');
-    jQuery('#tpl-rate, #tpl-item-total, #tpl-sgst-pct, #tpl-sgst-amt, #tpl-cgst-pct, #tpl-cgst-amt, #tpl-igst-pct, #tpl-igst-amt, #tpl-total-amt').val('0');
-}
-
-/* ── Bind events to an item row ──────────────────────────── */
-function bindRowEvents(row) {
-    row.find('.r-qty, .r-rate').on('input', function() { calcItemRow(row); });
-    row.find('.r-sgst-pct, .r-cgst-pct, .r-igst-pct').on('input', function() { calcItemTax(row); });
-    row.find('.btn-del-row').on('click', function() {
-        if (jQuery('#items-body .item-row').length <= 1) { Swal.fire({icon:'warning',title:'Warning',text:'At least one line item is required.'}); return; }
-        row.remove(); updateSerials(); recalcTotals();
-    });
-}
-
-/* ── Calculate a single item row ─────────────────────────── */
-function calcItemRow(row) {
-    var qty  = parseFloat(row.find('.r-qty').val()) || 0;
-    var rate = parseFloat(row.find('.r-rate').val()) || 0;
-    var it   = qty * rate;
-    row.find('.r-item-total').val(it.toFixed(2));
-    calcItemTax(row);
-}
-
-function calcItemTax(row) {
-    var it = parseFloat(row.find('.r-item-total').val()) || 0;
-    var sp = parseFloat(row.find('.r-sgst-pct').val()) || 0;
-    var cp = parseFloat(row.find('.r-cgst-pct').val()) || 0;
-    var ip = parseFloat(row.find('.r-igst-pct').val()) || 0;
-    row.find('.r-sgst-amt').val((it * sp / 100).toFixed(2));
-    row.find('.r-cgst-amt').val((it * cp / 100).toFixed(2));
-    row.find('.r-igst-amt').val((it * ip / 100).toFixed(2));
-    var total = it + parseFloat(row.find('.r-sgst-amt').val()) + parseFloat(row.find('.r-cgst-amt').val()) + parseFloat(row.find('.r-igst-amt').val());
-    row.find('.r-total-amt').val(total.toFixed(2));
-    recalcTotals();
-}
-
-/* ── Recalc summary totals ───────────────────────────────── */
-function recalcTotals() {
-    var grand = 0, sgst = 0, cgst = 0, igst = 0;
-    jQuery('#items-body .item-row').each(function() {
-        grand += parseFloat(jQuery(this).find('.r-item-total').val()) || 0;
-        sgst  += parseFloat(jQuery(this).find('.r-sgst-amt').val()) || 0;
-        cgst  += parseFloat(jQuery(this).find('.r-cgst-amt').val()) || 0;
-        igst  += parseFloat(jQuery(this).find('.r-igst-amt').val()) || 0;
-    });
-    jQuery('#grandtotal').val(grand.toFixed(2));
-    jQuery('#sgstamount').val(sgst.toFixed(2));
-    jQuery('#cgstamount').val(cgst.toFixed(2));
-    jQuery('#igstamount').val(igst.toFixed(2));
-    calcNet();
-}
-
-function calcNet() {
-    var grand   = pf('#grandtotal'), sgst = pf('#sgstamount'), cgst = pf('#cgstamount'), igst = pf('#igstamount');
-    var roundOff = parseFloat(jQuery('#round_off').val()) || 0;
-    var expTotal = 0;
-    jQuery('#expenses-body .exp-amount').each(function() { expTotal += parseFloat(jQuery(this).val()) || 0; });
-    var net = grand + sgst + cgst + igst + roundOff + expTotal;
-    jQuery('#nettotal').val(net.toFixed(2));
-    jQuery('#payment_amount').val(net.toFixed(2));
-}
-
-jQuery('#round_off').on('input', calcNet);
-
-/* ── Serial numbers ──────────────────────────────────────── */
-function updateSerials() {
-    jQuery('#items-body .item-row .sno').each(function(i) { jQuery(this).text(i + 1); });
-}
-
-/* ── Init existing rows ──────────────────────────────────── */
-jQuery('#items-body .item-row').each(function() { bindRowEvents(jQuery(this)); });
-recalcTotals();
-
-/* ── Payment status toggle ───────────────────────────────── */
-jQuery('#payment_status').on('change', function() {
-    if (jQuery(this).val() == '1') {
-        jQuery('#payment-details').show();
-        jQuery('#payment_amount').val(pf('#nettotal').toFixed(2));
-    } else {
-        jQuery('#payment-details').hide();
-    }
-});
-
-/* ── Payment type → ledgers ──────────────────────────────── */
-jQuery('#payment_type').on('change', function() {
-    var cid = jQuery(this).val();
-    jQuery('#payment_ledger_id').html('<option value="">— Select —</option>');
-    if (cid) {
-        jQuery.post('{$getPaymentLedgersUrl}', {payment_type: cid}, function(resp) {
-            if (resp.status == 1 && resp.data) {
-                jQuery.each(resp.data, function(id, title) {
-                    jQuery('#payment_ledger_id').append('<option value="'+id+'">'+title+'</option>');
-                });
-            }
-        }, 'json');
-    }
-});
-
-/* ── Pre-load payment ledger on edit ─────────────────────── */
-var existPT = {$existingPaymentType}, existPL = {$existingPaymentLedger};
-if (existPT > 0) {
-    jQuery.post('{$getPaymentLedgersUrl}', {payment_type: existPT}, function(resp) {
-        if (resp.status == 1 && resp.data) {
-            jQuery.each(resp.data, function(id, title) {
-                var opt = '<option value="'+id+'"'+(id == existPL ? ' selected' : '')+'>'+title+'</option>';
-                jQuery('#payment_ledger_id').append(opt);
-            });
-        }
-    }, 'json');
-}
-
-/* ── Extra Expenses ──────────────────────────────────────── */
-jQuery('#btn-add-expense').on('click', function() {
-    jQuery('#exp-ledger-cat, #exp-ledger, #exp-title, #exp-amount').val('');
-    jQuery('#exp-ledger').html('<option value="">— Select —</option>');
-    new bootstrap.Modal(document.getElementById('expenseModal')).show();
-});
-
-jQuery('#exp-ledger-cat').on('change', function() {
-    var cid = jQuery(this).val();
-    var sel = jQuery('#exp-ledger');
-    sel.html('<option value="">— Select —</option>');
-    if (cid) {
-        jQuery.post('{$autocompleteLedgerUrl}', {categoryId: cid}, function(resp) {
-            if (resp.status == 1 && resp.data) {
-                jQuery.each(resp.data, function(id, title) { sel.append('<option value="'+id+'">'+title+'</option>'); });
-            }
-        }, 'json');
-    }
-});
-
-jQuery('#btn-expense-add').on('click', function() {
-    var amt = parseFloat(jQuery('#exp-amount').val()) || 0;
-    if (amt <= 0) { Swal.fire({icon:'error',title:'Error',text:'Amount must be > 0.'}); return; }
-    var ledgerId   = jQuery('#exp-ledger').val() || '';
-    var ledgerText = jQuery('#exp-ledger option:selected').text() || '';
-    var title      = jQuery('#exp-title').val().trim() || ledgerText;
-
-    var row = '<tr class="expense-row exp-item">'
-        + '<td></td>'
-        + '<td colspan="2" class="small text-muted">'+esc(ledgerText)+'<input type="hidden" name="expense_ledger_id[]" value="'+ledgerId+'"></td>'
-        + '<td colspan="10"><input type="text" name="expense_title[]" class="form-control form-control-sm" value="'+esc(title)+'"></td>'
-        + '<td colspan="2"><input type="number" name="expense_amount[]" class="form-control form-control-sm exp-amount" step="0.01" min="0" value="'+amt.toFixed(2)+'"></td>'
-        + '<td><button type="button" class="btn btn-sm btn-outline-danger btn-del-expense px-2">−</button></td>'
-        + '</tr>';
-    jQuery('#expenses-body').append(row);
-    bindExpenseEvents(jQuery('#expenses-body tr:last'));
-    bootstrap.Modal.getInstance(document.getElementById('expenseModal')).hide();
-    calcNet();
-});
-
-function bindExpenseEvents(row) {
-    row.find('.exp-amount').on('input', calcNet);
-    row.find('.btn-del-expense').on('click', function() { row.remove(); calcNet(); });
-}
-jQuery('#expenses-body .exp-item').each(function() { bindExpenseEvents(jQuery(this)); });
-
-/* ── Delete attachment ───────────────────────────────────── */
-jQuery('.btn-del-att').on('click', function() {
-    var btn = jQuery(this), id = btn.data('id');
-    Swal.fire({icon:'warning',title:'Delete attachment?',showCancelButton:true,confirmButtonColor:'#d33',confirmButtonText:'Yes, delete'}).then(function(r) {
-        if (r.isConfirmed) {
-            jQuery.post('{$deleteAttachmentUrl}?id='+id, function(resp) {
-                if (resp.status == 1) { jQuery('#att-'+id).remove(); }
-                else { Swal.fire({icon:'error',title:'Error',text:resp.msg}); }
-            }, 'json');
-        }
-    });
-});
-
-/* ── Form validation ─────────────────────────────────────── */
-jQuery('#inward-invoice-form').on('submit', function(e) {
-    var errors = [];
-    if (!jQuery('#invoice_number').val().trim()) errors.push('Invoice Number is required.');
-    if (!jQuery('#invoice_date').val().trim()) errors.push('Invoice Date is required.');
-    if (jQuery('#items-body .item-row').length === 0) errors.push('At least one line item is required.');
-    if (pf('#nettotal') <= 0) errors.push('Net Total must be > 0.');
-
-    var ps = jQuery('#payment_status').val();
-    if (ps === '') errors.push('Payment Status is required.');
-    if (ps == '1') {
-        if (!jQuery('#payment_type').val()) errors.push('Payment Type is required when Paid.');
-        if (!jQuery('#payment_ledger_id').val()) errors.push('Payment Ledger is required when Paid.');
-        if (pf('#payment_amount') <= 0) errors.push('Payment Amount must be > 0 when Paid.');
-        if ((pf('#payment_amount') + pf('#tds_amount')) > pf('#nettotal') + 0.01) errors.push('Payment + TDS cannot exceed Net Total.');
-    }
-
-    if (errors.length) {
-        e.preventDefault();
-        Swal.fire({icon:'error',title:'Validation Error',html:errors.join('<br>')});
-        return false;
-    }
-
-    e.preventDefault();
-    Swal.fire({icon:'question',title:'Submit Invoice?',text:'Are you sure you want to save this invoice?',showCancelButton:true,confirmButtonText:'Yes, save'}).then(function(r) {
-        if (r.isConfirmed) { e.target.submit(); }
-    });
-});
-
-/* ── Helpers ─────────────────────────────────────────────── */
-function pf(sel) { return parseFloat(jQuery(sel).val()) || 0; }
-function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-JS, \yii\web\View::POS_READY);
-?>
+    <div class="ui-form-actions">
+        <button type="submit" class="btn btn-primary btn-sm px-4"><i class="fas fa-check me-1"></i><?= $isNew ? 'Save invoice' : 'Save changes' ?></button>
+        <?= Html::a('Cancel', $isNew ? ['index'] : ['view', 'id' => $model->id], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
+    </div>
+</form>

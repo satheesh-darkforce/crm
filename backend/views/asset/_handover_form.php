@@ -21,10 +21,14 @@ $devMap      = ArrayHelper::map($developers, 'id', 'developer_name');
 $locMap      = ArrayHelper::map($locations, 'id', 'loc');
 $req = '<span class="text-danger">*</span>';
 ?>
-<div class="asset-handover-form">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= $this->title ?> Asset Handover</h5>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['handover'], ['class' => 'btn btn-outline-danger btn-sm', 'encode' => false]) ?>
+<div class="ui-page asset-handover-form">
+    <div class="ui-head">
+        <div>
+            <h1><?= $this->title ?> Asset Handover</h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['handover'], ['class' => 'btn btn-outline-danger btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <p class="mb-2"><strong>Fields with <span class="text-danger">*</span> are required.</strong></p>

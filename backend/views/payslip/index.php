@@ -52,11 +52,13 @@ $mkUrl     = fn(int $p) => Url::to(['index', 'page' => $p, 'month_year' => $filt
 .result-info { font-size:.8rem; color:#555; }
 </style>
 
-<div class="payslip-index">
+<div class="ui-page payslip-index">
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0"><strong>Manage</strong> Payslips</h5>
-        <div class="d-flex gap-2">
+    <div class="ui-head">
+        <div>
+            <h1><strong>Manage</strong> Payslips</h1>
+        </div>
+        <div class="ui-actions">
             <?php if ($isAdmin): ?>
                 <?php $prevMonthLabel = date('M Y', strtotime('first day of last month')); ?>
                 <?= Html::beginForm(['payslip/selectmonth'], 'post', [

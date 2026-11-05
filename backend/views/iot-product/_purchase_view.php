@@ -10,10 +10,12 @@ $lineItems = $model->lineItems;
 $expenses  = $model->expenses;
 $vendor    = $model->vendor;
 ?>
-<div class="purchase-view">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0">View Purchase Invoice</h5>
-        <div class="d-flex gap-2">
+<div class="ui-page purchase-view">
+    <div class="ui-head">
+        <div>
+            <h1>View Purchase Invoice</h1>
+        </div>
+        <div class="ui-actions">
             <button type="button" class="btn btn-outline-primary btn-sm" onclick="printBill()">
                 <i class="bi bi-printer"></i> Print
             </button>

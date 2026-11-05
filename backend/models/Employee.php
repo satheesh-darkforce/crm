@@ -21,6 +21,14 @@ use yii\db\ActiveRecord;
  */
 class Employee extends ActiveRecord
 {
+    use \backend\components\GuardedAttributes;
+
+    /** Set by the permission screens / controllers, never by the profile form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['access_menus', 'user_id', 'status'];
+    }
+
     public static function tableName(): string
     {
         return 'employee';

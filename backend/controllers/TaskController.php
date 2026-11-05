@@ -2,809 +2,571 @@
 
 namespace backend\controllers;
 
+use backend\assets\TaskAsset;
+use backend\components\TaskAccess;
 use backend\models\Developer;
 use backend\models\Project;
 use backend\models\Task;
 use backend\models\TaskLogs;
-use backend\models\User;
 use Yii;
 use yii\data\ActiveDataProvider;
+use yii\db\ActiveQuery;
 use yii\db\Query;
-use yii\web\NotFoundHttpException;
+use yii\filters\VerbFilter;
 use yii\web\Response;
 
 /**
- * Backend CRUD for Task — includes all list, status, log, and subtask actions.
+ * Tasks — lists, CRUD, accept/complete/status, subtasks, reassign and the
+ * start/stop timer (task_logs). Per-task permissions: backend\components\TaskAccess.
+ *
+ * Times (expected_time, task_logs.total_time) are stored in SECONDS.
+ * task.total_time is never written; worked time is the sum of task_logs.
  */
 class TaskController extends Controller
 {
-    // ── Main list ─────────────────────────────────────────────────────────────
+    /** List filters read from the query string (all optional). */
+    private const LIST_FILTERS = ['task', 'task_status', 'project_id', 'assigned_to', 'assigned_by', 'created_by', 'expected_date', 'date_time'];
 
+    public function behaviors(): array
+    {
+        return array_merge(parent::behaviors(), [
+            'verbs' => [
+                'class'   => VerbFilter::class,
+                'actions' => [
+                    'delete'             => ['POST'],
+                    'task-accept'        => ['POST'],
+                    'complete-task'      => ['POST'],
+                    'task-status'        => ['POST'],
+                    'reassign-task'      => ['POST'],
+                    'full-reassign-task' => ['POST'],
+                    'task-start'         => ['POST'],
+                    'task-stop'          => ['POST'],
+                    'get-subtasks'       => ['POST'],
+                    'calc-expected-date' => ['POST'],
+                ],
+            ],
+        ]);
+    }
+
+    /** Full pages get the Tasks stylesheet/script. */
+    public function render($view, $params = []): string
+    {
+        TaskAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
+    // ── Lists ─────────────────────────────────────────────────────────────────
+
+    /** Managers: every open top-level task. Others: their accepted / on-going tasks (Yii1 admin.php). */
     public function actionIndex(): string
     {
-        $userId   = Yii::$app->user->id;
-        $usertype = (int)(Yii::$app->user->identity->usertype ?? 2);
-
-        $query = Task::find()
-            ->alias('t')
-            // INNER JOIN user table so tasks assigned to soft-deleted developers
-            // (user.status = 0) are excluded from the listing.
+        $query = $this->baseQuery()
+            // Tasks assigned to deactivated users are hidden (Yii1 parity).
             ->innerJoin('user u_assign', 'u_assign.user_id = t.assigned_to AND u_assign.status = 1')
-            ->with(['project', 'client', 'assignedTo', 'createdBy'])
-            ->where(['t.status' => 1, 't.parent_id' => 0])
-            ->orderBy(['t.id' => SORT_DESC]);
-
-        if ($usertype === User::TYPE_ADMIN || $usertype === User::TYPE_SUBADMIN) {
-            // Admin/sub-admin see every non-completed top-level task
+            ->andWhere(['t.parent_id' => 0]);
+        if (TaskAccess::isManager()) {
             $query->andWhere(['!=', 't.task_status', Task::STATUS_COMPLETED]);
         } else {
-            // Mirror Yii1 admin.php: employees only see their Accepted/On Going tasks
-            $query->andWhere(['t.assigned_to' => $userId])
-                  ->andWhere(['in', 't.task_status', [Task::STATUS_ACCEPTED, Task::STATUS_ONGOING]]);
+            $query->andWhere(['t.assigned_to' => Yii::$app->user->id, 't.task_status' => [Task::STATUS_ACCEPTED, Task::STATUS_ONGOING]]);
         }
-
-        if ($name = Yii::$app->request->get('task')) {
-            $query->andWhere(['like', 't.task', $name]);
-        }
-        if ($status = Yii::$app->request->get('task_status')) {
-            $query->andWhere(['t.task_status' => (int)$status]);
-        }
-        if ($projectId = Yii::$app->request->get('project_id')) {
-            $query->andWhere(['t.project_id' => (int)$projectId]);
-        }
-        if ($assignedTo = Yii::$app->request->get('assigned_to')) {
-            $query->andWhere(['t.assigned_to' => (int)$assignedTo]);
-        }
-        if ($assignedBy = Yii::$app->request->get('assigned_by')) {
-            $query->andWhere(['t.assigned_by' => (int)$assignedBy]);
-        }
-        if ($createdBy = Yii::$app->request->get('created_by')) {
-            $query->andWhere(['t.created_by' => (int)$createdBy]);
-        }
-        if ($expectedDate = Yii::$app->request->get('expected_date')) {
-            $query->andWhere('DATE(t.expected_delivery_date) = :ed', [':ed' => $expectedDate]);
-        }
-        if ($dateTime = Yii::$app->request->get('date_time')) {
-            $query->andWhere('DATE(t.created_date) = :cd', [':cd' => $dateTime]);
-        }
-
-        $dataProvider = new ActiveDataProvider([
-            'query'      => $query,
-            'pagination' => ['pageSize' => 20],
-        ]);
-
-        $projects    = Project::find()->where(['status' => 1])->orderBy('title')->all();
-        $developers  = \backend\models\Developer::find()->where(['status' => 1])->orderBy('developer_name')->all();
-        $isDeveloper = Yii::$app->user->identity->isDeveloper();
-
-        // Find the task currently being timed by this user (open log = no end_time)
-        $activeTaskId = (int)TaskLogs::find()
-            ->select('task_id')
-            ->where(['user_id' => Yii::$app->user->id, 'status' => 1])
-            ->andWhere(['end_time' => null])
-            ->orderBy(['id' => SORT_DESC])
-            ->scalar();
-
-        return $this->render('index', compact('dataProvider', 'projects', 'developers', 'isDeveloper', 'activeTaskId'));
+        return $this->renderList('index', TaskAccess::isManager() ? 'Open Tasks' : 'My Tasks', $query);
     }
 
-    // ── My tasks (assigned to current user, accepted/ongoing) ─────────────────
-
+    /** Tasks assigned to me that I am working on (accepted / on going / re-opened). */
     public function actionMyTaskList(): string
     {
-        $userId = Yii::$app->user->id;
-
-        $query = Task::find()
-            ->alias('t')
-            ->with(['project', 'assignedBy'])
-            ->where(['t.status' => 1, 't.assigned_to' => $userId])
-            ->andWhere(['in', 't.task_status', [Task::STATUS_ACCEPTED, Task::STATUS_ONGOING, Task::STATUS_REOPEN]])
-            ->orderBy(['t.id' => SORT_DESC]);
-
-        if ($date = Yii::$app->request->get('expected_date')) {
-            $query->andWhere('DATE(t.expected_delivery_date) = :ed', [':ed' => $date]);
-        }
-        if ($dateTime = Yii::$app->request->get('date_time')) {
-            $query->andWhere('DATE(t.created_date) = :cd', [':cd' => $dateTime]);
-        }
-
-        $dataProvider = new ActiveDataProvider([
-            'query'      => $query,
-            'pagination' => ['pageSize' => 20],
+        $query = $this->baseQuery()->andWhere([
+            't.assigned_to' => Yii::$app->user->id,
+            't.task_status' => [Task::STATUS_ACCEPTED, Task::STATUS_ONGOING, Task::STATUS_REOPEN],
         ]);
-
-        // Find the task currently being timed by this user (open log = no end_time)
-        $activeTaskId = (int)TaskLogs::find()
-            ->select('task_id')
-            ->where(['user_id' => $userId, 'status' => 1])
-            ->andWhere(['end_time' => null])
-            ->orderBy(['id' => SORT_DESC])
-            ->scalar();
-
-        return $this->render('my-task-list', compact('dataProvider', 'activeTaskId'));
+        return $this->renderList('my-task-list', 'My Tasks', $query);
     }
 
-    // ── New tasks assigned to current user (task_status=1) ────────────────────
-
+    /** New tasks waiting for me to accept. Opening the list marks them read. */
     public function actionMyNewTaskList(): string
     {
         $userId = Yii::$app->user->id;
-
-        // Mark all as read
         Task::updateAll(['is_read' => 2], ['assigned_to' => $userId, 'task_status' => Task::STATUS_PENDING]);
-
-        $query = Task::find()
-            ->alias('t')
-            ->with(['project', 'assignedTo', 'assignedBy'])
-            ->where(['t.status' => 1, 't.assigned_to' => $userId, 't.task_status' => Task::STATUS_PENDING])
-            ->orderBy(['t.id' => SORT_DESC]);
-
-        if ($date = Yii::$app->request->get('expected_date')) {
-            $query->andWhere('DATE(t.expected_delivery_date) = :ed', [':ed' => $date]);
-        }
-        if ($dateTime = Yii::$app->request->get('date_time')) {
-            $query->andWhere('DATE(t.created_date) = :cd', [':cd' => $dateTime]);
-        }
-
-        $dataProvider = new ActiveDataProvider([
-            'query'      => $query,
-            'pagination' => ['pageSize' => 20],
-        ]);
-
-        return $this->render('my-new-task-list', compact('dataProvider'));
+        $query = $this->baseQuery()->andWhere(['t.assigned_to' => $userId, 't.task_status' => Task::STATUS_PENDING]);
+        return $this->renderList('my-new-task-list', 'New Tasks', $query);
     }
-
-    // ── Completed tasks ───────────────────────────────────────────────────────
 
     public function actionCompletedTaskList(): string
     {
-        $userId   = Yii::$app->user->id;
-        $usertype = Yii::$app->user->identity->usertype ?? 2;
-
-        $query = Task::find()
-            ->alias('t')
-            ->with(['project', 'assignedTo', 'createdBy'])
-            ->where(['t.status' => 1, 't.task_status' => Task::STATUS_COMPLETED])
-            ->orderBy(['t.id' => SORT_DESC]);
-
-        if ((int)$usertype !== User::TYPE_ADMIN && (int)$usertype !== User::TYPE_SUBADMIN) {
-            $query->andWhere(['or', ['t.created_by' => $userId], ['t.assigned_to' => $userId]]);
-        } else {
+        $query = $this->baseQuery()->andWhere(['t.task_status' => Task::STATUS_COMPLETED]);
+        if (TaskAccess::isManager()) {
             $query->andWhere(['t.parent_id' => 0]);
+        } else {
+            $uid = Yii::$app->user->id;
+            $query->andWhere(['or', ['t.created_by' => $uid], ['t.assigned_to' => $uid]]);
         }
-
-        if ($name = Yii::$app->request->get('task')) {
-            $query->andWhere(['like', 't.task', $name]);
-        }
-        if ($projectId = Yii::$app->request->get('project_id')) {
-            $query->andWhere(['t.project_id' => (int)$projectId]);
-        }
-        if ($assignedTo = Yii::$app->request->get('assigned_to')) {
-            $query->andWhere(['t.assigned_to' => (int)$assignedTo]);
-        }
-        if ($assignedBy = Yii::$app->request->get('assigned_by')) {
-            $query->andWhere(['t.assigned_by' => (int)$assignedBy]);
-        }
-        if ($createdBy = Yii::$app->request->get('created_by')) {
-            $query->andWhere(['t.created_by' => (int)$createdBy]);
-        }
-        if ($date = Yii::$app->request->get('expected_date')) {
-            $query->andWhere('DATE(t.expected_delivery_date) = :ed', [':ed' => $date]);
-        }
-        if ($dateTime = Yii::$app->request->get('date_time')) {
-            $query->andWhere('DATE(t.created_date) = :cd', [':cd' => $dateTime]);
-        }
-
-        $dataProvider = new ActiveDataProvider([
-            'query'      => $query,
-            'pagination' => ['pageSize' => 20],
-        ]);
-
-        $projects   = Project::find()->where(['status' => 1])->orderBy('title')->all();
-        $developers = \backend\models\Developer::find()->where(['status' => 1])->orderBy('developer_name')->all();
-
-        // task.total_time is never written by any code path — workdone time
-        // lives in task_logs. Aggregate it for the page's task IDs so both the
-        // Worked-Time column and the overrun comparison reflect real effort.
-        $workedSecs = $this->buildWorkedSecsMap($dataProvider->getModels());
-
-        return $this->render('completed-task-list', compact('dataProvider', 'projects', 'developers', 'workedSecs'));
+        return $this->renderList('completed-task-list', 'Completed Tasks', $query);
     }
 
-    // ── Tasks assigned by current user ────────────────────────────────────────
-
+    /** Tasks I assigned to others (managers: all top-level tasks). */
     public function actionAssignedTasks(): string
     {
-        $userId   = Yii::$app->user->id;
-        $usertype = Yii::$app->user->identity->usertype ?? 2;
-
-        $query = Task::find()
-            ->alias('t')
-            ->with(['project', 'assignedTo'])
-            ->where(['t.status' => 1, 't.parent_id' => 0])
-            ->orderBy(['t.id' => SORT_DESC]);
-
-        if ((int)$usertype !== User::TYPE_ADMIN && (int)$usertype !== User::TYPE_SUBADMIN) {
-            $query->andWhere(['t.assigned_by' => $userId]);
+        $query = $this->baseQuery()->andWhere(['t.parent_id' => 0]);
+        if (!TaskAccess::isManager()) {
+            $query->andWhere(['t.assigned_by' => Yii::$app->user->id]);
         }
-
-        if ($date = Yii::$app->request->get('expected_date')) {
-            $query->andWhere('DATE(t.expected_delivery_date) = :ed', [':ed' => $date]);
-        }
-        if ($dateTime = Yii::$app->request->get('date_time')) {
-            $query->andWhere('DATE(t.created_date) = :cd', [':cd' => $dateTime]);
-        }
-        if ($dateTime = Yii::$app->request->get('date_time')) {
-            $query->andWhere('DATE(t.created_date) = :cd', [':cd' => $dateTime]);
-        }
-
-        $dataProvider = new ActiveDataProvider([
-            'query'      => $query,
-            'pagination' => ['pageSize' => 20],
-        ]);
-
-        $workedSecs = $this->buildWorkedSecsMap($dataProvider->getModels());
-
-        return $this->render('assigned-tasks', compact('dataProvider', 'workedSecs'));
-    }
-
-    /**
-     * Build `[task_id => worked_seconds]` for a page of Task models.
-     *
-     * `tasks.total_time` is never written by any code path in the app; all
-     * worked time is recorded as task_logs rows. For a parent task (parent_id=0)
-     * the rollup is the sum of its own logs plus the logs of every subtask
-     * (parent_id=this). For a subtask it is just the sum of its own logs.
-     * The result is keyed by the Task model id so views can `$workedSecs[$id]`.
-     *
-     * @param Task[] $tasks
-     * @return array<int,int>
-     */
-    private function buildWorkedSecsMap(array $tasks): array
-    {
-        $ids = [];
-        foreach ($tasks as $t) {
-            $ids[] = (int)$t->id;
-        }
-        if (!$ids) {
-            return [];
-        }
-        $map = array_fill_keys($ids, 0);
-
-        $taskTable = Task::tableName();
-        $logTable  = TaskLogs::tableName();
-
-        // 1) Logs directly attached to the page's tasks.
-        $direct = (new Query())
-            ->select(['task_id', 'secs' => 'SUM(total_time)'])
-            ->from($logTable)
-            ->where(['task_id' => $ids, 'status' => 1])
-            ->groupBy('task_id')
-            ->all();
-        foreach ($direct as $row) {
-            $map[(int)$row['task_id']] = (int)$row['secs'];
-        }
-
-        // 2) Logs attached to subtasks whose parent is in the page.
-        //    Schema treats subtasks as one level deep (parent_id != 0); no
-        //    nesting beyond that.
-        $sub = (new Query())
-            ->select(['pid' => 't.parent_id', 'secs' => 'SUM(tl.total_time)'])
-            ->from(['t' => $taskTable])
-            ->innerJoin(['tl' => $logTable], 'tl.task_id = t.id AND tl.status = 1')
-            ->where(['t.parent_id' => $ids, 't.status' => 1])
-            ->groupBy('t.parent_id')
-            ->all();
-        foreach ($sub as $row) {
-            $map[(int)$row['pid']] += (int)$row['secs'];
-        }
-
-        return $map;
+        return $this->renderList('assigned-tasks', 'Assigned Tasks', $query);
     }
 
     // ── View / CRUD ───────────────────────────────────────────────────────────
 
     public function actionView(int $id): string
     {
-        $task      = $this->findModel($id);
-        $subtasks  = Task::find()
-            ->with(['createdBy', 'assignedBy', 'assignedTo'])
-            ->where(['parent_id' => $id, 'status' => 1])
-            ->all();
-        $taskLogs  = TaskLogs::find()
-            ->with(['user'])
-            ->where(['task_id' => $id, 'status' => 1])
-            ->orderBy('id ASC')
-            ->all();
-        $developers = Developer::find()->where(['status' => 1])->orderBy('developer_name')->all();
-        return $this->render('view', compact('task', 'subtasks', 'taskLogs', 'developers'));
+        $task     = TaskAccess::findTask($id);
+        $subtasks = Task::find()->with(['createdBy', 'assignedBy', 'assignedTo'])
+            ->where(['parent_id' => $id, 'status' => 1])->orderBy(['id' => SORT_ASC])->all();
+        $taskLogs = $this->logsOf($id);
+        $worked   = $this->workedSecs(array_merge([$task], $subtasks));
+        return $this->render('view', compact('task', 'subtasks', 'taskLogs', 'worked') + ['developers' => $this->developerOptions()]);
     }
 
     public function actionCreate(): string|Response
     {
-        $task = new Task();
+        $task = new Task(['scenario' => Task::SCENARIO_FORM, 'priority' => Task::PRIORITY_MEDIUM, 'assign_type' => Task::ASSIGN_TYPE_FULL]);
 
-        if ($task->load(Yii::$app->request->post())) {
-            $userId = Yii::$app->user->id;
+        if (Yii::$app->request->isPost && $task->load(Yii::$app->request->post())) {
+            $userId             = (int)Yii::$app->user->id;
             $task->created_by   = $userId;
             $task->assigned_by  = $userId;
             $task->is_read      = 1;
             $task->created_date = date('Y-m-d H:i:s');
             $task->status       = 1;
-            $task->parent_id    = $task->parent_id ?: 0;
+            $task->parent_id    = 0;
+            // Assigning to yourself skips the accept step (Yii1).
+            $task->task_status  = (int)$task->assigned_to === $userId ? Task::STATUS_ACCEPTED : Task::STATUS_PENDING;
+            $task->client_id    = Project::find()->select('client_id')->where(['id' => (int)$task->project_id])->scalar() ?: null;
 
-            $h = (int)Yii::$app->request->post('expected_hours', 0);
-            $m = (int)Yii::$app->request->post('expected_minutes', 0);
-            if ($h > 0 || $m > 0) {
-                $task->expected_time = $h * 3600 + $m * 60;
-            }
-
-            if ((int)$task->assigned_to === (int)$userId) {
-                $task->task_status = Task::STATUS_ACCEPTED;
-            } else {
-                $task->task_status = Task::STATUS_PENDING;
-            }
-
-            $project     = Project::findOne((int)$task->project_id);
-            $task->client_id = $project ? $project->client_id : null;
-
-            if ($task->save()) {
+            if ($this->applyExpectedTime($task) && $task->save()) {
                 Yii::$app->session->setFlash('success', 'Task created successfully.');
                 return $this->redirect(['view', 'id' => $task->id]);
             }
         }
 
-        $projects   = Project::find()->where(['status' => 1])->orderBy('title')->all();
-        $developers = Developer::find()->where(['status' => 1])->orderBy('developer_name')->all();
-
-        return $this->render('create', compact('task', 'projects', 'developers'));
+        return $this->render('create', ['task' => $task] + $this->formOptions());
     }
 
     public function actionUpdate(int $id): string|Response
     {
-        $task = $this->findModel($id);
+        $task = TaskAccess::findTask($id);
+        TaskAccess::ensure(TaskAccess::canEdit($task), 'Only the person who created or assigned this task can edit it.');
+        $task->scenario = Task::SCENARIO_FORM;
 
-        if ($task->load(Yii::$app->request->post())) {
-            $h = (int)Yii::$app->request->post('expected_hours', 0);
-            $m = (int)Yii::$app->request->post('expected_minutes', 0);
-            if ($h > 0 || $m > 0) {
-                $task->expected_time = $h * 3600 + $m * 60;
+        if (Yii::$app->request->isPost && $task->load(Yii::$app->request->post())) {
+            if ((int)$task->project_id !== (int)$task->getOldAttribute('project_id')) {
+                $task->client_id = Project::find()->select('client_id')->where(['id' => (int)$task->project_id])->scalar() ?: null;
             }
-
-            $project     = Project::findOne((int)$task->project_id);
-            $task->client_id = $project ? $project->client_id : $task->client_id;
-
-            if ($task->save()) {
+            if ((int)$task->assigned_to !== (int)$task->getOldAttribute('assigned_to')) {
+                $task->is_read = 1; // new assignee sees it as unread
+            }
+            if ($this->applyExpectedTime($task) && $task->save()) {
                 Yii::$app->session->setFlash('success', 'Task updated.');
                 return $this->redirect(['view', 'id' => $task->id]);
             }
         }
 
-        $projects   = Project::find()->where(['status' => 1])->orderBy('title')->all();
-        $developers = Developer::find()->where(['status' => 1])->orderBy('developer_name')->all();
-
-        return $this->render('update', compact('task', 'projects', 'developers'));
+        return $this->render('update', ['task' => $task] + $this->formOptions());
     }
 
     public function actionDelete(int $id): Response
     {
-        if (!Yii::$app->request->isPost) {
-            throw new \yii\web\BadRequestHttpException('POST required.');
-        }
-        $task         = $this->findModel($id);
-        $task->status = 0;
-        $task->save(false);
+        $task = TaskAccess::findTask($id);
+        TaskAccess::ensure(TaskAccess::canEdit($task), 'Only the person who created or assigned this task can delete it.');
+        $task->updateAttributes(['status' => 0]);
 
-        Yii::$app->session->setFlash('success', 'Task deleted.');
-        return $this->redirect(['index']);
+        Yii::$app->session->setFlash('success', "Task \"{$task->task}\" was deleted.");
+        return $this->redirect((int)$task->parent_id ? ['view', 'id' => (int)$task->parent_id] : ['assigned-tasks']);
     }
 
-    // ── Accept task (task_status → 2 = Accepted) ──────────────────────────────
+    // ── Workflow ──────────────────────────────────────────────────────────────
 
+    /** Accept a pending task (form post from New Tasks). */
     public function actionTaskAccept(): Response
     {
-        if (!Yii::$app->request->isPost) {
-            throw new \yii\web\BadRequestHttpException('POST required.');
-        }
+        $task = TaskAccess::findTask((int)Yii::$app->request->post('taskid'));
+        TaskAccess::ensure(TaskAccess::isAssignee($task) || TaskAccess::isManager(), 'Only the assignee can accept this task.');
 
-        $taskId = (int)Yii::$app->request->post('taskid');
-        $task   = Task::findOne(['id' => $taskId, 'status' => 1]);
-
-        if ($task) {
-            $task->task_status = Task::STATUS_ACCEPTED;
-            $task->save(false);
-            Yii::$app->session->setFlash('success', 'Task accepted successfully.');
+        if ((int)$task->task_status !== Task::STATUS_PENDING) {
+            Yii::$app->session->setFlash('info', 'This task was already accepted.');
         } else {
-            Yii::$app->session->setFlash('error', 'Task not found.');
+            $task->updateAttributes(['task_status' => Task::STATUS_ACCEPTED, 'is_read' => 2]);
+            Yii::$app->session->setFlash('success', "Task \"{$task->task}\" accepted. It is now in My Tasks.");
         }
-
-        return $this->redirect(Yii::$app->request->referrer ?: ['my-new-task-list']);
+        return $this->redirect(['my-new-task-list']);
     }
 
-    // ── Complete task (check all subtasks done, then set status=5) ────────────
-
+    /** AJAX: complete a task once all its subtasks are completed. */
     public function actionCompleteTask(): Response
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
+        $task = TaskAccess::findTask((int)Yii::$app->request->post('taskid'));
+        TaskAccess::ensure(TaskAccess::canManageWork($task));
 
-        $taskId = (int)Yii::$app->request->get('taskid');
-        $task   = Task::findOne(['id' => $taskId, 'status' => 1]);
-
-        if (!$task) {
-            return $this->asJson(['status' => 0, 'msg' => 'Task not found.']);
+        if ((int)$task->task_status === Task::STATUS_COMPLETED) {
+            return $this->json(true, 'This task is already completed.');
         }
-
-        $pendingSubtasks = Task::find()
-            ->where(['parent_id' => $taskId, 'status' => 1])
+        if ($this->hasOpenLog($task->id)) {
+            return $this->json(false, 'Stop the timer on this task before completing it.');
+        }
+        $pending = Task::find()->select('task')
+            ->where(['parent_id' => $task->id, 'status' => 1])
             ->andWhere(['!=', 'task_status', Task::STATUS_COMPLETED])
-            ->select(['id', 'task'])
-            ->all();
-
-        if (!empty($pendingSubtasks)) {
-            $names = implode(', ', array_map(fn($s) => '"' . $s->task . '"', $pendingSubtasks));
-            return $this->asJson(['status' => 0, 'msg' => "Cannot complete: the following subtasks are still pending: {$names}."]);
+            ->column();
+        if ($pending) {
+            return $this->json(false, 'Complete these subtasks first: ' . implode(', ', array_map(fn($n) => "\"$n\"", $pending)) . '.');
         }
 
-        $task->task_status    = Task::STATUS_COMPLETED;
-        $task->completed_date = date('Y-m-d H:i:s');
-        $task->save(false);
-
-        return $this->asJson(['status' => 1, 'msg' => 'Task completed successfully.']);
+        $task->updateAttributes(['task_status' => Task::STATUS_COMPLETED, 'completed_date' => date('Y-m-d H:i:s')]);
+        return $this->json(true, 'Task completed.');
     }
 
-    // ── Update task status (AJAX POST); status=6 creates a subtask ────────────
-
+    /** AJAX (Yii1 changestatus): set a status; 6 = re-assign by creating a subtask. */
     public function actionTaskStatus(): Response
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
+        $req  = Yii::$app->request;
+        $task = TaskAccess::findTask((int)$req->post('taskid'));
+        TaskAccess::ensure(TaskAccess::canManageWork($task));
+        $status = (int)$req->post('taskstatus');
 
-        if (!Yii::$app->request->isPost) {
-            return $this->asJson(['status' => 0, 'msg' => 'POST required.']);
+        if ($status === Task::STATUS_REASSIGNED) {
+            $sub = $this->buildSubtask($task, [
+                'task'                   => $req->post('taskname'),
+                'assigned_to'            => $req->post('assignto'),
+                'expected_delivery_date' => $req->post('expectdate'),
+                'description'            => $req->post('description'),
+            ], $this->parseDuration($req->post('expecttime')));
+            return $sub->save()
+                ? $this->json(true, 'Subtask created.')
+                : $this->json(false, implode(' ', $sub->getFirstErrors()));
         }
-
-        $taskId     = (int)Yii::$app->request->post('taskid');
-        $taskStatus = (int)Yii::$app->request->post('taskstatus');
-
-        $task = Task::findOne(['id' => $taskId, 'status' => 1]);
-        if (!$task) {
-            return $this->asJson(['status' => 0, 'msg' => 'Task not found.']);
+        if (!isset(Task::statusOptions()[$status]) || $status === Task::STATUS_COMPLETED) {
+            return $this->json(false, $status === Task::STATUS_COMPLETED ? 'Use Complete to finish a task.' : 'Choose a valid status.');
         }
-
-        if ($taskStatus === 6) {
-            // Re-assigned: create a subtask
-            $taskName    = trim((string)Yii::$app->request->post('taskname', ''));
-            $expectDate  = trim((string)Yii::$app->request->post('expectdate', ''));
-            $expectTime  = trim((string)Yii::$app->request->post('expecttime', '0:00'));
-            $assignedTo  = (int)Yii::$app->request->post('assignto', 0);
-            $description = trim((string)Yii::$app->request->post('description', ''));
-
-            // Parse HH:MM:SS or HH:MM expected-time string into duration seconds
-            // (mirrors actionReassignTask — NOT a timestamp delta)
-            $parts       = explode(':', $expectTime);
-            $hours       = (int)($parts[0] ?? 0);
-            $minutes     = (int)($parts[1] ?? 0);
-            $seconds     = (int)($parts[2] ?? 0);
-            $timeSeconds = $hours * 3600 + $minutes * 60 + $seconds;
-
-            $sub              = new Task();
-            $sub->parent_id   = $taskId;
-            $sub->project_id  = $task->project_id;
-            $sub->client_id   = $task->client_id;
-            $sub->task        = $taskName;
-            $sub->expected_delivery_date = $expectDate ? date('Y-m-d', strtotime($expectDate)) : null;
-            $sub->expected_time = $timeSeconds;
-            $sub->task_status = Task::STATUS_PENDING;
-            $sub->created_by  = Yii::$app->user->id;
-            $sub->description = $description;
-            $sub->priority    = 1;
-            $sub->assigned_by = Yii::$app->user->id;
-            $sub->assigned_to = $assignedTo ?: null;
-            $sub->is_read     = 1;
-            $sub->assign_type = 1;
-            $sub->created_date = date('Y-m-d H:i:s');
-            $sub->status      = 1;
-
-            if ($sub->save(false)) {
-                return $this->asJson(['status' => 1, 'msg' => 'Subtask created successfully.']);
-            }
-            return $this->asJson(['status' => 0, 'msg' => 'Failed to create subtask.']);
-        }
-
-        $task->task_status = $taskStatus;
-        $task->save(false);
-
-        return $this->asJson(['status' => 1, 'msg' => 'Status updated.']);
+        $task->updateAttributes(['task_status' => $status]);
+        return $this->json(true, 'Status changed to ' . Task::statusOptions()[$status] . '.');
     }
 
-    // ── Reassign task (create subtask) ────────────────────────────────────────
-
+    /** Create a subtask (Subtask form). */
     public function actionReassignTask(): Response
     {
-        if (!Yii::$app->request->isPost) {
-            throw new \yii\web\BadRequestHttpException('POST required.');
-        }
+        $req    = Yii::$app->request;
+        $parent = TaskAccess::findTask((int)$req->post('task_id'));
+        TaskAccess::ensure(TaskAccess::canManageWork($parent), 'You cannot add subtasks to this task.');
 
-        $post       = Yii::$app->request->post();
-        $taskId     = (int)($post['task_id'] ?? 0);
-        $assignedTo = (int)($post['assigned_to'] ?? 0);
-        $taskName   = trim($post['task'] ?? '');
-        $expectDate = trim($post['expect_date'] ?? '');
-        $expectTime = trim($post['expect_time'] ?? '0:00');
-        $description= trim($post['description'] ?? '');
-        $priority   = (int)($post['priority'] ?? 1);
-        $type       = (int)($post['type'] ?? 1);
+        $sub = $this->buildSubtask($parent, [
+            'task'                   => $req->post('task'),
+            'assigned_to'            => $req->post('assigned_to'),
+            'expected_delivery_date' => $req->post('expect_date'),
+            'description'            => $req->post('description'),
+            'priority'               => $req->post('priority'),
+            'assign_type'            => $req->post('type'),
+        ], $this->parseDuration($req->post('expect_time')));
 
-        $parentTask = Task::findOne(['id' => $taskId, 'status' => 1]);
-        if (!$parentTask) {
-            Yii::$app->session->setFlash('error', 'Parent task not found.');
-            return $this->redirect(Yii::$app->request->referrer ?: ['index']);
-        }
-
-        // Parse HH:MM:SS or HH:MM expected_time string into seconds
-        $parts   = explode(':', $expectTime);
-        $hours   = (int)($parts[0] ?? 0);
-        $minutes = (int)($parts[1] ?? 0);
-        $seconds = (int)($parts[2] ?? 0);
-        $timeSeconds = $hours * 3600 + $minutes * 60 + $seconds;
-
-        if ($timeSeconds < 60) {
-            Yii::$app->session->setFlash('error', 'Hour Of Work Required must be at least 1 minute.');
-            return $this->redirect(Yii::$app->request->referrer ?: ['view', 'id' => $taskId]);
-        }
-
-        $sub               = new Task();
-        $sub->parent_id    = $taskId;
-        $sub->project_id   = $parentTask->project_id;
-        $sub->client_id    = $parentTask->client_id;
-        $sub->task         = $taskName;
-        $sub->expected_time= $timeSeconds;
-        $sub->expected_delivery_date = $expectDate ? date('Y-m-d', strtotime($expectDate)) : null;
-        $sub->task_status  = Task::STATUS_PENDING;
-        $sub->created_by   = Yii::$app->user->id;
-        $sub->description  = $description;
-        $sub->priority     = $priority;
-        $sub->assigned_by  = Yii::$app->user->id;
-        $sub->assigned_to  = $assignedTo ?: null;
-        $sub->is_read      = 1;
-        $sub->assign_type  = $type;
-        $sub->created_date = date('Y-m-d H:i:s');
-        $sub->status       = 1;
-
-        if ($sub->save(false)) {
-            Yii::$app->session->setFlash('success', 'Subtask created successfully.');
+        if ($sub->save()) {
+            Yii::$app->session->setFlash('success', "Subtask \"{$sub->task}\" created.");
         } else {
-            Yii::$app->session->setFlash('error', 'Failed to create subtask.');
+            Yii::$app->session->setFlash('error', 'The subtask was not created: ' . implode(' ', $sub->getFirstErrors()));
         }
-
-        return $this->redirect(['view', 'id' => $taskId]);
+        return $this->redirect(['view', 'id' => $parent->id]);
     }
 
-    // ── Full reassign (update assigned_to on existing task) ───────────────────
-
+    /** Hand a task to someone else. */
     public function actionFullReassignTask(): Response
     {
-        if (!Yii::$app->request->isPost) {
-            throw new \yii\web\BadRequestHttpException('POST required.');
+        $task = TaskAccess::findTask((int)Yii::$app->request->post('task_id'));
+        TaskAccess::ensure(TaskAccess::canManageWork($task), 'You cannot re-assign this task.');
+        $back = $this->safeReturn(['index']);
+
+        $to = Yii::$app->request->post('assigned_to');
+        if ((string)$to === (string)$task->assigned_to) {
+            Yii::$app->session->setFlash('info', 'The task is already assigned to that person.');
+            return $this->redirect($back);
         }
-
-        $taskId     = (int)Yii::$app->request->post('task_id');
-        $assignedTo = (int)Yii::$app->request->post('assigned_to');
-
-        $task = Task::findOne(['id' => $taskId, 'status' => 1]);
-        if ($task) {
-            $task->assigned_to = $assignedTo;
-            $task->is_read     = 1;
-            $task->save(false);
-            Yii::$app->session->setFlash('success', 'Task re-assigned successfully.');
+        if ($this->hasOpenLog($task->id)) {
+            Yii::$app->session->setFlash('error', 'The timer is running on this task. Stop it before re-assigning.');
+            return $this->redirect($back);
+        }
+        $task->scenario    = Task::SCENARIO_FORM;
+        $task->assigned_to = is_scalar($to) ? $to : null;
+        if ($task->validate(['assigned_to'])) {
+            // Yii1 parity: only the assignee changes; it shows as unread for them.
+            $task->updateAttributes(['assigned_to' => (int)$task->assigned_to, 'is_read' => 1]);
+            $name = Developer::find()->select('developer_name')->where(['user_id' => (int)$task->assigned_to])->scalar();
+            Yii::$app->session->setFlash('success', "Task \"{$task->task}\" re-assigned" . ($name ? " to $name" : '') . '.');
         } else {
-            Yii::$app->session->setFlash('error', 'Task not found.');
+            Yii::$app->session->setFlash('error', implode(' ', $task->getFirstErrors()) ?: 'Choose who to assign the task to.');
         }
-
-        return $this->redirect(Yii::$app->request->referrer ?: ['index']);
+        return $this->redirect($back);
     }
 
-    // ── Task start (create TaskLogs entry, set task_status=3 On Going) ────────
-
+    /** AJAX: start (or resume) the timer on one of my tasks. */
     public function actionTaskStart(): Response
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-
-        if (!Yii::$app->request->isPost) {
-            return $this->asJson(['status' => 0, 'msg' => 'POST required.']);
-        }
-
-        $userId      = (int)Yii::$app->user->id;
-        $taskId      = (int)Yii::$app->request->post('taskid', 0);
-        $description = trim((string)Yii::$app->request->post('description', '')) ?: null;
-
-        $task = Task::findOne(['id' => $taskId, 'status' => 1]);
-        if (!$task) {
-            return $this->asJson(['status' => 0, 'msg' => 'Task not found.']);
-        }
-
-        $now   = date('Y-m-d H:i:s');
-        $today = date('Y-m-d');
-
-        // Block starting a new task while another one is still in progress.
-        // The user must explicitly stop the current task first — silent
-        // hand-off masked the fact that a timer was already running.
-        $openLog = TaskLogs::find()
-            ->where(['user_id' => $userId, 'status' => 1])
-            ->andWhere(['end_time' => null])
-            ->orderBy(['id' => SORT_DESC])
-            ->one();
-
-        if ($openLog && (int)$openLog->task_id !== $taskId) {
-            return $this->asJson([
-                'status' => 0,
-                'msg'    => 'You have already started a task. Please stop the existing task before starting a new one.',
-                'activeTaskId' => (int)$openLog->task_id,
-            ]);
-        }
-
-        // Same-task "Resume" click: nothing to close — fall through to the
-        // existing log creation logic, which appends a new log row.
-        if ($openLog && (int)$openLog->task_id === $taskId) {
-            $startDate = date('Y-m-d', strtotime($openLog->start_time));
-            $endTime   = ($startDate !== $today)
-                ? date('Y-m-d H:i:s', strtotime($startDate . ' 18:30:00'))
-                : $now;
-            $openLog->end_time   = $endTime;
-            $openLog->total_time = max(0, strtotime($endTime) - strtotime($openLog->start_time));
-            $openLog->save(false);
-        }
-
-        $log             = new TaskLogs();
-        $log->task_id    = $taskId;
-        $log->user_id    = $userId;
-        $log->start_time = $now;
-        $log->end_time   = null;
-        $log->total_time = 0;
-        $log->comments   = $description;
-        $log->status     = 1;
-
-        if ($log->save(false)) {
-            // Invariant: at most one On Going task per user at any time.
-            // Demote every OTHER task currently flagged On Going for this
-            // user back to Accepted before promoting the one we just started.
-            // Without this, switching tasks via Start (without clicking Stop
-            // on the previous one) left two rows with task_status=3.
-            Task::updateAll(
-                ['task_status' => Task::STATUS_ACCEPTED],
-                [
-                    'and',
-                    ['assigned_to'  => $userId],
-                    ['task_status'  => Task::STATUS_ONGOING],
-                    ['!=', 'id', $taskId],
-                    ['status' => 1],
-                ]
-            );
-            Task::updateAll(['task_status' => Task::STATUS_ONGOING], ['id' => $taskId]);
-            return $this->asJson(['status' => 1, 'msg' => 'Task started successfully.']);
-        }
-
-        return $this->asJson(['status' => 0, 'msg' => 'Failed to start task. Try again.']);
-    }
-
-    // ── Task stop (close open TaskLogs entry) ─────────────────────────────────
-
-    public function actionTaskStop(): Response
-    {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-
-        if (!Yii::$app->request->isPost) {
-            return $this->asJson(['status' => 0, 'msg' => 'POST required.']);
+        $task = TaskAccess::findTask((int)Yii::$app->request->post('taskid'));
+        TaskAccess::ensure(TaskAccess::isAssignee($task), 'Only the assignee can start the timer on this task.');
+        if (in_array((int)$task->task_status, [Task::STATUS_PENDING, Task::STATUS_COMPLETED], true)) {
+            return $this->json(false, (int)$task->task_status === Task::STATUS_PENDING ? 'Accept the task before starting it.' : 'This task is already completed.');
         }
 
         $userId = (int)Yii::$app->user->id;
-        $taskId = (int)Yii::$app->request->post('taskid', 0);
-
-        $task = Task::findOne(['id' => $taskId, 'status' => 1]);
-        if (!$task) {
-            return $this->asJson(['status' => 0, 'msg' => 'Task not found.']);
+        $open   = TaskLogs::find()->where(['user_id' => $userId, 'status' => 1, 'end_time' => null])->orderBy(['id' => SORT_DESC])->one();
+        // One running timer per user: stop the current task first.
+        if ($open && (int)$open->task_id !== (int)$task->id) {
+            $other = Task::find()->select('task')->where(['id' => $open->task_id])->scalar();
+            return $this->json(false, 'Stop the timer on "' . ($other ?: 'your other task') . '" before starting another task.');
+        }
+        if ($open) {
+            return $this->json(true, 'The timer is already running on this task.');
         }
 
-        $now   = date('Y-m-d H:i:s');
-        $today = date('Y-m-d');
-
-        $openLogs = TaskLogs::find()
-            ->where(['user_id' => $userId, 'status' => 1])
-            ->andWhere(['end_time' => null])
-            ->all();
-
-        if (!$openLogs) {
-            return $this->asJson(['status' => 0, 'msg' => 'Failed to stop task. Try again.']);
+        $tx = Yii::$app->db->beginTransaction();
+        try {
+            $log             = new TaskLogs();
+            $log->task_id    = $task->id;
+            $log->user_id    = $userId;
+            $log->start_time = date('Y-m-d H:i:s');
+            $log->end_time   = null;
+            $log->total_time = 0;
+            $log->comments   = null;
+            $log->status     = 1;
+            $log->save(false);
+            // At most one On Going task per user.
+            Task::updateAll(['task_status' => Task::STATUS_ACCEPTED], ['and',
+                ['assigned_to' => $userId], ['task_status' => Task::STATUS_ONGOING], ['!=', 'id', $task->id], ['status' => 1]]);
+            Task::updateAll(['task_status' => Task::STATUS_ONGOING], ['id' => $task->id]);
+            $tx->commit();
+        } catch (\Throwable $e) {
+            $tx->rollBack();
+            Yii::error('Task start failed: ' . $e->getMessage(), __METHOD__);
+            return $this->json(false, 'The timer could not be started. Please try again.');
         }
-
-        foreach ($openLogs as $openLog) {
-            $startDate           = date('Y-m-d', strtotime($openLog->start_time));
-            $endTime             = ($startDate !== $today)
-                ? date('Y-m-d H:i:s', strtotime($startDate . ' 18:30:00'))
-                : $now;
-            $openLog->end_time   = $endTime;
-            $openLog->total_time = max(0, strtotime($endTime) - strtotime($openLog->start_time));
-            $openLog->save(false);
-        }
-
-        // Yii1 parity: stop does NOT change task_status — task remains On Going (3)
-
-        return $this->asJson(['status' => 1, 'msg' => 'Task stopped successfully.']);
+        return $this->json(true, 'Timer started on "' . $task->task . '".');
     }
 
-    // ── Task history page ─────────────────────────────────────────────────────
+    /** AJAX: stop my running timer. Logs left open overnight end at 18:30 that day (Yii1). */
+    public function actionTaskStop(): Response
+    {
+        $open = TaskLogs::find()->where(['user_id' => (int)Yii::$app->user->id, 'status' => 1, 'end_time' => null])->all();
+        if (!$open) {
+            return $this->json(true, 'No timer was running.');
+        }
+        $now = date('Y-m-d H:i:s');
+        foreach ($open as $log) {
+            $startDay = date('Y-m-d', strtotime($log->start_time));
+            $end      = $startDay !== date('Y-m-d') ? $startDay . ' 18:30:00' : $now;
+            $log->end_time   = $end;
+            $log->total_time = max(0, strtotime($end) - strtotime($log->start_time));
+            $log->save(false);
+        }
+        // Yii1 parity: stopping keeps the task On Going.
+        $secs = array_sum(array_map(fn($l) => (int)$l->total_time, $open));
+        return $this->json(true, 'Timer stopped (' . Task::hm($secs) . ' logged).');
+    }
 
     public function actionTaskHistory(int $id): string
     {
-        $mainTask = $this->findModel($id);
-        $subtasks = Task::find()
-            ->with(['assignedTo', 'createdBy'])
-            ->where(['parent_id' => $id, 'status' => 1])
-            ->all();
-        $taskLogs = TaskLogs::find()
-            ->with(['user'])
-            ->where(['task_id' => $id, 'status' => 1])
-            ->orderBy('id ASC')
-            ->all();
-
-        return $this->render('task-history', compact('mainTask', 'subtasks', 'taskLogs'));
+        $mainTask = TaskAccess::findTask($id);
+        $subtasks = Task::find()->with(['assignedTo', 'createdBy'])
+            ->where(['parent_id' => $id, 'status' => 1])->orderBy(['id' => SORT_ASC])->all();
+        $taskLogs = $this->logsOf($id);
+        $worked   = $this->workedSecs(array_merge([$mainTask], $subtasks));
+        return $this->render('task-history', compact('mainTask', 'subtasks', 'taskLogs', 'worked'));
     }
 
-    // ── Task logs HTML fragment (for AJAX) ────────────────────────────────────
-
+    /** HTML fragment for the Task Logs modal. */
     public function actionTaskLogs(int $id): string
     {
-        Yii::$app->response->format = Response::FORMAT_HTML;
-
-        $logs   = TaskLogs::find()
-            ->with(['user'])
-            ->where(['task_id' => $id, 'status' => 1])
-            ->orderBy(['id' => SORT_ASC])
-            ->all();
-
-        return $this->renderPartial('_task-logs', compact('logs'));
+        $task = TaskAccess::findTask($id);
+        return $this->renderPartial('_task-logs', ['logs' => $this->logsOf($task->id)]);
     }
 
-    // ── Subtask list HTML fragment (for AJAX POST) ────────────────────────────
-
+    /** HTML fragment: subtasks of a task (Yii1 getsubtasks). */
     public function actionGetSubtasks(): string
     {
-        Yii::$app->response->format = Response::FORMAT_HTML;
-
-        $taskId   = (int)Yii::$app->request->post('taskid', 0);
-        $subtasks = Task::find()
-            ->with(['assignedTo'])
-            ->where(['parent_id' => $taskId, 'status' => 1])
-            ->all();
-
+        $task     = TaskAccess::findTask((int)Yii::$app->request->post('taskid'));
+        $subtasks = Task::find()->with(['assignedTo'])->where(['parent_id' => $task->id, 'status' => 1])->all();
         return $this->renderPartial('_subtasks', compact('subtasks'));
     }
 
-    // ── Calculate expected delivery date from hours (AJAX) ──────────────────
-
+    /** AJAX (Yii1 calcexpecteddate): today + the expected duration, as d-m-Y. */
     public function actionCalcExpectedDate(): Response
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-
-        $expectedHour   = (int)Yii::$app->request->post('expected_hour', 0);
-        $expectedMinute = (int)Yii::$app->request->post('expected_minute', 0);
-        $expectedTime   = ($expectedHour * 3600) + ($expectedMinute * 60);
-
-        if ($expectedTime > 0) {
-            $result = date('d-m-Y', time() + $expectedTime);
-            return $this->asJson(['status' => 1, 'msg' => $result]);
-        }
-
-        return $this->asJson(['status' => 0, 'msg' => '']);
+        $h = max(0, min(1000, (int)Yii::$app->request->post('expected_hour', 0)));
+        $m = max(0, min(59, (int)Yii::$app->request->post('expected_minute', 0)));
+        $secs = $h * 3600 + $m * 60;
+        return $this->asJson($secs > 0 ? ['status' => 1, 'msg' => date('d-m-Y', time() + $secs)] : ['status' => 0, 'msg' => '']);
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private function findModel(int $id): Task
+    private function baseQuery(): ActiveQuery
     {
-        $model = Task::findOne(['id' => $id, 'status' => 1]);
-        if (!$model) {
-            throw new NotFoundHttpException('Task not found.');
+        return Task::find()->alias('t')
+            ->with(['project', 'assignedTo', 'assignedBy', 'createdBy'])
+            ->where(['t.status' => 1])
+            ->orderBy(['t.id' => SORT_DESC]);
+    }
+
+    /** Apply the list filters, then render the shared list view. */
+    private function renderList(string $listType, string $title, ActiveQuery $query): string
+    {
+        $req = Yii::$app->request;
+        $f   = [];
+        foreach (self::LIST_FILTERS as $key) {
+            $v = $req->get($key, '');
+            $f[$key] = is_string($v) ? mb_substr(trim($v), 0, 255) : '';
         }
-        return $model;
+        $ignored = [];
+        foreach (['task_status', 'project_id', 'assigned_to', 'assigned_by', 'created_by'] as $key) {
+            if ($f[$key] !== '' && !ctype_digit($f[$key])) { $ignored[] = str_replace('_', ' ', $key); $f[$key] = ''; }
+        }
+        foreach (['expected_date', 'date_time'] as $key) {
+            $d = \DateTime::createFromFormat('Y-m-d', $f[$key]);
+            if ($f[$key] !== '' && (!$d || $d->format('Y-m-d') !== $f[$key])) { $ignored[] = $key === 'date_time' ? 'created date' : 'deadline'; $f[$key] = ''; }
+        }
+        if ($ignored) {
+            Yii::$app->session->setFlash('warning', 'Ignored an invalid search value (' . implode(', ', $ignored) . ').');
+        }
+
+        if ($f['task'] !== '')          { $query->andWhere(['like', 't.task', $f['task']]); }
+        if ($f['task_status'] !== '')   { $query->andWhere(['t.task_status' => (int)$f['task_status']]); }
+        if ($f['project_id'] !== '')    { $query->andWhere(['t.project_id' => (int)$f['project_id']]); }
+        if ($f['assigned_to'] !== '')   { $query->andWhere(['t.assigned_to' => (int)$f['assigned_to']]); }
+        if ($f['assigned_by'] !== '')   { $query->andWhere(['t.assigned_by' => (int)$f['assigned_by']]); }
+        if ($f['created_by'] !== '')    { $query->andWhere(['t.created_by' => (int)$f['created_by']]); }
+        if ($f['expected_date'] !== '') { $query->andWhere(['DATE(t.expected_delivery_date)' => $f['expected_date']]); }
+        if ($f['date_time'] !== '')     { $query->andWhere(['between', 't.created_date', $f['date_time'] . ' 00:00:00', $f['date_time'] . ' 23:59:59']); }
+
+        $dataProvider = new ActiveDataProvider(['query' => $query, 'pagination' => ['pageSize' => 20]]);
+        $tasks        = $dataProvider->getModels();
+        $ids          = array_map(fn($t) => (int)$t->id, $tasks);
+
+        $subtaskCounts = $ids ? (new Query())->select(['cnt' => 'COUNT(*)', 'parent_id'])->from(Task::tableName())
+            ->where(['parent_id' => $ids, 'status' => 1])->groupBy('parent_id')->indexBy('parent_id')->column() : [];
+
+        return $this->render('list', [
+            'listType'      => $listType,
+            'title'         => $title,
+            'dataProvider'  => $dataProvider,
+            'f'             => $f,
+            'workedSecs'    => $this->workedSecs($tasks),
+            'subtaskCounts' => array_map('intval', $subtaskCounts),
+            'activeTaskId'  => (int)TaskLogs::find()->select('task_id')
+                ->where(['user_id' => Yii::$app->user->id, 'status' => 1, 'end_time' => null])->orderBy(['id' => SORT_DESC])->scalar(),
+            'projects'      => Project::find()->select(['title', 'id'])->where(['status' => 1])->orderBy('title')->indexBy('id')->column(),
+            'developers'    => $this->developerOptions(),
+        ]);
+    }
+
+    /**
+     * [task_id => worked seconds] from task_logs. A parent's time includes its
+     * subtasks' logs (subtasks are one level deep).
+     *
+     * @param Task[] $tasks
+     */
+    private function workedSecs(array $tasks): array
+    {
+        $ids = array_values(array_unique(array_map(fn($t) => (int)$t->id, $tasks)));
+        if (!$ids) {
+            return [];
+        }
+        $map = array_fill_keys($ids, 0);
+        foreach ((new Query())->select(['task_id', 'secs' => 'SUM(total_time)'])->from(TaskLogs::tableName())
+                     ->where(['task_id' => $ids, 'status' => 1])->groupBy('task_id')->all() as $row) {
+            $map[(int)$row['task_id']] += (int)$row['secs'];
+        }
+        foreach ((new Query())->select(['pid' => 't.parent_id', 'secs' => 'SUM(tl.total_time)'])
+                     ->from(['t' => Task::tableName()])
+                     ->innerJoin(['tl' => TaskLogs::tableName()], 'tl.task_id = t.id AND tl.status = 1')
+                     ->where(['t.parent_id' => $ids, 't.status' => 1])->groupBy('t.parent_id')->all() as $row) {
+            $map[(int)$row['pid']] += (int)$row['secs'];
+        }
+        return $map;
+    }
+
+    /** @return TaskLogs[] */
+    private function logsOf(int $taskId): array
+    {
+        return TaskLogs::find()->with(['user'])->where(['task_id' => $taskId, 'status' => 1])->orderBy(['id' => SORT_ASC])->all();
+    }
+
+    private function hasOpenLog(int $taskId): bool
+    {
+        return TaskLogs::find()->where(['task_id' => $taskId, 'status' => 1, 'end_time' => null])->exists();
+    }
+
+    /** Expected time from the form's hours + minutes fields (seconds); false after adding an error. */
+    private function applyExpectedTime(Task $task): bool
+    {
+        $req = Yii::$app->request;
+        $h   = $req->post('expected_hours', '');
+        $m   = $req->post('expected_minutes', '');
+        if (!is_scalar($h) || !is_scalar($m) || ($h !== '' && !ctype_digit((string)$h)) || ($m !== '' && !ctype_digit((string)$m)) || (int)$m > 59) {
+            $task->validate();
+            $task->addError('expected_time', 'Enter whole hours and minutes (minutes 0–59).');
+            return false;
+        }
+        $task->expected_time = (int)$h * 3600 + (int)$m * 60;
+        return true;
+    }
+
+    /** "H:MM" / "H:MM:SS" → seconds; 0 for anything else. */
+    private function parseDuration($value): int
+    {
+        if (!is_string($value) || !preg_match('/^(\d{1,4}):([0-5]?\d)(?::([0-5]?\d))?$/', trim($value), $m)) {
+            return 0;
+        }
+        return (int)$m[1] * 3600 + (int)$m[2] * 60 + (int)($m[3] ?? 0);
+    }
+
+    /** A validated-on-save subtask of $parent from posted values. */
+    private function buildSubtask(Task $parent, array $values, int $expectedSecs): Task
+    {
+        $userId = (int)Yii::$app->user->id;
+        $sub = new Task(['scenario' => Task::SCENARIO_FORM]);
+        $sub->setAttributes(array_map(fn($v) => is_scalar($v) ? trim((string)$v) : null, $values + [
+            'priority' => Task::PRIORITY_HIGH, 'assign_type' => Task::ASSIGN_TYPE_FULL,
+        ]));
+        $sub->project_id    = $parent->project_id;
+        $sub->client_id     = $parent->client_id;
+        $sub->parent_id     = $parent->id;
+        $sub->expected_time = $expectedSecs;
+        $sub->task_status   = (int)$sub->assigned_to === $userId ? Task::STATUS_ACCEPTED : Task::STATUS_PENDING;
+        $sub->created_by    = $userId;
+        $sub->assigned_by   = $userId;
+        $sub->is_read       = 1;
+        $sub->created_date  = date('Y-m-d H:i:s');
+        $sub->status        = 1;
+        return $sub;
+    }
+
+    private function json(bool $ok, string $message): Response
+    {
+        return $this->asJson(['success' => $ok, 'message' => $message]);
+    }
+
+    /** Return to the posted list route if it is one of ours, else $default. */
+    private function safeReturn(array $default): array
+    {
+        $r = Yii::$app->request->post('return');
+        return in_array($r, ['index', 'my-task-list', 'my-new-task-list', 'assigned-tasks', 'completed-task-list'], true) ? [$r] : $default;
+    }
+
+    /** Active employees (developer name) keyed by user_id. */
+    private function developerOptions(): array
+    {
+        return Developer::find()->select(['developer_name', 'user_id'])->where(['status' => 1])
+            ->orderBy('developer_name')->indexBy('user_id')->column();
+    }
+
+    private function formOptions(): array
+    {
+        return [
+            'projects'   => Project::find()->select(['title', 'id'])->where(['status' => 1])->orderBy('title')->indexBy('id')->column(),
+            'developers' => $this->developerOptions(),
+        ];
     }
 }

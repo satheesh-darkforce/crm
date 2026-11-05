@@ -7,32 +7,37 @@ use yii\bootstrap5\ActiveForm;
 use yii\bootstrap5\Html;
 
 $this->title = $model->isNewRecord ? 'Add Lead Master' : 'Update Lead Master';
-$sm = ['class' => 'form-control form-control-sm'];
+$in = fn(string $placeholder, array $extra = []) => ['class' => 'form-control form-control-sm', 'placeholder' => $placeholder] + $extra;
 ?>
-<div class="lead-master-form" style="max-width:900px">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= Html::encode($this->title) ?></h5>
-        <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', ['lead-master'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+<div class="ui-page lead-master-form" style="max-width:920px">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($this->title) ?></h1>
+            <div class="ui-sub"><?= $model->isNewRecord ? 'A prospect you can convert into a lead later.' : Html::encode($model->account_name) ?></div>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', ['lead-master'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm">
+        <div class="card-header ui-section">Prospect details</div>
         <div class="card-body">
-            <?= $this->render('_form-css') ?>
-            <?php $form = ActiveForm::begin(['id' => 'lead-master-form', 'options' => ['class' => 'lead-form-scope']]); ?>
-            <?= $form->errorSummary($model, ['class' => 'alert alert-danger py-2 small']) ?>
-            <p class="text-muted small mb-3">Fields marked <span class="text-danger fw-bold">*</span> are required.</p>
+            <?php $form = ActiveForm::begin(['id' => 'lead-master-form', 'options' => ['class' => 'ui-form']]); ?>
+            <?= $form->errorSummary($model, ['class' => 'alert alert-danger', 'header' => '<p>Please fix the following:</p>']) ?>
+            <p class="ui-req-note">Fields marked <b>*</b> are required.</p>
             <div class="row g-3">
-                <div class="col-md-4"><?= $form->field($model, 'account_name')->textInput($sm + ['maxlength' => 200, 'placeholder' => 'e.g. Acme Pvt Ltd']) ?></div>
-                <div class="col-md-4"><?= $form->field($model, 'first_name')->textInput($sm + ['maxlength' => 100, 'placeholder' => 'e.g. John']) ?></div>
-                <div class="col-md-4"><?= $form->field($model, 'last_name')->textInput($sm + ['maxlength' => 100, 'placeholder' => 'e.g. Mathew']) ?></div>
-                <div class="col-md-4"><?= $form->field($model, 'designation')->textInput($sm + ['maxlength' => 250, 'placeholder' => 'e.g. Purchase Manager']) ?></div>
-                <div class="col-md-4"><?= $form->field($model, 'email_id')->input('email', $sm + ['maxlength' => 100, 'placeholder' => 'name@company.com']) ?></div>
-                <div class="col-md-4"><?= $form->field($model, 'phone_number')->textInput($sm + ['maxlength' => 25, 'inputmode' => 'tel', 'placeholder' => 'e.g. +91 98765 43210']) ?></div>
-                <div class="col-md-4"><?= $form->field($model, 'city')->textInput($sm + ['maxlength' => 100, 'placeholder' => 'e.g. Chennai']) ?></div>
+                <div class="col-md-4"><?= $form->field($model, 'account_name')->textInput($in('e.g. Acme Pvt Ltd', ['maxlength' => 200])) ?></div>
+                <div class="col-md-4"><?= $form->field($model, 'first_name')->textInput($in('e.g. John', ['maxlength' => 100])) ?></div>
+                <div class="col-md-4"><?= $form->field($model, 'last_name')->textInput($in('e.g. Mathew', ['maxlength' => 100])) ?></div>
+                <div class="col-md-4"><?= $form->field($model, 'designation')->textInput($in('e.g. Purchase Manager', ['maxlength' => 250])) ?></div>
+                <div class="col-md-4"><?= $form->field($model, 'email_id')->input('email', $in('name@company.com', ['maxlength' => 100])) ?></div>
+                <div class="col-md-4"><?= $form->field($model, 'phone_number')->textInput($in('e.g. +91 98765 43210', ['maxlength' => 25, 'inputmode' => 'tel'])) ?></div>
+                <div class="col-md-4"><?= $form->field($model, 'city')->textInput($in('e.g. Chennai', ['maxlength' => 100])) ?></div>
                 <div class="col-md-4"><?= $form->field($model, 'status')->dropDownList(LeadMaster::statusOptions(), ['class' => 'form-select form-select-sm']) ?></div>
             </div>
-            <div class="d-flex gap-2 mt-3">
-                <?= Html::submitButton($model->isNewRecord ? 'Submit' : 'Update', ['class' => 'btn btn-primary btn-sm px-4']) ?>
+            <div class="ui-form-actions mb-0">
+                <?= Html::submitButton('<i class="fas fa-check me-1"></i>' . ($model->isNewRecord ? 'Save Prospect' : 'Update Prospect'), ['class' => 'btn btn-primary btn-sm px-4']) ?>
                 <?= Html::a('Cancel', ['lead-master'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
             </div>
             <?php ActiveForm::end(); ?>

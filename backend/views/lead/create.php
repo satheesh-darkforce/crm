@@ -7,10 +7,15 @@ use yii\bootstrap5\Html;
 
 $this->title = 'Add Lead';
 ?>
-<div class="lead-create">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= Html::encode($this->title) ?></h5>
-        <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', Yii::$app->request->referrer ?: ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+<div class="ui-page lead-create">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($this->title) ?></h1>
+            <div class="ui-sub">New leads start as Open with their first follow-up scheduled.</div>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', Yii::$app->request->referrer ?: ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
     <?= $this->render('_form', ['lead' => $lead, 'users' => $users]) ?>
 </div>

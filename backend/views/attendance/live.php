@@ -52,7 +52,6 @@ $statusMeta = [
 .live-stat.working{background:linear-gradient(135deg,#2193b0,#6dd5ed)}
 .live-stat.brk{background:linear-gradient(135deg,#f7971e,#ffd200);color:#5b4500}
 .live-stat.absent{background:linear-gradient(135deg,#cb2d3e,#ef473a)}
-
 .live-table{width:100%}
 .live-table th{font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
 .live-table td{vertical-align:middle;font-size:.875rem}
@@ -73,7 +72,6 @@ $statusMeta = [
 .live-table tbody tr.row-out:hover > td{background-color:#e0eafc}
 .live-table tbody tr.row-absent > td{background-color:#fff5f5}
 .live-table tbody tr.row-absent:hover > td{background-color:#ffeaea}
-
 .st-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.2rem .55rem;border-radius:50rem;font-size:.72rem;font-weight:600;white-space:nowrap}
 .st-badge .dot{width:.55rem;height:.55rem;border-radius:50%;display:inline-block}
 .st-working{background:#e3f7ee;color:#0f7b53}.st-working .dot{background:#16b673;animation:pulse 1.4s infinite}
@@ -82,7 +80,6 @@ $statusMeta = [
 .st-out{background:#e7eefc;color:#2a52be}.st-out .dot{background:#3b6fe0}
 .st-absent{background:#fdecec;color:#c0392b}.st-absent .dot{background:#e74c3c}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(22,182,115,.5)}70%{box-shadow:0 0 0 6px rgba(22,182,115,0)}100%{box-shadow:0 0 0 0 rgba(22,182,115,0)}}
-
 /* Filter bar — labelled fields with the input row bottom-aligned to the buttons */
 #live-filter-form .filter-field{flex:1 1 240px;min-width:200px;max-width:360px}
 #live-filter-form .form-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;margin-bottom:.25rem}
@@ -95,23 +92,23 @@ $statusMeta = [
 #live-filter-form .select2-selection--single .select2-selection__arrow,
 #live-filter-form .select2-selection--single .select2-selection__clear{height:30px !important;top:1px}
 #live-filter-form .select2-container{display:block;margin:0}
-
 .late-pill{display:inline-block;min-width:1.6rem;padding:.1rem .45rem;border-radius:50rem;font-size:.78rem;font-weight:700;background:#fdecec;color:#c0392b}
 .late-pill--total{background:#eef0f3;color:#5a6472}
 .excuse-pill{display:inline-block;min-width:1.6rem;padding:.1rem .45rem;border-radius:50rem;font-size:.78rem;font-weight:700;background:#e3f7ee;color:#0f7b53}
 .excuse-pill--total{background:#eef0f3;color:#5a6472}
-
 .live-dot{width:.6rem;height:.6rem;border-radius:50%;background:#e74c3c;display:inline-block;animation:pulse-red 1.3s infinite}
 @keyframes pulse-red{0%{box-shadow:0 0 0 0 rgba(231,76,60,.6)}70%{box-shadow:0 0 0 7px rgba(231,76,60,0)}100%{box-shadow:0 0 0 0 rgba(231,76,60,0)}}
 </style>
 
-<div class="attendance-live">
+<div class="ui-page attendance-live">
 
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <div class="d-flex align-items-center gap-2">
+    <div class="ui-head">
+        <div>
+            <h1>Live Attendance</h1>
+            <div class="ui-sub">as of <span id="live-clock"><?= date('h:i:s A') ?></span></div>
+        </div>
+        <div class="ui-actions">
             <span class="live-dot"></span>
-            <h5 class="mb-0 fw-semibold">Live Attendance</h5>
-            <small class="text-muted">as of <span id="live-clock"><?= date('h:i:s A') ?></span></small>
         </div>
         <div class="d-flex align-items-center gap-2">
             <button type="button" class="btn btn-sm btn-outline-primary" id="refresh-now">

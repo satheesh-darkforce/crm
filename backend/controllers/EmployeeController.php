@@ -15,6 +15,13 @@ use yii\web\Response;
  */
 class EmployeeController extends Controller
 {
+    /** Full pages get the HR module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        \backend\assets\HrAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     public function actionIndex(): string
     {
         $req         = Yii::$app->request;

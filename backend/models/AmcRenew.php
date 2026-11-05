@@ -44,7 +44,11 @@ class AmcRenew extends ActiveRecord
         return [
             [['amc_id', 'project_id', 'client_id', 'start_date', 'months', 'charge_type'], 'required'],
             [['amc_id', 'project_id', 'client_id', 'months', 'charge_type', 'status', 'created_by'], 'integer'],
-            [['months'], 'integer', 'min' => 1, 'tooSmall' => 'Number of months must be at least 1.'],
+            [['months'], 'integer', 'min' => 1, 'max' => 600,
+                'tooSmall' => 'Number of months must be at least 1.', 'tooBig' => 'Number of months cannot exceed 600.'],
+            [['description'], 'trim'],
+            [['description'], 'string', 'max' => 2000],
+            [['start_date'], 'validateAfterContractStart', 'skipOnError' => true],
             [['charge_type'], 'in', 'range' => [Amc::CHARGE_PERCENTAGE, Amc::CHARGE_AMOUNT]],
 
             [['percentage'], 'required',
@@ -74,6 +78,16 @@ class AmcRenew extends ActiveRecord
             'amount'      => 'Amount',
             'description' => 'Description',
         ];
+    }
+
+    /** A renewal cannot begin before the AMC contract itself starts. */
+    public function validateAfterContractStart(string $attribute): void
+    {
+        $amc = Amc::findOne($this->amc_id);
+        if ($amc && $amc->start_date && $this->$attribute < $amc->start_date) {
+            $this->addError($attribute, 'Renewal Start Date cannot be before the AMC start date ('
+                . date('d M Y', strtotime($amc->start_date)) . ').');
+        }
     }
 
     public function beforeValidate(): bool

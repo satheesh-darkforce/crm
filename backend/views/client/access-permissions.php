@@ -3,77 +3,54 @@
 /** @var \backend\models\ClientModel $client */
 /** @var string[] $granted  — array of permitted route strings */
 
+use backend\models\ClientModel;
 use yii\bootstrap5\Html;
 use yii\helpers\Url;
 
-$this->title = 'Portal Permissions — ' . $client->client_name;
-
-// Permissions available for the client portal
-$menus = [
-    [
-        'section' => 'Invoices',
-        'perms'   => [
-            ['name' => 'Invoice List',   'route' => 'invoice/clientinvoice'],
-            ['name' => 'Invoice View',   'route' => 'invoice/view'],
-        ],
-    ],
-    [
-        'section' => 'Work Reports',
-        'perms'   => [
-            ['name' => 'Work Report List', 'route' => 'workreport/clientworkreports'],
-            ['name' => 'Work Report View', 'route' => 'workreport/clientview'],
-        ],
-    ],
-];
+$this->title = 'Portal Permissions';
+$sections = ClientModel::portalPermissionOptions();
 ?>
-<style>
-.perm-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600}
-.perm-table td{vertical-align:middle;font-size:.875rem}
-</style>
-
-<div class="client-access-permissions">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page client-access-permissions" style="max-width:860px">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Portal Permissions</h5>
-            <small class="text-muted"><?= Html::encode($client->client_name) ?></small>
+            <h1>Portal Permissions</h1>
+            <div class="ui-sub"><?= Html::encode($client->client_name) ?> · pages this client can open after logging in</div>
         </div>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['view', 'id' => $client->id], ['class' => 'btn btn-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', ['view', 'id' => $client->id], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
-    <div class="card border-0 shadow-sm">
-        <div class="card-body pb-0 pt-3 px-3">
-            <p class="text-muted small mb-3">
-                Select which pages this client can access in the client portal. Unchecked routes will be hidden or blocked.
-            </p>
-        </div>
-        <form method="post" action="<?= Url::to(['access-permissions', 'id' => $client->id]) ?>">
-            <?= Html::hiddenInput(Yii::$app->request->csrfParam, Yii::$app->request->getCsrfToken()) ?>
+    <form method="post" action="<?= Url::to(['access-permissions', 'id' => $client->id]) ?>" class="js-busy-form">
+        <?= Html::hiddenInput(Yii::$app->request->csrfParam, Yii::$app->request->getCsrfToken()) ?>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header ui-section">
+                <label class="d-flex align-items-center gap-2 mb-0" style="cursor:pointer">
+                    <input type="checkbox" class="form-check-input mt-0" id="checkAll"> Select all
+                </label>
+                <span class="ui-section-meta" id="perm-count" aria-live="polite"></span>
+            </div>
             <div class="table-responsive">
-                <table class="table perm-table mb-0">
+                <table class="table list-table ui-table mb-0">
                     <thead class="table-light">
-                        <tr>
-                            <th style="width:32px"><input type="checkbox" id="checkAll" title="Toggle all"></th>
-                            <th>#</th>
-                            <th>Section</th>
-                            <th>Permissions</th>
-                        </tr>
+                    <tr><th style="width:32%">Section</th><th>Pages</th></tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($menus as $idx => $group): ?>
+                    <?php foreach ($sections as $section => $perms): ?>
                         <tr>
-                            <td><input type="checkbox" class="check-row"></td>
-                            <td class="text-muted"><?= $idx + 1 ?></td>
-                            <td class="fw-semibold small"><?= Html::encode($group['section']) ?></td>
+                            <td class="cell-title">
+                                <label class="d-flex align-items-center gap-2 mb-0" style="cursor:pointer">
+                                    <input type="checkbox" class="form-check-input mt-0 js-perm-section" aria-label="All <?= Html::encode($section) ?> pages">
+                                    <?= Html::encode($section) ?>
+                                </label>
+                            </td>
                             <td>
                                 <div class="d-flex flex-wrap gap-3">
-                                <?php foreach ($group['perms'] as $perm): ?>
-                                    <label class="d-flex align-items-center gap-1 small" style="cursor:pointer;user-select:none">
-                                        <input type="checkbox"
-                                               name="accessoptions[]"
-                                               value="<?= Html::encode($perm['route']) ?>"
-                                               class="row-check"
-                                               <?= in_array($perm['route'], $granted) ? 'checked' : '' ?>>
-                                        <?= Html::encode($perm['name']) ?>
+                                <?php foreach ($perms as $route => $label): ?>
+                                    <label class="d-flex align-items-center gap-2 mb-0 small" style="cursor:pointer">
+                                        <input type="checkbox" class="form-check-input mt-0 js-perm" name="accessoptions[]"
+                                               value="<?= Html::encode($route) ?>" <?= in_array($route, $granted, true) ? 'checked' : '' ?>>
+                                        <?= Html::encode($label) ?>
                                     </label>
                                 <?php endforeach; ?>
                                 </div>
@@ -83,22 +60,11 @@ $menus = [
                     </tbody>
                 </table>
             </div>
-            <div class="card-footer bg-transparent text-end py-3">
-                <button type="submit" class="btn btn-primary btn-sm px-4">Save Permissions</button>
-            </div>
-        </form>
-    </div>
+        </div>
+        <p class="ui-req-note mt-2 mb-0">Unticked pages are hidden from the client and blocked if opened directly. With nothing ticked the client has no portal access.</p>
+        <div class="ui-form-actions">
+            <button type="submit" class="btn btn-primary btn-sm px-4"><i class="fas fa-check me-1"></i>Save Permissions</button>
+            <?= Html::a('Cancel', ['view', 'id' => $client->id], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
+        </div>
+    </form>
 </div>
-
-<?php $this->registerJs(<<<JS
-document.getElementById('checkAll').addEventListener('change', function() {
-    document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
-    document.querySelectorAll('.check-row').forEach(cb => cb.checked = this.checked);
-});
-document.querySelectorAll('.check-row').forEach(function(rowCb) {
-    rowCb.addEventListener('change', function() {
-        var boxes = this.closest('tr').querySelectorAll('.row-check');
-        boxes.forEach(cb => cb.checked = this.checked);
-    });
-});
-JS); ?>

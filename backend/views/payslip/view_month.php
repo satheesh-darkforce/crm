@@ -29,14 +29,16 @@ $this->title = 'Payslips — ' . $monthStr;
 .ps-action a.del-btn:hover { color:#dc3545; }
 </style>
 
-<div class="payslip-view-month">
+<div class="ui-page payslip-view-month">
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0"><strong>Payslips</strong> — <?= Html::encode($monthStr) ?></h5>
-            <small class="text-muted"><?= count($payslips) ?> employee<?= count($payslips) != 1 ? 's' : '' ?></small>
+            <h1><strong>Payslips</strong> — <?= Html::encode($monthStr) ?></h1>
+            <div class="ui-sub"><?= count($payslips) ?> employee<?= count($payslips) != 1 ? 's' : '' ?></div>
         </div>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm">

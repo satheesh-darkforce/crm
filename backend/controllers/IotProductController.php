@@ -21,12 +21,58 @@ use backend\models\IotUploads;
 use yii\web\UploadedFile;
 use backend\models\Project;
 use Yii;
+use yii\filters\VerbFilter;
+use backend\assets\InventoryAsset;
 use yii\data\ActiveDataProvider;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
 class IotProductController extends Controller
 {
+    public function behaviors(): array
+    {
+        return array_merge(parent::behaviors(), [
+            'verbs' => [
+                'class'   => VerbFilter::class,
+                'actions' => [
+                    'delete'              => ['POST'],
+                    'delete-upload'       => ['POST'],
+                    'change-status'       => ['POST'],
+                    'save-master'         => ['POST'],
+                    'delete-master'       => ['POST'],
+                    'delete-non-purchase' => ['POST'],
+                    'delete-purchase'     => ['POST'],
+                    'convert-to-invoice'  => ['POST'],
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Developers get some helper routes by default; the ones that change data
+     * still need the matching primary right.
+     */
+    public function beforeAction($action): bool
+    {
+        if (!parent::beforeAction($action)) {
+            return false;
+        }
+        $needs = [
+            'delete-upload' => ['iot-product/create', 'iot-product/update'],
+        ][$action->id] ?? null;
+        if ($needs !== null && !array_filter($needs, fn($r) => \common\components\UserAccess::checkAccess($r))) {
+            throw new \yii\web\ForbiddenHttpException('You are not allowed to perform this action.');
+        }
+        return true;
+    }
+
+    /** Full pages get the Inventory module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        InventoryAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     // ─── All Products ────────────────────────────────────────────────────────
 
     public function actionIndex(): string
@@ -336,6 +382,10 @@ class IotProductController extends Controller
         // Copy mode: pre-fill project/developer/products from an existing request
         if ($copy !== null && $copy > 0) {
             $src = IotConsumption::findOne(['id' => $copy, 'status' => 1]);
+            $restrict = $this->selfDeveloperIfRestricted();
+            if ($src && $restrict !== false && (int)$src->developer_id !== (int)($restrict->id ?? 0)) {
+                $src = null;
+            }
             if ($src) {
                 $model->project_id   = $src->project_id;
                 $model->developer_id = $src->developer_id;
@@ -370,58 +420,26 @@ class IotProductController extends Controller
             $model->status            = 1;
 
             // Server-side stock guard — defence-in-depth for the form's JS check.
-            $productIds = (array)Yii::$app->request->post('product_id', []);
-            $quantities = (array)Yii::$app->request->post('quantity', []);
-            $stockErrors = [];
-            $seen = [];
-            foreach ($productIds as $k => $pid) {
-                $pid = (int)$pid;
-                if ($pid <= 0) continue;
-                if (isset($seen[$pid])) {
-                    $stockErrors[] = 'Duplicate product on multiple rows.';
-                    break;
-                }
-                $seen[$pid] = true;
-                $qty = (int)($quantities[$k] ?? 0);
-                if ($qty < 1) {
-                    $stockErrors[] = 'Quantity must be at least 1 for every row.';
-                    break;
-                }
-                $product = IotProduct::findOne(['id' => $pid, 'status' => 1]);
-                if (!$product) {
-                    $stockErrors[] = 'One of the selected products no longer exists.';
-                    break;
-                }
-                if ($qty > (int)$product->stock_qty) {
-                    $stockErrors[] = "\"{$product->product_name}\" has only {$product->stock_qty} in stock (requested {$qty}).";
-                }
-            }
-            if (empty($seen)) {
-                $stockErrors[] = 'Please add at least one product.';
-            }
-
-            if (empty($stockErrors) && $model->save()) {
-                foreach ($productIds as $k => $pid) {
-                    $pid = (int)$pid;
-                    if ($pid <= 0) continue;
-                    $item = new IotConsumptionProducts();
-                    $item->consumption_id = $model->id;
-                    $item->product_id     = $pid;
-                    $item->quantity       = (int)($quantities[$k] ?? 1);
-                    $item->status         = 1;
-                    $item->save(false);
-                }
-                Yii::$app->session->setFlash('success', 'Product request created successfully.');
-
-                // Yii1 parity: "Save & Add New" loops back to the create page.
-                if (Yii::$app->request->post('save_action') === 'save_new') {
-                    return $this->redirect(['create-issue']);
-                }
-                return $this->redirect(['issued']);
-            }
-
-            if (!empty($stockErrors)) {
+            [$lines, $stockErrors] = $this->readIssueLines();
+            if ($stockErrors) {
                 Yii::$app->session->setFlash('error', implode(' ', $stockErrors));
+            } elseif ($model->validate()) {
+                $tx = Yii::$app->db->beginTransaction();
+                try {
+                    $model->save(false);
+                    $this->saveIssueLines($model->id, $lines);
+                    $tx->commit();
+                    Yii::$app->session->setFlash('success', 'Product request created successfully.');
+                    // Yii1 parity: "Save & Add New" loops back to the create page.
+                    if (Yii::$app->request->post('save_action') === 'save_new') {
+                        return $this->redirect(['create-issue']);
+                    }
+                    return $this->redirect(['issued']);
+                } catch (\Throwable $e) {
+                    $tx->rollBack();
+                    Yii::error('Issue request create failed: ' . $e->getMessage(), __METHOD__);
+                    Yii::$app->session->setFlash('error', 'Could not save the request. Please try again.');
+                }
             }
         }
 
@@ -435,31 +453,40 @@ class IotProductController extends Controller
 
     public function actionUpdateIssue(int $id): string|Response
     {
-        $model    = $this->findConsumption($id);
+        $model = $this->findConsumption($id);
+        if ((int)$model->consumption_status !== IotConsumption::STATUS_REQUESTED) {
+            Yii::$app->session->setFlash('error', 'This request has already been issued and can no longer be edited.');
+            return $this->redirect(['view-issue', 'id' => $model->id]);
+        }
         $products = IotProduct::find()->where(['status' => 1])->orderBy('product_name')->all();
         $existing = IotConsumptionProducts::find()->where(['consumption_id' => $id, 'status' => 1])->with('product')->all();
+        $selfDev  = $this->selfDeveloperIfRestricted();
 
         if ($model->load(Yii::$app->request->post())) {
-            if ($model->save()) {
-                // Replace items
-                IotConsumptionProducts::deleteAll(['consumption_id' => $model->id]);
-                $productIds = Yii::$app->request->post('product_id', []);
-                $quantities = Yii::$app->request->post('quantity', []);
-                foreach ($productIds as $k => $pid) {
-                    if (!$pid) continue;
-                    $item = new IotConsumptionProducts();
-                    $item->consumption_id = $model->id;
-                    $item->product_id     = (int)$pid;
-                    $item->quantity       = (int)($quantities[$k] ?? 1);
-                    $item->status         = 1;
-                    $item->save(false);
+            if ($selfDev) {
+                $model->developer_id = $selfDev->id;
+            }
+            [$lines, $errors] = $this->readIssueLines();
+            if ($errors) {
+                Yii::$app->session->setFlash('error', implode(' ', $errors));
+            } elseif ($model->validate()) {
+                $tx = Yii::$app->db->beginTransaction();
+                try {
+                    $model->save(false);
+                    IotConsumptionProducts::updateAll(['status' => 0], ['consumption_id' => $model->id, 'status' => 1]);
+                    $this->saveIssueLines($model->id, $lines);
+                    $tx->commit();
+                    Yii::$app->session->setFlash('success', 'Issue request updated.');
+                    return $this->redirect(['issued']);
+                } catch (\Throwable $e) {
+                    $tx->rollBack();
+                    Yii::error('Issue request update failed: ' . $e->getMessage(), __METHOD__);
+                    Yii::$app->session->setFlash('error', 'Could not save the request. Please try again.');
                 }
-                Yii::$app->session->setFlash('success', 'Issue request updated.');
-                return $this->redirect(['issued']);
             }
         }
 
-        $developers = Developer::find()->where(['status' => 1])->orderBy('developer_name')->all();
+        $developers = $selfDev ? [$selfDev] : Developer::find()->where(['status' => 1])->orderBy('developer_name')->all();
         $projects   = Project::find()->where(['status' => 1])->orderBy('title')->all();
 
         return $this->render('_issue_form', compact('model', 'products', 'developers', 'projects', 'existing'));
@@ -473,121 +500,107 @@ class IotProductController extends Controller
     }
 
     /**
-     * AJAX: change issue-request status.
-     * Mirrors Yii1 actionChangestatus: only status=2 (Issued) is meaningful —
-     * it deducts stock and logs an IotIssuedHistory row per product.
-     * Statuses: 1=Requested, 2=Issued.
+     * AJAX: mark a Requested issue-request as Issued (the only allowed change).
+     * Deducts stock and logs an IotIssuedHistory row per product, all in one
+     * transaction with the request row locked, so a double click cannot issue twice.
      */
     public function actionChangeStatus(): Response
     {
-        if (!Yii::$app->request->isPost) { throw new \yii\web\BadRequestHttpException('POST only.'); }
         Yii::$app->response->format = Response::FORMAT_JSON;
 
         $id     = (int)Yii::$app->request->post('id');
         $status = (int)Yii::$app->request->post('status');
+        $this->findConsumption($id);
 
-        $model = $this->findConsumption($id);
-        $items = IotConsumptionProducts::find()
-            ->where(['consumption_id' => $id, 'status' => 1])
-            ->with('product')
-            ->all();
-
-        if (empty($items)) {
-            return $this->asJson(['status' => 0, 'msg' => 'Please add minimum one product.']);
+        if ($status !== IotConsumption::STATUS_ISSUED) {
+            return $this->asJson(['status' => 0, 'msg' => 'A request can only be marked as Issued.']);
         }
 
-        if ($status === 2) {
-            // Stock check
+        $tx = Yii::$app->db->beginTransaction();
+        try {
+            $model = IotConsumption::findBySql('SELECT * FROM iot_consumption WHERE id = :id AND status = 1 FOR UPDATE', [':id' => $id])->one();
+            if (!$model || (int)$model->consumption_status !== IotConsumption::STATUS_REQUESTED) {
+                $tx->rollBack();
+                return $this->asJson(['status' => 0, 'msg' => 'This request has already been issued.']);
+            }
+            $items = IotConsumptionProducts::find()->where(['consumption_id' => $id, 'status' => 1])->with('product')->all();
+            if (empty($items)) {
+                $tx->rollBack();
+                return $this->asJson(['status' => 0, 'msg' => 'Please add minimum one product.']);
+            }
+
             $errors = [];
             foreach ($items as $item) {
-                $p = $item->product;
-                if (!$p) continue;
-                if ((int)$p->stock_qty < (int)$item->quantity) {
-                    $errors[] = 'Product ' . $p->product_name . ' available quantity is ' . (int)$p->stock_qty;
+                $qty = (int)$item->quantity;
+                // Conditional decrement: never takes stock below zero, even under concurrency.
+                $done = $qty > 0 && IotProduct::updateAllCounters(['stock_qty' => -$qty],
+                    ['and', ['id' => (int)$item->product_id, 'status' => 1], ['>=', 'stock_qty', $qty]]);
+                if (!$done) {
+                    $p = $item->product;
+                    $errors[] = 'Product ' . ($p->product_name ?? ('#' . $item->product_id)) . ' available quantity is ' . (int)($p->stock_qty ?? 0);
+                    continue;
                 }
-            }
-            if ($errors) {
-                return $this->asJson(['status' => 0, 'msg' => implode("\n", $errors)]);
-            }
-
-            // Deduct stock + log issued-history
-            foreach ($items as $item) {
-                $p = $item->product;
-                if (!$p) continue;
-                $p->stock_qty = (int)$p->stock_qty - (int)$item->quantity;
-                $p->save(false);
-
                 $hist             = new IotIssuedHistory();
                 $hist->product_id = (int)$item->product_id;
-                $hist->quantity   = (int)$item->quantity;
+                $hist->quantity   = $qty;
                 $hist->type       = '1';
                 $hist->particular = 'Issued';
                 $hist->created_at = date('Y-m-d H:i:s');
                 $hist->status     = 1;
                 $hist->save(false);
             }
+            if ($errors) {
+                $tx->rollBack();
+                return $this->asJson(['status' => 0, 'msg' => implode("\n", $errors)]);
+            }
 
-            $model->consumption_status = 2;
+            $model->consumption_status = IotConsumption::STATUS_ISSUED;
             $model->approved_at        = date('Y-m-d H:i:s');
             $model->approved_by        = Yii::$app->user->id;
             $model->save(false);
-
+            $tx->commit();
             return $this->asJson(['status' => 1, 'msg' => 'Product issued successfully']);
+        } catch (\Throwable $e) {
+            $tx->rollBack();
+            Yii::error('Issue failed: ' . $e->getMessage(), __METHOD__);
+            return $this->asJson(['status' => 0, 'msg' => 'Could not issue the products. Please try again.']);
         }
-
-        // Any other status transition (e.g. back to Requested) — just update
-        $model->consumption_status = $status;
-        $model->save(false);
-        return $this->asJson(['status' => 1, 'msg' => 'Status updated.']);
     }
 
     /**
-     * Return-product flow for an Issued request.
-     * Mirrors Yii1 actionCreatereturnproduct: per product line, increments
-     * IotConsumptionProducts.returned_quantity, credits stock back to
-     * IotProduct.stock_qty, and logs an IotReturnProductHistory row.
+     * Return-product flow for an Issued request: per line, raises returned_quantity
+     * (capped at what is still out), credits stock and logs IotReturnProductHistory.
+     * Runs in one transaction with the request locked.
      */
     public function actionCreateReturn(int $id): string|Response
     {
         $model = $this->findConsumption($id);
-        if ((int)$model->consumption_status !== 2) {
+        if ((int)$model->consumption_status !== IotConsumption::STATUS_ISSUED) {
             Yii::$app->session->setFlash('error', 'Only Issued requests can be returned.');
             return $this->redirect(['issued']);
         }
 
-        $items = IotConsumptionProducts::find()
-            ->where(['status' => 1, 'consumption_id' => $model->id])
-            ->with('product')
-            ->all();
-
         if (Yii::$app->request->isPost) {
-            $productIds = Yii::$app->request->post('product_id', []);
-            $quantities = Yii::$app->request->post('quantity', []);
+            $productIds = (array)Yii::$app->request->post('product_id', []);
+            $quantities = (array)Yii::$app->request->post('quantity', []);
+            $returned   = 0;
+            $tx = Yii::$app->db->beginTransaction();
+            try {
+                Yii::$app->db->createCommand('SELECT id FROM iot_consumption WHERE id = :id FOR UPDATE', [':id' => $model->id])->execute();
+                foreach ($productIds as $idx => $pid) {
+                    $pid    = (int)$pid;
+                    $retQty = (int)($quantities[$idx] ?? 0);
+                    if ($pid <= 0 || $retQty <= 0) continue;
 
-            foreach ($productIds as $idx => $pid) {
-                $pid      = (int)$pid;
-                $retQty   = (int)($quantities[$idx] ?? 0);
-                if ($pid <= 0 || $retQty <= 0) continue;
+                    $line = IotConsumptionProducts::findOne(['status' => 1, 'consumption_id' => $model->id, 'product_id' => $pid]);
+                    if (!$line) continue;
+                    $alreadyReturned = (int)($line->returned_quantity ?? 0);
+                    $retQty = min($retQty, max(0, (int)$line->quantity - $alreadyReturned));
+                    if ($retQty <= 0) continue;
 
-                $line = IotConsumptionProducts::findOne([
-                    'status'         => 1,
-                    'consumption_id' => $model->id,
-                    'product_id'     => $pid,
-                ]);
-                if (!$line) continue;
-
-                $alreadyReturned = (int)($line->returned_quantity ?? 0);
-                $remaining       = max(0, (int)$line->quantity - $alreadyReturned);
-                if ($retQty > $remaining) $retQty = $remaining;
-                if ($retQty <= 0) continue;
-
-                $line->returned_quantity = $alreadyReturned + $retQty;
-                $line->save(false);
-
-                $prod = IotProduct::findOne(['id' => $pid, 'status' => 1]);
-                if ($prod) {
-                    $prod->stock_qty = (int)$prod->stock_qty + $retQty;
-                    $prod->save(false);
+                    $line->returned_quantity = $alreadyReturned + $retQty;
+                    $line->save(false);
+                    IotProduct::updateAllCounters(['stock_qty' => $retQty], ['id' => $pid]);
 
                     $hist             = new IotReturnProductHistory();
                     $hist->product_id = $pid;
@@ -597,13 +610,28 @@ class IotProductController extends Controller
                     $hist->created_at = date('Y-m-d H:i:s');
                     $hist->status     = 1;
                     $hist->save(false);
+                    $returned++;
                 }
+                $tx->commit();
+            } catch (\Throwable $e) {
+                $tx->rollBack();
+                Yii::error('Return failed: ' . $e->getMessage(), __METHOD__);
+                Yii::$app->session->setFlash('error', 'Could not save the return. Please try again.');
+                return $this->redirect(['create-return', 'id' => $model->id]);
             }
 
+            if ($returned === 0) {
+                Yii::$app->session->setFlash('warning', 'Nothing was returned: enter a quantity for at least one product that is still out.');
+                return $this->redirect(['create-return', 'id' => $model->id]);
+            }
             Yii::$app->session->setFlash('success', 'Return products updated successfully.');
             return $this->redirect(['issued']);
         }
 
+        $items = IotConsumptionProducts::find()
+            ->where(['status' => 1, 'consumption_id' => $model->id])
+            ->with('product')
+            ->all();
         $projects   = Project::find()->where(['status' => 1])->orderBy('title')->all();
         $developers = Developer::find()->where(['status' => 1])->orderBy('developer_name')->all();
 
@@ -1356,13 +1384,13 @@ class IotProductController extends Controller
     /**
      * AJAX: soft-delete a master record after checking it is not used by any
      * active IoT product. Mirrors Yii1 actionRemovedropdownvalue.
-     * GET: id, table.
+     * POST: id, table.
      */
     public function actionDeleteMaster(): Response
     {
         Yii::$app->response->format = Response::FORMAT_JSON;
-        $id    = (int)Yii::$app->request->get('id', 0);
-        $table = (string)Yii::$app->request->get('table', '');
+        $id    = (int)Yii::$app->request->post('id', 0);
+        $table = (string)Yii::$app->request->post('table', '');
 
         $m = $this->findMaster($table, $id);
         if (!$m) return $this->asJson(['status' => 0, 'msg' => 'Record not found.']);
@@ -1685,7 +1713,7 @@ class IotProductController extends Controller
             $filename = 'data_sheet_' . $productId . '_' . time() . '_' . uniqid() . '.' . $ext;
             $path     = '/uploads/iot/' . $filename;
             $fullPath = $uploadDir . $filename;
-            if ($file->saveAs($fullPath)) {
+            if (@$file->saveAs($fullPath)) {
                 @chmod($fullPath, 0664);
                 $upload              = new IotUploads();
                 $upload->product_id  = $productId;
@@ -1712,11 +1740,74 @@ class IotProductController extends Controller
         return $m;
     }
 
+    /**
+     * Developers without the status-change right only reach their own requests
+     * (the same rule the Issued list applies).
+     */
     private function findConsumption(int $id): IotConsumption
     {
         $m = IotConsumption::findOne(['id' => $id, 'status' => 1]);
-        if (!$m) throw new NotFoundHttpException('Issue request not found.');
+        $selfDev = $this->selfDeveloperIfRestricted();
+        if (!$m || ($selfDev !== false && (int)$m->developer_id !== (int)($selfDev->id ?? 0))) {
+            throw new NotFoundHttpException('Issue request not found.');
+        }
         return $m;
+    }
+
+    /**
+     * For a developer who cannot change issue status: their Developer row
+     * (null when none is linked). For everyone else: false (no restriction).
+     */
+    private function selfDeveloperIfRestricted(): Developer|false|null
+    {
+        /** @var \backend\models\User|null $user */
+        $user = Yii::$app->user->identity;
+        if (!$user || !$user->isDeveloper() || \common\components\UserAccess::checkAccess('iot-product/change-status')) {
+            return false;
+        }
+        return Developer::findOne(['user_id' => $user->user_id, 'status' => 1]);
+    }
+
+    /**
+     * Reads the posted product rows of an issue request.
+     * @return array{0: array<int,int>, 1: string[]} [product_id => qty], errors
+     */
+    private function readIssueLines(): array
+    {
+        $productIds = (array)Yii::$app->request->post('product_id', []);
+        $quantities = (array)Yii::$app->request->post('quantity', []);
+        $lines  = [];
+        $errors = [];
+        foreach ($productIds as $k => $pid) {
+            $pid = (int)$pid;
+            if ($pid <= 0) continue;
+            if (isset($lines[$pid])) { $errors[] = 'Duplicate product on multiple rows.'; break; }
+            $qty = (int)($quantities[$k] ?? 0);
+            if ($qty < 1) { $errors[] = 'Quantity must be at least 1 for every row.'; break; }
+            $product = IotProduct::findOne(['id' => $pid, 'status' => 1]);
+            if (!$product) { $errors[] = 'One of the selected products no longer exists.'; break; }
+            if ($qty > (int)$product->stock_qty) {
+                $errors[] = "\"{$product->product_name}\" has only {$product->stock_qty} in stock (requested {$qty}).";
+            }
+            $lines[$pid] = $qty;
+        }
+        if (!$lines && !$errors) {
+            $errors[] = 'Please add at least one product.';
+        }
+        return [$lines, $errors];
+    }
+
+    /** @param array<int,int> $lines product_id => qty */
+    private function saveIssueLines(int $consumptionId, array $lines): void
+    {
+        foreach ($lines as $pid => $qty) {
+            $item = new IotConsumptionProducts();
+            $item->consumption_id = $consumptionId;
+            $item->product_id     = $pid;
+            $item->quantity       = $qty;
+            $item->status         = 1;
+            $item->save(false);
+        }
     }
 
     private function findNonPurchase(int $id): IotNonPurchase

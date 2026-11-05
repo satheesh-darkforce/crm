@@ -11,22 +11,16 @@ $this->title = 'Salary Deductions';
 $models = $dataProvider->getModels();
 $total  = $dataProvider->getTotalCount();
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-</style>
 
-<div class="salary-deductions">
+<div class="ui-page salary-deductions">
 
     <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Manage Deductions</h5>
-            <small class="text-muted"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></small>
+            <h1>Manage Deductions</h1>
+            <div class="ui-sub"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></div>
         </div>
-        <div class="d-flex gap-2">
+        <div class="ui-actions">
             <?= Html::a('Earnings Split', ['earnings-split'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
             <?= Html::a('+ Add Deduction', ['create-deduction'], ['class' => 'btn btn-primary btn-sm']) ?>
         </div>

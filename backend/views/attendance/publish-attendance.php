@@ -6,18 +6,16 @@ use yii\helpers\Url;
 
 $this->title = 'Publish Attendance';
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-</style>
 
-<div class="publish-attendance">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page publish-attendance">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Publish Attendance</h5>
-            <small class="text-muted">Generate monthly attendance verification records for all employees</small>
+            <h1>Publish Attendance</h1>
+            <div class="ui-sub">Generate monthly attendance verification records for all employees</div>
         </div>
-        <?= Html::a('&larr; Back', ['attendance-verification'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('&larr; Back', ['attendance-verification'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
     <div class="card border-0 shadow-sm" style="max-width:480px">
         <div class="card-body">

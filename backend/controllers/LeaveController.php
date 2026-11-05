@@ -27,6 +27,13 @@ use yii\web\Response;
  */
 class LeaveController extends Controller
 {
+    /** Full pages get the HR module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        \backend\assets\HrAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     // ── Admin: all requests ─────────────────────────────────────────────────
 
     public function actionIndex(): string
@@ -253,7 +260,10 @@ class LeaveController extends Controller
 
     public function actionView(int $id): string
     {
-        return $this->render('view', ['model' => $this->findModel($id)]);
+        $model = $this->findModel($id);
+        // leave/view is a developer default: own requests only, unless they manage leave.
+        \backend\components\HrAccess::ensureOwnOrManager($model->developer_id, ['leave/index', 'leave/update', 'leave/decide'], 'Leave request');
+        return $this->render('view', ['model' => $model]);
     }
 
     // ── Admin: change status (approve / reject / transfer / cancel) ──────────

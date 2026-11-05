@@ -12,7 +12,7 @@ use yii\grid\GridView;
 use yii\helpers\Html;
 use yii\helpers\Url;
 
-$this->title = 'Quotation — Dashboard';
+$this->title = 'Delivery Dashboard';
 $this->registerCssFile('@web/css/quotation-dashboard.css');
 
 $tiles = [
@@ -34,8 +34,18 @@ $tiles = [
 ];
 ?>
 
-<div class="mt-4">
-    <h3 class="mb-4"><?= Html::encode($this->title) ?></h3>
+<div class="ui-page quotation-dashboard">
+    <div class="ui-head">
+        <div>
+            <h1>Delivery dashboard</h1>
+            <div class="ui-sub">Delivery challans at a glance — pick a tile to see the list.</div>
+        </div>
+        <div class="ui-actions">
+            <?php if (\common\components\UserAccess::checkAccess('dc/create')): ?>
+                <?= Html::a('<i class="fas fa-plus me-1"></i>New DC', ['/dc/create'], ['class' => 'btn btn-primary btn-sm', 'encode' => false]) ?>
+            <?php endif; ?>
+        </div>
+    </div>
 
     <div class="dashboard row g-3 mb-4">
         <?php foreach ($tiles as $t): ?>
@@ -58,7 +68,7 @@ $tiles = [
     </div>
 
     <div class="d-flex justify-content-between align-items-center my-3">
-        <h4 class="mb-0">Client Details</h4>
+        <h2 class="h6 fw-semibold mb-0">Clients</h2>
         <div class="d-flex gap-2">
             <button type="button" class="btn btn-sm btn-secondary search-btn">
                 <i class="fa-solid fa-magnifying-glass"></i> Search

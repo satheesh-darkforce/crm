@@ -22,6 +22,14 @@ use yii\db\ActiveRecord;
  */
 class DomainFollowUp extends ActiveRecord
 {
+    use \backend\components\GuardedAttributes;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['domain_id', 'created_by', 'updated_by', 'created_at', 'updated_at'];
+    }
+
     public static function tableName(): string
     {
         return 'follow_up';
@@ -30,9 +38,14 @@ class DomainFollowUp extends ActiveRecord
     public function rules(): array
     {
         return [
+            // Dates must be real YYYY-MM-DD values (checked when new or edited).
+            [['contacted_date', 'next_followup'], 'date', 'format' => 'php:Y-m-d', 'message' => '{attribute} must be a date (YYYY-MM-DD).',
+                'when' => fn($m, $a) => $m->isNewRecord || $m->isAttributeChanged($a, false)],
             [['domain_id', 'contacted_date', 'description', 'followup_status'], 'required'],
             [['domain_id', 'followup_status', 'created_by', 'updated_by'], 'integer'],
-            [['description'], 'string'],
+            [['description'], 'trim'],
+            [['description'], 'string', 'max' => 5000],
+            [['followup_status'], 'in', 'range' => [1, 2], 'message' => 'Select a valid follow-up status.'],
             [['contacted_date', 'next_followup', 'created_at', 'updated_at'], 'safe'],
             ['next_followup', 'compare', 'compareAttribute' => 'contacted_date',
                 'operator' => '>=', 'type' => 'string',

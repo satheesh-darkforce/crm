@@ -2,6 +2,7 @@
 
 namespace backend\models;
 
+use backend\components\GuardedAttributes;
 use yii\db\ActiveRecord;
 
 /**
@@ -36,6 +37,14 @@ use yii\db\ActiveRecord;
  */
 class DcDetail extends ActiveRecord
 {
+    use GuardedAttributes;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['status', 'dc_no', 'dc_created_by', 'dc_created_by_id', 'type', 'inward_dc_id', 'cancel_reason', 'created_at', 'modified_at'];
+    }
+
     public static function tableName(): string
     {
         return 'dc_details';

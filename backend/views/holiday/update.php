@@ -22,10 +22,14 @@ if (!empty($model->employee_id)) {
     }
 }
 ?>
-<div class="holiday-update">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= $this->title ?></h5>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+<div class="ui-page holiday-update">
+    <div class="ui-head">
+        <div>
+            <h1><?= $this->title ?></h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
     <div class="card border-0 shadow-sm" style="max-width:600px">
         <div class="card-body">

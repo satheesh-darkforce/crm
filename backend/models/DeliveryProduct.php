@@ -27,31 +27,42 @@ class DeliveryProduct extends ActiveRecord
 
     public function rules(): array
     {
+        // Format / duplicate checks only on new or edited values, so legacy rows stay editable.
+        $changed = fn(string $attr) => fn($m) => $m->isNewRecord || (string)$m->getOldAttribute($attr) !== (string)$m->$attr;
+
         return [
+            [['item_name', 'hsn_code', 'units', 'serial_no'], 'trim'],
             [['item_name', 'hsn_code', 'units'], 'required'],
-            [['created_at', 'serial_no'], 'safe'],
+            [['created_at'], 'safe'],
             [['status'], 'integer'],
             [['item_name', 'units'], 'string', 'max' => 255],
             [['hsn_code'], 'string', 'max' => 50],
-            [
-                ['item_name', 'hsn_code'], 'unique',
-                'targetAttribute' => ['item_name', 'hsn_code'],
-                'filter' => fn($q) => $q->andWhere(['status' => 1]),
-                'message' => 'Item Name + HSN Code already exists for an active record.',
-            ],
+            [['serial_no'], 'string', 'max' => 100],
+            [['hsn_code'], 'match', 'pattern' => '/^\d{4,8}$/', 'message' => 'HSN code is 4 to 8 digits (e.g. 90328990).', 'when' => $changed('hsn_code')],
+            [['item_name'], 'validateUniqueName', 'when' => $changed('item_name')],
         ];
+    }
+
+    /** Names are unique among active products, ignoring case. */
+    public function validateUniqueName(string $attr): void
+    {
+        $exists = self::find()->where(['status' => 1])->andWhere('LOWER(item_name) = :n', [':n' => mb_strtolower((string)$this->$attr)])
+            ->andFilterWhere(['<>', 'id', $this->id])->exists();
+        if ($exists) {
+            $this->addError($attr, 'A product called "' . $this->$attr . '" already exists.');
+        }
     }
 
     public function attributeLabels(): array
     {
         return [
             'id' => 'ID',
-            'item_name' => 'Item Name',
-            'hsn_code' => 'HSN Code',
+            'item_name' => 'Product name',
+            'hsn_code' => 'HSN code',
             'units' => 'Units',
             'created_at' => 'Created At',
             'status' => 'Status',
-            'serial_no' => 'Serial Number',
+            'serial_no' => 'Serial number',
         ];
     }
 

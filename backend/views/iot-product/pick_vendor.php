@@ -18,11 +18,6 @@ $pagination = $dataProvider->getPagination();
 $total      = $dataProvider->getTotalCount();
 ?>
 <style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
 .vendor-actions{display:inline-flex;gap:.6rem;align-items:center;justify-content:flex-end}
 .act-icon{font-size:1.05rem;line-height:1;text-decoration:none;padding:2px;border:0;background:transparent;display:inline-block;transition:transform .12s ease, opacity .12s ease}
 .act-icon:hover{transform:scale(1.15);text-decoration:none}
@@ -31,13 +26,15 @@ $total      = $dataProvider->getTotalCount();
 .act-icon.act-del{color:#dc3545}
 </style>
 
-<div class="iot-pick-vendor">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page iot-pick-vendor">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Add Purchased Products</h5>
-            <small class="text-muted">Select a vendor to create a new purchase invoice</small>
+            <h1>Add Purchased Products</h1>
+            <div class="ui-sub">Select a vendor to create a new purchase invoice</div>
         </div>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back to Purchased', ['purchased'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back to Purchased', ['purchased'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm mb-3">

@@ -36,6 +36,45 @@ use yii\widgets\ActiveForm;
  */
 class ClientQuotationController extends Controller
 {
+    public function behaviors(): array
+    {
+        return array_merge(parent::behaviors(), [
+            'verbs' => ['class' => \yii\filters\VerbFilter::class, 'actions' => [
+                'delete-file' => ['POST'], 'cancel' => ['POST'], 'complete-quote' => ['POST'],
+                'save-developer-official-contact' => ['POST'], 'preview-pdf' => ['POST'],
+            ]],
+        ]);
+    }
+
+    /**
+     * These helpers are in every developer's default routes (the quotation pages call them),
+     * so they also need the matching quotation right: changes need create/update, reads need
+     * any quotation access.
+     */
+    public function beforeAction($action): bool
+    {
+        if (!parent::beforeAction($action)) {
+            return false;
+        }
+        $any   = fn(array $r) => (bool)array_filter($r, fn($x) => \common\components\UserAccess::checkAccess($x));
+        $write = ['add-po', 'complete-quote', 'delete-file', 'upload-file', 'save-developer-official-contact'];
+        $read  = ['download-file', 'download-po', 'preview-pdf', 'get-client-address', 'quote-by-users', 'additional-quote-by-users',
+                  'developer-official-contact', 'current-developer-official-contact', 'get-next-no'];
+        if (in_array($action->id, $write, true) && !$any(['client-quotation/create', 'client-quotation/update'])) {
+            throw new \yii\web\ForbiddenHttpException('You do not have permission to change quotations.');
+        }
+        if (in_array($action->id, $read, true) && !$any(['client-quotation/index', 'client-quotation/view', 'client-quotation/create', 'client-quotation/update'])) {
+            throw new \yii\web\ForbiddenHttpException('You do not have permission to view quotations.');
+        }
+        return true;
+    }
+
+    /** Full pages get the Delivery / PO / Quotation module assets. */
+    public function render($view, $params = []): string
+    {
+        \backend\assets\DeliveryAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
     // ─────────────────────────────────────────────────────────────── CRUD ──
 
     public function actionIndex(): string
@@ -304,9 +343,9 @@ class ClientQuotationController extends Controller
     public function actionDeleteFile(int $id): array
     {
         Yii::$app->response->format = Response::FORMAT_JSON;
-        $file = ClientQuotationFile::findOne($id);
+        $file = ClientQuotationFile::findOne(['id' => $id, 'status' => 1]);
         if (!$file) {
-            return ['success' => false, 'message' => 'File not found.'];
+            return ['success' => false, 'message' => 'That file was already removed.'];
         }
         $file->status = 0;
         return $file->save(false)
@@ -483,6 +522,9 @@ class ClientQuotationController extends Controller
             return 'Preview request is missing form data.';
         }
 
+        // Display only — the preview never saves, so the guarded number is copied for the PDF.
+        $model->quote_no = mb_substr((string) (Yii::$app->request->post('ClientQuotation')['quote_no'] ?? ''), 0, 50);
+        $tempFiles = [];
         try {
             $file       = UploadedFile::getInstance($fileModel, 'file_path');
             $client     = ClientModel::find()->where(['id' => $model->client_id])->one();
@@ -505,12 +547,14 @@ class ClientQuotationController extends Controller
 
             $tempPdf = Yii::getAlias('@runtime') . '/form_' . uniqid() . '.pdf';
             $mpdf->Output($tempPdf, Destination::FILE);
+            $tempFiles[] = $tempPdf;
 
             $fpdi = new Fpdi();
             $this->mergePdfIntoFpdi($fpdi, $tempPdf);
             if ($file) {
-                $uploaded = Yii::getAlias('@runtime') . '/' . uniqid() . '_' . $file->name;
+                $uploaded = Yii::getAlias('@runtime') . '/' . uniqid('qp_', true) . '.' . strtolower((string) $file->extension);
                 $file->saveAs($uploaded);
+                $tempFiles[] = $uploaded;
                 if (strtolower((string) $file->extension) === 'pdf') {
                     // If the attachment is in an unsupported compression format and
                     // even Ghostscript can't flatten it, return the preview without
@@ -527,7 +571,11 @@ class ClientQuotationController extends Controller
             Yii::error('Preview PDF failed: ' . $e->getMessage(), __METHOD__);
             Yii::$app->response->format = Response::FORMAT_RAW;
             Yii::$app->response->statusCode = 500;
-            return 'Unable to generate preview right now. ' . $e->getMessage();
+            return 'Unable to generate the preview right now. Please try again.';
+        } finally {
+            foreach ($tempFiles as $t) {
+                @unlink($t);
+            }
         }
     }
 
@@ -659,14 +707,14 @@ class ClientQuotationController extends Controller
             $model->modified_at = $now;
             $model->status      = 1;
 
-            if (!empty($model->date)) {
-                $model->date = date('Y-m-d H:i:s', strtotime((string) $model->date));
-            }
-            if (!empty($model->delivery_date)) {
-                $model->delivery_date = date('Y-m-d H:i:s', strtotime((string) $model->delivery_date));
-            } else {
-                $model->delivery_date = null;
-            }
+            // Strict Y-m-d; anything unreadable is left for the validator to reject.
+            $toDt = function ($v) {
+                $v = trim((string) $v);
+                $d = \DateTime::createFromFormat('!Y-m-d', substr($v, 0, 10));
+                return $v === '' ? null : ($d && $d->format('Y-m-d') === substr($v, 0, 10) ? $d->format('Y-m-d 00:00:00') : $v);
+            };
+            $model->date          = $toDt($model->date);
+            $model->delivery_date = $toDt($model->delivery_date);
             if (empty($model->po_status)) {
                 $model->po_status = 1;
             }

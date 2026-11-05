@@ -26,25 +26,15 @@ $this->registerCssFile('@web/css/tom-select.bootstrap5.min.css');
 $this->registerJsFile('@web/js/tom-select.complete.min.js', ['depends' => [\yii\web\JqueryAsset::class]]);
 ?>
 
-<style>
-.form-wrapper      { background-color: #f8fafc; padding: 40px 20px; border-radius: 15px; }
-.section-block     { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 30px; margin-bottom: 30px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-.section-header    { display: flex; align-items: center; margin-bottom: 25px; padding-bottom: 10px; border-bottom: 2px solid #f1f5f9; }
-.section-header h4 { margin-bottom: 0; color: #1e293b; font-weight: 700; font-size: 1.15rem; text-transform: uppercase; letter-spacing: .5px; }
-.header-icon       { background: #f59e0b; color: #fff; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px; font-size: .9rem; }
-.custom-form .form-label { font-weight: 600; color: #64748b; font-size: .85rem; margin-bottom: 8px; }
-.form-control:focus { border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,.1); }
-.table-container   { border: 1px solid #e2e8f0; border-radius: 10px; overflow-x: auto; }
-#product-table thead { background-color: #f1f5f9; font-weight: 600; color: #475569; }
-.action-footer     { background: #fff; padding: 20px 30px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 20px; }
-.required label:after { content: " *"; color: red; font-weight: bold; }
-.required-mark     { color: red; font-weight: bold; }
-.serial-number     { min-height: 36px; }
-</style>
-
-<div class="d-flex justify-content-between mt-4 mb-2">
-    <div><h3>Add Inward Delivery Challan</h3></div>
-    <div><a href="<?= Url::to(['/dc/inward-index']) ?>" class="btn btn-secondary">Back</a></div>
+<div class="ui-page dc-form">
+<div class="ui-head">
+    <div>
+        <h1>Add Inward Delivery Challan</h1>
+        <div class="ui-sub">Record items a client has sent in.</div>
+    </div>
+    <div class="ui-actions">
+        <a href="<?= Url::to(['/dc/inward-index']) ?>" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i>Back</a>
+    </div>
 </div>
 
 <div class="form-wrapper">
@@ -503,3 +493,5 @@ $this->registerJs(<<<'JS'
     });
 })();
 JS);
+?>
+</div>

@@ -12,6 +12,13 @@ use yii\web\Response;
 
 class HolidayController extends Controller
 {
+    /** Full pages get the HR module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        \backend\assets\HrAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     /**
      * Holiday listing with inline create form — matches Yii1 holidayssetup/admin.
      */

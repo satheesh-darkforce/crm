@@ -19,13 +19,15 @@ $val = static fn(string $c): string =>
         : '';
 $req = '<span class="text-danger">*</span>';
 ?>
-<div class="earnings-split">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page earnings-split">
+    <div class="ui-head">
         <div>
-            <h5 class="fw-semibold mb-0">Earnings Split</h5>
-            <small class="text-muted">Percentages of <strong>Pay After LOP</strong>. Basic + DA + HRA + Others must total <strong>100%</strong>.</small>
+            <h1>Earnings Split</h1>
+            <div class="ui-sub">Percentages of <strong>Pay After LOP</strong>. Basic + DA + HRA + Others must total <strong>100%</strong>.</div>
         </div>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['deductions'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['deductions'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm" style="max-width:560px">

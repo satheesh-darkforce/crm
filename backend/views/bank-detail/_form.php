@@ -5,46 +5,37 @@
 use yii\bootstrap5\ActiveForm;
 use yii\bootstrap5\Html;
 
-$isNew = $model->isNewRecord;
-$this->title = $isNew ? 'Add Bank Account' : 'Edit Bank Account';
+$in = fn(array $extra = []) => $extra + ['class' => 'form-control form-control-sm'];
 ?>
-<div class="bank-detail-form">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= $this->title ?></h5>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+<?php $form = ActiveForm::begin(['id' => 'bank-form', 'options' => ['class' => 'ui-form']]); ?>
+<?= $form->errorSummary($model, ['class' => 'alert alert-danger', 'header' => '<p>Please fix the following:</p>']) ?>
+<p class="ui-req-note">Fields marked <b>*</b> are required.</p>
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header ui-section">Bank</div>
+    <div class="card-body row g-3">
+        <div class="col-md-6"><?= $form->field($model, 'bank_name')->textInput($in(['maxlength' => 255, 'placeholder' => 'e.g. HDFC Bank', 'autocomplete' => 'off'])) ?></div>
+        <div class="col-md-6"><?= $form->field($model, 'branch')->textInput($in(['maxlength' => 255, 'placeholder' => 'Branch name or area'])) ?></div>
+        <div class="col-md-6"><?= $form->field($model, 'ifsc')->textInput($in(['maxlength' => 11, 'placeholder' => 'e.g. HDFC0000123', 'class' => 'form-control form-control-sm mono js-upper', 'autocomplete' => 'off']))
+            ->hint('11 characters; the 5th is always 0.') ?></div>
+        <div class="col-md-6"><?= $form->field($model, 'swift')->textInput($in(['maxlength' => 11, 'placeholder' => 'e.g. HDFCINBB', 'class' => 'form-control form-control-sm mono js-upper', 'autocomplete' => 'off']))
+            ->hint('8 or 11 characters, used for payments from abroad.') ?></div>
     </div>
-    <div class="card border-0 shadow-sm" style="max-width:600px">
-        <div class="card-body">
-            <p class="text-muted small mb-3">Fields with <span class="text-danger">*</span> are required.</p>
-            <?php $form = ActiveForm::begin(); ?>
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <?= $form->field($model, 'bank_name')->textInput(['class' => 'form-control form-control-sm', 'maxlength' => 255, 'placeholder' => 'e.g. HDFC Bank'])->label('Bank Name <span class="text-danger">*</span>', ['encode' => false]) ?>
-                </div>
-                <div class="col-md-6">
-                    <?= $form->field($model, 'branch')->textInput(['class' => 'form-control form-control-sm', 'maxlength' => 255, 'placeholder' => 'Branch name / location'])->label('Branch <span class="text-danger">*</span>', ['encode' => false]) ?>
-                </div>
-                <div class="col-md-6">
-                    <?= $form->field($model, 'acc_name')->textInput(['class' => 'form-control form-control-sm', 'maxlength' => 255, 'placeholder' => 'Account holder name'])->label('Account Name <span class="text-danger">*</span>', ['encode' => false]) ?>
-                </div>
-                <div class="col-md-6">
-                    <?= $form->field($model, 'acc_no')->textInput(['class' => 'form-control form-control-sm', 'maxlength' => 50, 'placeholder' => 'Account number', 'onkeypress' => 'return (event.charCode >= 48 && event.charCode <= 57) || event.charCode === 0'])->label('Account Number <span class="text-danger">*</span>', ['encode' => false]) ?>
-                </div>
-                <div class="col-md-6">
-                    <?= $form->field($model, 'ifsc')->textInput(['class' => 'form-control form-control-sm', 'maxlength' => 50, 'placeholder' => 'e.g. HDFC0000123'])->label('IFSC Code <span class="text-danger">*</span>', ['encode' => false]) ?>
-                </div>
-                <div class="col-md-6">
-                    <?= $form->field($model, 'swift')->textInput(['class' => 'form-control form-control-sm', 'maxlength' => 50, 'placeholder' => 'e.g. HDFCINBB'])->label('SWIFT Code <span class="text-danger">*</span>', ['encode' => false]) ?>
-                </div>
-                <div class="col-md-6">
-                    <?= $form->field($model, 'is_default')->dropDownList([0 => 'No', 1 => 'Yes'], ['class' => 'form-select form-select-sm'])->label('Set as Default') ?>
-                </div>
-            </div>
-            <div class="d-flex gap-2 mt-3">
-                <?= Html::submitButton($isNew ? 'Add Account' : 'Save Changes', ['class' => 'btn btn-primary btn-sm px-4']) ?>
-                <?= Html::a('Cancel', ['index'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
-            </div>
-            <?php ActiveForm::end(); ?>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header ui-section">Account</div>
+    <div class="card-body row g-3">
+        <div class="col-md-6"><?= $form->field($model, 'acc_name')->textInput($in(['maxlength' => 255, 'placeholder' => 'Name exactly as on the account'])) ?></div>
+        <div class="col-md-6"><?= $form->field($model, 'acc_no')->textInput($in(['maxlength' => 20, 'inputmode' => 'numeric', 'placeholder' => '6–20 digits', 'class' => 'form-control form-control-sm mono js-digits', 'autocomplete' => 'off'])) ?></div>
+        <div class="col-12">
+            <?= $form->field($model, 'is_default')->checkbox(['uncheck' => 0])->label('Default account — listed first and pre-selected on new invoices') ?>
         </div>
     </div>
 </div>
+
+<div class="ui-form-actions">
+    <?= Html::submitButton('<i class="fas fa-check me-1"></i>' . ($model->isNewRecord ? 'Add account' : 'Save changes'), ['class' => 'btn btn-primary btn-sm px-4']) ?>
+    <?= Html::a('Cancel', $model->isNewRecord ? ['index'] : ['view', 'id' => $model->id], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
+</div>
+<?php ActiveForm::end(); ?>

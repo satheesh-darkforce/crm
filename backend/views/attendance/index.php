@@ -22,21 +22,13 @@ $fmtDuration = function(?string $inTime, ?string $outTime): string {
     return sprintf('%02d:%02d', intdiv($secs, 3600), intdiv($secs % 3600, 60));
 };
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
-</style>
 
 <?php \yii\widgets\Pjax::begin(['id' => 'attendance-pjax', 'timeout' => 5000]); ?>
-<div class="attendance-index">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page attendance-index">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Attendance</h5>
-            <small class="text-muted"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></small>
+            <h1>Attendance</h1>
+            <div class="ui-sub"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></div>
         </div>
     </div>
 
@@ -112,9 +104,9 @@ $fmtDuration = function(?string $inTime, ?string $outTime): string {
                     <?php endif; ?>
                 </div>
             </form>
-<script>
+<?php $this->registerJs(<<<'JS'
 (function(){var $f=$('#filter-from-date'),$t=$('#filter-to-date'),$e=$('#to-date-error'),$b=$('#filter-btn');function p(v){var d=new Date(v);return v&&!isNaN(d)?d:null;}function v(){var f=p($f.val()),t=p($t.val());if(f&&t&&t<f){$e.show();$b.prop('disabled',true);return false;}$e.hide();$b.prop('disabled',false);return true;}$f.on('changeDate change',function(){var fv=$f.val();$t.datepicker('setStartDate',fv||null);if(p(fv)&&p($t.val())&&p($t.val())<p(fv)){$t.val('').datepicker('update');}v();});$t.on('changeDate change',v);$f.closest('form').on('submit',function(){return v();});}());
-</script>
+JS, \yii\web\View::POS_END); ?>
         </div>
     </div>
 

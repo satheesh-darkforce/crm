@@ -6,8 +6,8 @@ use kartik\select2\Select2;
 use kartik\date\DatePicker;
 $this->title = 'Generate Payslip';
 ?>
-<div class="payslip-create">
-    <h4 class="mb-3"><?= Html::encode($this->title) ?></h4>
+<div class="ui-page payslip-create">
+    <div class="ui-head"><div><h1><?= Html::encode($this->title) ?></h1></div></div>
 
     <?php $form = ActiveForm::begin(); ?>
     <div class="row g-3">

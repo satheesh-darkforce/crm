@@ -1,176 +1,92 @@
 <?php
-
 /** @var yii\web\View $this */
 /** @var yii\data\ActiveDataProvider $dataProvider */
 /** @var array $clientOptions */
 /** @var array $companyOptions */
 
-use common\components\UserAccess;
 use backend\models\DcDetail;
-use kartik\select2\Select2;
-use yii\bootstrap5\LinkPager;
-use yii\grid\GridView;
-use yii\helpers\Html;
-use yii\helpers\Url;
+use common\components\UserAccess;
+use yii\bootstrap5\Html;
 
 $this->title = 'Inward Delivery Challans';
 
-$totalCount = $dataProvider->getTotalCount();
-
-$inwardNo = (string) Yii::$app->request->get('inward_dc_no', '');
-$clientNm = (string) Yii::$app->request->get('client_name', '');
-$compNm   = (string) Yii::$app->request->get('company_name', '');
-$hasFilter = $inwardNo !== '' || $clientNm !== '' || $compNm !== '';
+$rows       = $dataProvider->getModels();
+$pagination = $dataProvider->getPagination();
+$total      = $dataProvider->getTotalCount();
+$offset     = $pagination ? $pagination->getOffset() : 0;
+$q          = Yii::$app->request->get();
+$hasFilter  = (bool)array_filter(array_intersect_key($q, array_flip(['inward_dc_no', 'client_name', 'company_name'])), fn($v) => $v !== '');
+$can = [
+    'create' => UserAccess::checkAccess('dc/create-inward'),
+    'view'   => UserAccess::checkAccess('dc/inward-view'),
+    'return' => UserAccess::checkAccess('dc/add-return'),
+];
+// One query for the whole page instead of two per row.
+$returnedIds = $rows ? array_map('intval', DcDetail::find()->select('inward_dc_id')
+    ->where(['type' => 1, 'status' => 1, 'inward_dc_id' => array_map(fn($m) => $m->id, $rows)])->column()) : [];
+$tabs = array_filter([
+    'quotation-dashboard/index' => UserAccess::checkAccess('quotation-dashboard/index') ? 'Dashboard' : null,
+    'dc/index'                  => UserAccess::checkAccess('dc/index') ? 'Outward DCs' : null,
+    'dc/inward-index'           => 'Inward DCs',
+    'delivery-product/index'    => UserAccess::checkAccess('delivery-product/index') ? 'Products' : null,
+]);
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#fff8ec}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
-</style>
+<div class="ui-page inward-dc-index">
+    <?= $this->render('@backend/views/_ui/_head', [
+        'title'   => 'Inward delivery challans',
+        'sub'     => number_format($total) . ' item' . ($total == 1 ? '' : 's') . ' received from clients (for repair, service…)',
+        'actions' => $can['create'] ? Html::a('<i class="fas fa-plus me-1"></i>New inward DC', ['create-inward'], ['class' => 'btn btn-primary btn-sm', 'encode' => false]) : '',
+        'route'   => 'inward-index',
+        'filters' => [
+            ['type' => 'text', 'name' => 'inward_dc_no', 'label' => 'Client DC no.', 'placeholder' => 'As on their challan', 'col' => 'col-lg-3 col-md-4'],
+            ['type' => 'select', 'name' => 'client_name', 'label' => 'Client', 'data' => $clientOptions, 'placeholder' => 'All clients', 'col' => 'col-lg-3 col-md-8'],
+            ['type' => 'select', 'name' => 'company_name', 'label' => 'Company', 'data' => $companyOptions, 'placeholder' => 'All companies', 'col' => 'col-lg-3 col-md-6'],
+        ],
+    ]) ?>
 
-<div class="inward-dc-index">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h5 class="mb-0 fw-semibold">Inward Delivery Challans</h5>
-            <small class="text-muted"><?= $totalCount ?> record<?= $totalCount != 1 ? 's' : '' ?></small>
-        </div>
-        <div class="d-flex gap-2">
-            <?php if (UserAccess::checkAccess('quotation-dashboard/index')): ?>
-                <?= Html::a('Dashboard', ['/quotation-dashboard/index'], ['class' => 'btn btn-outline-dark btn-sm']) ?>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body py-2 px-3">
-            <form method="get" action="<?= Url::to(['inward-index']) ?>" class="row g-2 align-items-end">
-                <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-                    <label class="form-label form-label-sm mb-1 text-muted" style="font-size:.75rem">Inward DC No</label>
-                    <input type="text" name="inward_dc_no" class="form-control form-control-sm" placeholder="e.g. INW0001" value="<?= Html::encode($inwardNo) ?>">
-                </div>
-                <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-                    <label class="form-label form-label-sm mb-1 text-muted" style="font-size:.75rem">Client Name</label>
-                    <?= Select2::widget([
-                        'name' => 'client_name',
-                        'value' => $clientNm,
-                        'data' => $clientOptions,
-                        'options' => ['placeholder' => 'All Clients', 'class' => 'form-control form-control-sm'],
-                        'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
-                    ]) ?>
-                </div>
-                <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-                    <label class="form-label form-label-sm mb-1 text-muted" style="font-size:.75rem">Company Name</label>
-                    <?= Select2::widget([
-                        'name' => 'company_name',
-                        'value' => $compNm,
-                        'data' => $companyOptions,
-                        'options' => ['placeholder' => 'All Companies', 'class' => 'form-control form-control-sm'],
-                        'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
-                    ]) ?>
-                </div>
-                <div class="col-12 d-flex flex-wrap gap-1">
-                    <button class="btn btn-secondary btn-sm">Filter</button>
-                    <?php if ($hasFilter): ?>
-                        <?= Html::a('Clear', ['inward-index'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
-                    <?php endif; ?>
-                </div>
-            </form>
-        </div>
-    </div>
+    <?php if (count($tabs) > 1): ?>
+    <nav class="ui-tabs" aria-label="Delivery">
+        <?php foreach ($tabs as $r => $label): ?>
+            <?= Html::a($label, ['/' . $r], ['class' => $r === 'dc/inward-index' ? 'active' : '', 'aria-current' => $r === 'dc/inward-index' ? 'page' : null]) ?>
+        <?php endforeach; ?>
+    </nav>
+    <?php endif; ?>
 
     <div class="card border-0 shadow-sm">
-        <div style="overflow-x:auto;overflow-y:visible">
-            <?= GridView::widget([
-                'dataProvider' => $dataProvider,
-                'layout' => "{items}<div class='d-flex justify-content-between align-items-center px-3 py-2'><div class='d-none d-sm-block small text-muted'>{summary}</div>{pager}</div>",
-                'tableOptions' => ['class' => 'table list-table mb-0', 'style' => 'min-width:900px;'],
-                'emptyTextOptions' => ['class' => 'text-center text-muted py-5'],
-                'emptyText' => 'No inward delivery challans found.',
-                'pager' => [
-                    'class' => LinkPager::class,
-                    'maxButtonCount' => 3,
-                    'options' => ['class' => 'pagination pagination-sm mb-0'],
-                    'linkOptions' => ['class' => 'page-link'],
-                    'disabledListItemSubTagOptions' => ['tag' => 'a', 'class' => 'page-link'],
-                ],
-                'columns' => [
-                    [
-                        'class' => 'yii\grid\SerialColumn',
-                        'header' => '#',
-                        'headerOptions' => ['style' => 'width:40px'],
-                        'contentOptions' => ['class' => 'text-muted'],
-                    ],
-                    [
-                        'label' => 'Inward DC No',
-                        'format' => 'raw',
-                        'headerOptions' => ['style' => 'width:140px'],
-                        'value' => fn($m) => '<span class="fw-semibold">' . Html::encode($m->inward_dc_no ?? '—') . '</span>',
-                    ],
-                    [
-                        'label' => 'Client Name',
-                        'value' => fn($m) => $m->client->client_name ?? '—',
-                        'contentOptions' => ['class' => 'fw-semibold small'],
-                    ],
-                    [
-                        'label' => 'Company Name',
-                        'value' => fn($m) => $m->client->company_name ?? '—',
-                        'contentOptions' => ['class' => 'small text-muted'],
-                    ],
-                    [
-                        'label' => 'DC Date',
-                        'headerOptions' => ['style' => 'width:120px'],
-                        'value' => fn($m) => $m->dc_date ? date('d M Y', strtotime($m->dc_date)) : '—',
-                    ],
-                    [
-                        'label' => 'Expected Return',
-                        'headerOptions' => ['style' => 'width:140px'],
-                        'value' => fn($m) => $m->dc_return_date ? date('d M Y', strtotime($m->dc_return_date)) : '—',
-                    ],
-                    [
-                        'label' => 'Return Status',
-                        'format' => 'raw',
-                        'headerOptions' => ['style' => 'width:130px'],
-                        'value' => function ($m) {
-                            $returned = DcDetail::find()
-                                ->where(['type' => 1, 'inward_dc_id' => $m->id, 'status' => 1])
-                                ->exists();
-                            return $returned
-                                ? '<span class="badge bg-success">Returned</span>'
-                                : '<span class="badge bg-secondary">Not Returned</span>';
-                        },
-                    ],
-                    [
-                        'class' => 'yii\grid\ActionColumn',
-                        'header' => 'Actions',
-                        'headerOptions' => ['class' => 'text-end', 'style' => 'width:220px'],
-                        'contentOptions' => ['class' => 'text-end'],
-                        'template' => '{view} {addReturn}',
-                        'buttons' => [
-                            'view' => fn($url, $m) => UserAccess::checkAccess('dc/inward-view')
-                                ? Html::a('<i class="fas fa-eye"></i> View', ['inward-view', 'id' => $m->id], [
-                                    'class' => 'btn btn-outline-primary act-btn me-1', 'encode' => false,
-                                ]) : '',
-                            'addReturn' => function ($url, $m) {
-                                if (!UserAccess::checkAccess('dc/add-return')) return '';
-                                $returned = DcDetail::find()
-                                    ->where(['type' => 1, 'inward_dc_id' => $m->id, 'status' => 1])
-                                    ->exists();
-                                if ($returned) {
-                                    return Html::tag('button', '<i class="fas fa-check"></i> Returned', [
-                                        'class' => 'btn btn-secondary act-btn', 'disabled' => true, 'encode' => false, 'type' => 'button',
-                                    ]);
-                                }
-                                return Html::a('<i class="fas fa-undo"></i> Add Return', ['add-return', 'id' => $m->id], [
-                                    'class' => 'btn btn-success act-btn', 'encode' => false,
-                                ]);
-                            },
-                        ],
-                    ],
-                ],
-            ]) ?>
+        <div class="table-responsive">
+            <table class="table list-table ui-table stack mb-0">
+                <thead class="table-light">
+                <tr><th style="width:40px">#</th><th>Inward DC</th><th>Client</th><th>Expected return</th><th>Status</th><th class="text-end" style="width:150px"><span class="visually-hidden">Actions</span></th></tr>
+                </thead>
+                <tbody>
+                <?php if (!$rows): ?>
+                    <tr class="ui-empty-row"><td colspan="6" class="ui-empty-cell">
+                        <?= $this->render('@backend/views/_ui/_empty', $hasFilter
+                            ? ['icon' => 'search', 'title' => 'No inward DCs match your search', 'action' => Html::a('Clear search', ['inward-index'], ['class' => 'btn btn-outline-secondary btn-sm'])]
+                            : ['icon' => 'dolly', 'title' => 'No inward DCs yet', 'text' => 'Record items clients send in, then raise a return DC when they go back.',
+                               'action' => $can['create'] ? Html::a('<i class="fas fa-plus me-1"></i>New inward DC', ['create-inward'], ['class' => 'btn btn-primary btn-sm', 'encode' => false]) : null]) ?>
+                    </td></tr>
+                <?php endif; ?>
+                <?php foreach ($rows as $i => $m):
+                    $returned = in_array((int)$m->id, $returnedIds, true);
+                    $overdue  = !$returned && $m->dc_return_date && strtotime($m->dc_return_date) < strtotime('today');
+                ?>
+                    <tr>
+                        <td class="cell-num muted"><?= $offset + $i + 1 ?></td>
+                        <td class="cell-title"><span class="mono"><?= Html::encode($m->inward_dc_no ?: '—') ?></span>
+                            <div class="small text-muted fw-normal">Received <?= $m->dc_date ? date('d M Y', strtotime($m->dc_date)) : '—' ?></div></td>
+                        <td data-label="Client"><span class="cell-stack"><?= Html::encode($m->client->company_name ?? '—') ?><span class="d-block small text-muted"><?= Html::encode($m->client->client_name ?? '') ?></span></span></td>
+                        <td class="text-nowrap<?= $overdue ? ' text-danger fw-semibold' : '' ?>" data-label="Expected return"><?= $m->dc_return_date ? date('d M Y', strtotime($m->dc_return_date)) : '—' ?></td>
+                        <td data-label="Status"><?= $returned ? '<span class="ui-pill tone-success">Returned</span>' : ($overdue ? '<span class="ui-pill tone-danger">Overdue</span>' : '<span class="ui-pill tone-warning">With us</span>') ?></td>
+                        <td class="text-end text-nowrap" data-label="">
+                            <?php if ($can['view']): ?><?= Html::a('View', ['inward-view', 'id' => $m->id], ['class' => 'btn btn-outline-secondary btn-sm']) ?><?php endif; ?>
+                            <?php if ($can['return'] && !$returned): ?><?= Html::a('<i class="fas fa-undo me-1"></i>Return', ['add-return', 'id' => $m->id], ['class' => 'btn btn-outline-primary btn-sm', 'encode' => false]) ?><?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
+        <?= $this->render('@backend/views/_ui/_pager', ['pagination' => $pagination, 'total' => $total, 'count' => count($rows), 'noun' => 'inward DCs']) ?>
     </div>
 </div>

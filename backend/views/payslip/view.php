@@ -41,15 +41,15 @@ $earnedGross = $gross - $lopAmount;
 .pay-preview .lbl{font-weight:600}
 </style>
 
-<div class="payslip-view">
+<div class="ui-page payslip-view">
 
     <!-- Header bar -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold"><?= Html::encode($devName) ?></h5>
-            <small class="text-muted"><?= Html::encode($monthStr) ?> &nbsp;|&nbsp; <?= Html::encode($model->designation ?? '') ?> &nbsp;|&nbsp; <?= Html::encode($model->emp_id ?? '') ?></small>
+            <h1><?= Html::encode($devName) ?></h1>
+            <div class="ui-sub"><?= Html::encode($monthStr) ?> &nbsp;|&nbsp; <?= Html::encode($model->designation ?? '') ?> &nbsp;|&nbsp; <?= Html::encode($model->emp_id ?? '') ?></div>
         </div>
-        <div class="d-flex gap-2">
+        <div class="ui-actions">
             <?= Html::a('<i class="fas fa-pen"></i> Edit', ['update', 'id' => $model->id], ['class' => 'btn btn-warning btn-sm', 'encode' => false]) ?>
             <?= Html::a('<i class="fas fa-comment"></i> Download PDF', ['download-pdf', 'id' => $model->id], [
                 'class'  => 'btn btn-success btn-sm',

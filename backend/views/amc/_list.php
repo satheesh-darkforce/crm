@@ -18,219 +18,181 @@ use kartik\date\DatePicker;
 use kartik\select2\Select2;
 use yii\bootstrap5\Html;
 use yii\helpers\ArrayHelper;
-use yii\widgets\LinkPager;
 
-$canView   = UserAccess::checkAccess('amc/view');
-$canUpdate = UserAccess::checkAccess('amc/update');
-$canRenew  = UserAccess::checkAccess('amc/renew');
-$canEnd    = UserAccess::checkAccess('amc/end');
+$can = [
+    'view'   => UserAccess::checkAccess('amc/view'),
+    'update' => $mode === 'active' && UserAccess::checkAccess('amc/update'),
+    'renew'  => $mode === 'active' && UserAccess::checkAccess('amc/renew'),
+    'end'    => $mode === 'active' && UserAccess::checkAccess('amc/end'),
+];
 
-$rows       = $dataProvider->getModels();
-$pagination = $dataProvider->getPagination();
-$total      = $dataProvider->getTotalCount();
+$rows        = $dataProvider->getModels();
+$pagination  = $dataProvider->getPagination();
+$total       = $dataProvider->getTotalCount();
+$offset      = $pagination ? $pagination->getOffset() : 0;
+$today       = date('Y-m-d');
+$filters     = $mode === 'active' ? [$clientF, $titleF, $typeF, $warrantyF, $stateF, $startF, $endF] : [$clientF, $titleF];
+$activeCount = count(array_filter($filters, fn($v) => $v !== ''));
+$hasFilters  = $activeCount > 0;
 
-$chargeVal = function (array $r): string {
-    if ((int)$r['charge_type'] === 1) {
-        return rtrim(rtrim((string)$r['percentage'], '0'), '.') . ' %';
-    }
-    return '₹' . number_format((float)$r['amount'], 2);
+$charge = fn(array $r): string => (int)$r['charge_type'] === 1
+    ? rtrim(rtrim((string)$r['percentage'], '0'), '.') . '%'
+    : '₹' . number_format((float)$r['amount'], 2);
+
+// Warranty: No Warranty (period 0) / Under Warranty / Warranty Ended.
+$warranty = function (array $r) use ($today): array {
+    if ((int)$r['warranty_period'] === 0) { return ['No warranty', 'neutral']; }
+    return (!empty($r['end_date']) && $r['end_date'] >= $today) ? ['Under warranty', 'success'] : ['Warranty ended', 'warning'];
 };
 
-$today = strtotime(date('Y-m-d'));
-
-// Warranty status for a row: No Warranty (period 0) / Under Warranty / Warranty Ended.
-$warrantyStatus = function (array $r) use ($today): array {
-    if ((int)$r['warranty_period'] === 0) {
-        return ['No Warranty', 'bg-secondary-subtle text-secondary'];
-    }
-    if (!empty($r['end_date']) && strtotime($r['end_date']) >= $today) {
-        return ['Under Warranty', 'bg-success-subtle text-success'];
-    }
-    return ['Warranty Ended', 'bg-warning-subtle text-warning'];
+// Current AMC period: the latest renewal if renewed; otherwise it starts after the
+// warranty (or at the start date with no warranty) and has no end until renewed.
+$period = function (array $r): array {
+    if (!empty($r['renew_end'])) { return [$r['renew_start'], $r['renew_end']]; }
+    $start = (int)$r['warranty_period'] === 0 ? $r['start_date'] : ($r['end_date'] ? date('Y-m-d', strtotime($r['end_date'] . ' +1 day')) : null);
+    return [$start, null];
 };
-
-// Current AMC period: the latest renewal's dates if renewed; otherwise it
-// begins after the warranty (or at the start date when there's no warranty)
-// and has no end date yet.
-$amcDates = function (array $r): array {
-    if (!empty($r['renew_end'])) {
-        return [$r['renew_start'], $r['renew_end']];
-    }
-    $start = (int)$r['warranty_period'] === 0
-        ? $r['start_date']
-        : ($r['end_date'] ? date('Y-m-d', strtotime($r['end_date'] . ' +1 day')) : null);
-    return [$start, null];   // null end → still under warranty
-};
+$d = fn($v) => $v ? date('d M Y', strtotime($v)) : '—';
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-</style>
-
-<div class="amc-list">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page amc-list">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold"><?= Html::encode($heading) ?></h5>
-            <small class="text-muted"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></small>
+            <h1><?= Html::encode($heading) ?></h1>
+            <div class="ui-sub"><?= number_format($total) ?> contract<?= $total == 1 ? '' : 's' ?><?= $hasFilters ? ' matching your search' : '' ?></div>
+        </div>
+        <div class="ui-actions">
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#amc-search"
+                    aria-expanded="<?= $hasFilters ? 'true' : 'false' ?>" aria-controls="amc-search">
+                <i class="fas fa-search me-1"></i>Search<?php if ($hasFilters): ?> <span class="ui-count ms-1"><?= $activeCount ?></span><?php endif; ?>
+            </button>
         </div>
     </div>
 
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body py-2 px-3">
-            <form method="get" class="row g-2 align-items-end">
-                <div class="col-md-3">
-                    <label class="form-label small text-muted mb-1">Client</label>
-                    <?= Select2::widget([
-                        'name' => 'client_id', 'value' => $clientF ?: null,
-                        'data' => ArrayHelper::map($clients, 'id', 'client_name'),
-                        'options' => ['placeholder' => 'All Clients'],
-                        'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
-                    ]) ?>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label small text-muted mb-1">Project</label>
-                    <input type="text" name="title" value="<?= Html::encode($titleF) ?>" class="form-control form-control-sm" placeholder="Project title…">
-                </div>
-                <?php if ($mode === 'active'): // extra filters apply only to the Active AMC list ?>
-                <div class="col-md-2">
-                    <label class="form-label small text-muted mb-1">Charge Type</label>
-                    <select name="charge_type" class="form-select form-select-sm">
-                        <option value="">All</option>
-                        <option value="1" <?= $typeF === '1' ? 'selected' : '' ?>>Percentage</option>
-                        <option value="2" <?= $typeF === '2' ? 'selected' : '' ?>>Amount</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small text-muted mb-1">Warranty</label>
-                    <select name="warranty" class="form-select form-select-sm">
-                        <option value="">All</option>
-                        <option value="under" <?= $warrantyF === 'under' ? 'selected' : '' ?>>Under Warranty</option>
-                        <option value="ended" <?= $warrantyF === 'ended' ? 'selected' : '' ?>>Warranty Ended</option>
-                        <option value="none"  <?= $warrantyF === 'none'  ? 'selected' : '' ?>>No Warranty</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small text-muted mb-1">AMC State</label>
-                    <select name="state" class="form-select form-select-sm">
-                        <option value="">All</option>
-                        <option value="active"  <?= $stateF === 'active'  ? 'selected' : '' ?>>Active</option>
-                        <option value="overdue" <?= $stateF === 'overdue' ? 'selected' : '' ?>>Overdue</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small text-muted mb-1">AMC Start Date (from)</label>
-                    <?= DatePicker::widget([
-                        'name' => 'amc_start', 'value' => $startF,
-                        'type' => DatePicker::TYPE_INPUT,
-                        'options' => ['id' => 'amc-f-start', 'class' => 'form-control form-control-sm', 'placeholder' => 'From', 'autocomplete' => 'off'],
-                        'pluginOptions' => ['autoclose' => true, 'format' => 'yyyy-mm-dd', 'clearBtn' => true, 'todayHighlight' => true],
-                    ]) ?>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small text-muted mb-1">AMC End Date (to)</label>
-                    <?= DatePicker::widget([
-                        'name' => 'amc_end', 'value' => $endF,
-                        'type' => DatePicker::TYPE_INPUT,
-                        'options' => ['id' => 'amc-f-end', 'class' => 'form-control form-control-sm', 'placeholder' => 'To', 'autocomplete' => 'off'],
-                        'pluginOptions' => ['autoclose' => true, 'format' => 'yyyy-mm-dd', 'clearBtn' => true, 'todayHighlight' => true],
-                    ]) ?>
-                </div>
-                <?php endif; ?>
-                <div class="col-md-2 d-flex gap-2">
-                    <button class="btn btn-primary btn-sm">Filter</button>
-                    <?= Html::a('Reset', $resetUrl, ['class' => 'btn btn-light btn-sm']) ?>
-                </div>
-            </form>
+    <?= $this->render('_tabs', ['active' => $mode]) ?>
+
+    <div class="collapse <?= $hasFilters ? 'show' : '' ?>" id="amc-search">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body py-3">
+                <form method="get" class="row g-2 align-items-end">
+                    <div class="col-lg-3 col-md-6">
+                        <label class="form-label small mb-1" for="amc-f-client">Client</label>
+                        <?= Select2::widget([
+                            'name' => 'client_id', 'value' => $clientF ?: null,
+                            'data' => ArrayHelper::map($clients, 'id', 'client_name'),
+                            'options' => ['placeholder' => 'All clients', 'id' => 'amc-f-client'],
+                            'size' => Select2::SMALL,
+                            'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
+                        ]) ?>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <label class="form-label small mb-1" for="amc-f-title">Project</label>
+                        <input type="text" id="amc-f-title" name="title" value="<?= Html::encode($titleF) ?>" class="form-control form-control-sm" maxlength="100" placeholder="Project title">
+                    </div>
+                    <?php if ($mode === 'active'): ?>
+                    <div class="col-lg-2 col-md-4 col-6">
+                        <label class="form-label small mb-1" for="amc-f-type">Charge type</label>
+                        <?= Html::dropDownList('charge_type', $typeF, [1 => 'Percentage', 2 => 'Amount'], ['class' => 'form-select form-select-sm', 'prompt' => 'All', 'id' => 'amc-f-type']) ?>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                        <label class="form-label small mb-1" for="amc-f-warranty">Warranty</label>
+                        <?= Html::dropDownList('warranty', $warrantyF, ['under' => 'Under warranty', 'ended' => 'Warranty ended', 'none' => 'No warranty'], ['class' => 'form-select form-select-sm', 'prompt' => 'All', 'id' => 'amc-f-warranty']) ?>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                        <label class="form-label small mb-1" for="amc-f-state">State</label>
+                        <?= Html::dropDownList('state', $stateF, ['active' => 'Running', 'overdue' => 'Overdue'], ['class' => 'form-select form-select-sm', 'prompt' => 'All', 'id' => 'amc-f-state']) ?>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                        <label class="form-label small mb-1" for="amc-f-start">Period starts from</label>
+                        <?= DatePicker::widget([
+                            'name' => 'amc_start', 'value' => $startF, 'type' => DatePicker::TYPE_INPUT,
+                            'options' => ['id' => 'amc-f-start', 'class' => 'form-control form-control-sm', 'placeholder' => 'YYYY-MM-DD', 'autocomplete' => 'off', 'data-range-from' => '#amc-f-end'],
+                            'pluginOptions' => ['autoclose' => true, 'format' => 'yyyy-mm-dd', 'clearBtn' => true, 'todayHighlight' => true],
+                        ]) ?>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6">
+                        <label class="form-label small mb-1" for="amc-f-end">Period ends by</label>
+                        <?= DatePicker::widget([
+                            'name' => 'amc_end', 'value' => $endF, 'type' => DatePicker::TYPE_INPUT,
+                            'options' => ['id' => 'amc-f-end', 'class' => 'form-control form-control-sm', 'placeholder' => 'YYYY-MM-DD', 'autocomplete' => 'off', 'data-range-to' => '#amc-f-start'],
+                            'pluginOptions' => ['autoclose' => true, 'format' => 'yyyy-mm-dd', 'clearBtn' => true, 'todayHighlight' => true],
+                        ]) ?>
+                    </div>
+                    <?php endif; ?>
+                    <div class="col-lg-2 col-md-4 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary btn-sm flex-fill"><i class="fas fa-search me-1"></i>Search</button>
+                        <?= Html::a('Reset', $resetUrl, ['class' => 'btn btn-outline-secondary btn-sm flex-fill']) ?>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
     <div class="card border-0 shadow-sm">
         <div class="table-responsive">
-            <table class="table list-table mb-0">
-                <thead>
-                    <tr>
-                        <th>#</th><th>Client</th><th>Project</th>
-                        <th>Warranty Status</th>
-                        <th>AMC Start Date</th><th>AMC End Date</th>
-                        <th>Charge</th><th class="text-end">Action</th>
-                    </tr>
+            <table class="table list-table ui-table stack mb-0">
+                <thead class="table-light">
+                <tr><th style="width:40px">#</th><th>Project</th><th>Warranty</th><th>Current period</th><th>Charge</th><th class="text-end" style="width:56px"><span class="visually-hidden">Actions</span></th></tr>
                 </thead>
                 <tbody>
-                <?php if (empty($rows)): ?>
-                    <tr><td colspan="8" class="text-center text-muted py-5">No records found.</td></tr>
-                <?php else: foreach ($rows as $i => $r):
-                    [$wLabel, $wClass]      = $warrantyStatus($r);
-                    [$amcStart, $amcEnd]    = $amcDates($r);
-                ?>
+                <?php if (!$rows): ?>
+                    <tr class="ui-empty-row"><td colspan="6" class="ui-empty-cell">
+                        <?= $this->render('@backend/views/_ui/_empty', $hasFilters
+                            ? ['icon' => 'search', 'title' => 'No contracts match your search', 'text' => 'Try fewer or different search terms.',
+                               'action' => Html::a('Clear search', $resetUrl, ['class' => 'btn btn-outline-secondary btn-sm'])]
+                            : ['icon' => 'file-contract', 'title' => $mode === 'active' ? 'No active AMC contracts' : 'No ended AMC contracts',
+                               'text' => $mode === 'active' ? 'Start an AMC from a completed project.' : 'Contracts you end are listed here.']) ?>
+                    </td></tr>
+                <?php endif; ?>
+                <?php foreach ($rows as $i => $r): ?>
+                    <?php
+                    [$wLabel, $wTone] = $warranty($r);
+                    [$pStart, $pEnd]  = $period($r);
+                    $overdue = $pEnd && $pEnd < $today;
+                    $title   = (string)($r['title'] ?? '—');
+                    ?>
                     <tr>
-                        <td class="text-muted"><?= $pagination->getOffset() + $i + 1 ?></td>
-                        <td><?= Html::encode($r['client_name'] ?? '—') ?></td>
-                        <td class="fw-semibold"><?= Html::encode($r['title'] ?? '—') ?></td>
-                        <td><span class="badge rounded-pill border <?= $wClass ?>"><?= $wLabel ?></span></td>
-                        <td><?= $amcStart ? date('d-m-Y', strtotime($amcStart)) : '—' ?></td>
-                        <td>
-                            <?php if ($amcEnd): ?>
-                                <?= date('d-m-Y', strtotime($amcEnd)) ?>
-                            <?php elseif ($wLabel === 'Under Warranty'): ?>
-                                <span class="badge rounded-pill bg-success-subtle text-success border">Under warranty</span>
+                        <td class="cell-num muted"><?= $offset + $i + 1 ?></td>
+                        <td class="cell-title wrap">
+                            <?= $can['view'] ? Html::a(Html::encode($title), ['view', 'id' => $r['id']], ['class' => 'text-reset text-decoration-none']) : Html::encode($title) ?>
+                            <div class="sub"><?= Html::encode($r['client_name'] ?? 'No client') ?></div>
+                        </td>
+                        <td data-label="Warranty"><span class="ui-pill tone-<?= $wTone ?>"><?= $wLabel ?></span></td>
+                        <td class="small" data-label="Current period">
+                            <?= $d($pStart) ?> →
+                            <?php if ($pEnd): ?>
+                                <?= $d($pEnd) ?><?php if ($overdue && $mode === 'active'): ?> <span class="ui-pill plain tone-danger ms-1">Overdue</span><?php endif; ?>
+                            <?php elseif ($wLabel === 'Under warranty'): ?>
+                                <span class="ui-pill plain tone-success">After warranty</span>
                             <?php else: ?>
-                                <span class="badge rounded-pill bg-warning-subtle text-warning border">Need to renew</span>
+                                <span class="ui-pill plain tone-warning">Needs renewal</span>
                             <?php endif; ?>
                         </td>
-                        <td>
-                            <span class="badge bg-light text-dark border"><?= (int)$r['charge_type'] === 1 ? 'Percentage' : 'Amount' ?></span>
-                            <span class="ms-1"><?= $chargeVal($r) ?></span>
-                        </td>
-                        <td class="text-end">
+                        <td class="nowrap" data-label="Charge"><?= $charge($r) ?> <span class="small muted"><?= (int)$r['charge_type'] === 1 ? 'of cost' : 'fixed' ?></span></td>
+                        <td class="cell-actions text-end">
+                            <?php if (array_filter($can)): ?>
                             <div class="dropdown">
-                                <button class="btn btn-outline-secondary act-btn dropdown-toggle" type="button" data-bs-toggle="dropdown">&#8942;</button>
-                                <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size:.825rem;min-width:160px">
-                                    <?php if ($canView): ?>
-                                    <li><?= Html::a('<i class="fas fa-eye"></i> View', ['view', 'id' => $r['id']], ['class' => 'dropdown-item', 'encode' => false]) ?></li>
-                                    <?php endif; ?>
-                                    <?php if ($mode === 'active' && $canUpdate): ?>
-                                    <li><?= Html::a('<i class="fas fa-pen"></i> Edit', ['update', 'id' => $r['id']], ['class' => 'dropdown-item', 'encode' => false]) ?></li>
-                                    <?php endif; ?>
-                                    <?php if ($mode === 'active' && $canRenew): ?>
-                                        <li><?= Html::a('<i class="fas fa-sync"></i> Renew', ['renew', 'id' => $r['id']], ['class' => 'dropdown-item', 'encode' => false]) ?></li>
-                                    <?php endif; ?>
-                                    <?php if ($mode === 'active' && $canEnd): ?>
+                                <button class="btn btn-outline-secondary act-btn dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                                        data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" aria-label="Actions for <?= Html::encode($title) ?>">&#8942;</button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="min-width:170px">
+                                    <?php if ($can['view']): ?><li><?= Html::a('<i class="fas fa-eye me-2"></i>View', ['view', 'id' => $r['id']], ['class' => 'dropdown-item', 'encode' => false]) ?></li><?php endif; ?>
+                                    <?php if ($can['update']): ?><li><?= Html::a('<i class="fas fa-pen me-2"></i>Edit', ['update', 'id' => $r['id']], ['class' => 'dropdown-item', 'encode' => false]) ?></li><?php endif; ?>
+                                    <?php if ($can['renew']): ?><li><?= Html::a('<i class="fas fa-sync me-2"></i>Renew', ['renew', 'id' => $r['id']], ['class' => 'dropdown-item', 'encode' => false]) ?></li><?php endif; ?>
+                                    <?php if ($can['end']): ?>
                                         <li><hr class="dropdown-divider"></li>
-                                        <li><?= Html::a('<i class="fas fa-stop"></i> End AMC', ['end', 'id' => $r['id']], ['class' => 'dropdown-item text-danger', 'encode' => false]) ?></li>
+                                        <li><?= Html::a('<i class="fas fa-stop me-2"></i>End AMC', ['end', 'id' => $r['id']], [
+                                            'class' => 'dropdown-item text-danger', 'encode' => false,
+                                            'data' => ['method' => 'post', 'confirm' => 'End the AMC for "' . $title . '"? It moves to Ended AMC and can no longer be renewed or edited.'],
+                                        ]) ?></li>
                                     <?php endif; ?>
                                 </ul>
                             </div>
+                            <?php endif; ?>
                         </td>
                     </tr>
-                <?php endforeach; endif; ?>
+                <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
-        <?php if ($pagination->pageCount > 1): ?>
-        <div class="card-footer bg-white border-top-0 d-flex justify-content-end py-2">
-            <?= LinkPager::widget(['pagination' => $pagination, 'options' => ['class' => 'pagination mb-0']]) ?>
-        </div>
-        <?php endif; ?>
+        <?= $this->render('@backend/views/_ui/_pager', ['pagination' => $pagination, 'total' => $total, 'count' => count($rows)]) ?>
     </div>
 </div>
-
-<?php
-// Keep the date window valid: the End Date can't be earlier than the Start
-// Date (and vice-versa). Uses the kvDatepicker (bootstrap-datepicker) API.
-$this->registerJs(<<<JS
-(function(){
-    var s = jQuery('#amc-f-start'), e = jQuery('#amc-f-end');
-    if (!s.length || !e.length) { return; }
-    function sync(){
-        var sv = s.val(), ev = e.val();
-        if (sv) { e.kvDatepicker('setStartDate', sv); }
-        if (ev) { s.kvDatepicker('setEndDate', ev); }
-    }
-    s.on('changeDate', function(){ e.kvDatepicker('setStartDate', s.val() || null); });
-    e.on('changeDate', function(){ s.kvDatepicker('setEndDate', e.val() || null); });
-    sync();
-})();
-JS, \yii\web\View::POS_READY);
-?>

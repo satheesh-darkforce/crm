@@ -4,136 +4,100 @@
 /** @var \backend\models\Project[] $phases */
 /** @var bool $hasPhases */
 /** @var array $phaseHours */
-/** @var array $empHours */
 /** @var \yii\data\ArrayDataProvider $empHoursProvider */
 /** @var int   $totalEmpSecsAll */
 /** @var array $invoices */
 /** @var string $fromDate */
 /** @var string $toDate */
 
+use backend\models\Amc;
+use backend\models\Project;
 use common\components\UserAccess;
+use kartik\date\DatePicker;
 use yii\bootstrap5\Html;
 use yii\helpers\Url;
+use yii\widgets\LinkPager;
 use yii\widgets\Pjax;
 
 $this->title = 'View Project';
 
-// AMC: only completed projects (main `project` table status 3 = Completed)
-// may start AMC. Show "View AMC" if an active contract already exists.
-$isCompletedProject = (int)$model->project_status === 3;
-$activeAmc = !UserAccess::isAmcEnabled() ? null : \backend\models\Amc::find()
-    ->where(['project_id' => $model->id, 'status' => 1, 'amc_status' => \backend\models\Amc::AMC_ACTIVE])
-    ->one();
-$canStartAmc = UserAccess::checkAccess('amc/start');
-$canViewAmc  = UserAccess::checkAccess('amc/view');
+// AMC: only completed projects may start AMC; show "View AMC" when a contract is active.
+$isCompleted = (int)$model->project_status === Project::PROJECT_STATUS_COMPLETED;
+$amcEnabled  = UserAccess::isAmcEnabled();
+$activeAmc   = ($amcEnabled && $isCompleted)
+    ? Amc::find()->where(['project_id' => $model->id, 'status' => 1, 'amc_status' => Amc::AMC_ACTIVE])->one()
+    : null;
+$canStartAmc = $amcEnabled && UserAccess::checkAccess('amc/start');
+$canViewAmc  = $amcEnabled && UserAccess::checkAccess('amc/view');
+$canUpdate   = UserAccess::checkAccess('project/update');
 
-// Helper: seconds → HH:MM
-$secToHM = fn(int $s): string => $s > 0 ? sprintf('%02d:%02d', intdiv($s, 3600), intdiv($s % 3600, 60)) : '00:00';
+// seconds → HH:MM (hours can exceed 24)
+$hm = fn(int $s): string => $s > 0 ? sprintf('%02d:%02d', intdiv($s, 3600), intdiv($s % 3600, 60)) : '00:00';
+$d  = fn($v) => $v ? date('d M Y', strtotime($v)) : '—';
 
-$typeLabel     = [1 => 'Productive', 2 => 'Non Productive'];
-$industryLabel = [1 => 'IT', 2 => 'IOT'];
-$statusLabel = [0 => 'Not started', 1 => 'In-progress', 2 => 'Delivered', 3 => 'Closed'];
-$statusBadge = [0 => 'secondary', 1 => 'info', 2 => 'success', 3 => 'dark'];
-
-$totalEmpSecs  = array_sum(array_column($empHours, 'total_secs'));
-$totalPaid     = array_sum(array_column($invoices, 'paid_amount'));
-$totalPending  = array_sum(array_column($invoices, 'pending_amount'));
+$st         = (int)$model->project_status;
+$totalPaid  = array_sum(array_column($invoices, 'paid_amount'));
+$totalPend  = array_sum(array_column($invoices, 'pending_amount'));
+$estSecs    = (int)$model->total_estimation_hours;
+$hasRange   = $fromDate !== '' || $toDate !== '';
 ?>
-<style>
-.info-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
-.info-item { background:#fff; border:1px solid #eee; border-radius:6px; padding:12px 15px; }
-.info-label { display:block; font-size:11px; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
-.info-value { font-size:14px; font-weight:600; color:#222; }
-.proj-table th { font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:#6c757d; font-weight:600; white-space:nowrap; }
-.proj-table td { font-size:.875rem; vertical-align:middle; }
-.proj-table tfoot td { font-weight:700; border-top:2px solid #dee2e6; }
-</style>
-
-<div class="project-view">
-
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="mb-0 fw-semibold">View Project</h4>
-        <div class="d-flex gap-2">
-            <?php if ($isCompletedProject && $activeAmc && $canViewAmc): ?>
-                <?= Html::a('<i class="fas fa-eye"></i> View AMC', ['/amc/view', 'id' => $activeAmc->id],
-                    ['class' => 'btn btn-success btn-sm', 'encode' => false]) ?>
-            <?php elseif ($isCompletedProject && $canStartAmc): ?>
-                <button type="button" class="btn btn-primary btn-sm" id="proj-start-amc"
-                        data-id="<?= $model->id ?>"><i class="fas fa-play"></i> Start AMC</button>
-            <?php endif; ?>
-            <?= Html::a('Back', ['index'], ['class' => 'btn btn-secondary btn-sm']) ?>
-        </div>
-    </div>
-
-    <!-- ── 1. General Info ────────────────────────────────────────────── -->
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-header bg-white"><h5 class="mb-0 fw-semibold">General Info</h5></div>
-        <div class="card-body">
-            <div class="info-grid">
-                <div class="info-item">
-                    <span class="info-label">Client</span>
-                    <span class="info-value"><?= Html::encode($model->client->client_name ?? '—') ?></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Project Title</span>
-                    <span class="info-value"><?= Html::encode($model->title) ?></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Project Type</span>
-                    <span class="info-value"><?= $typeLabel[$model->project_type] ?? '—' ?></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Industry Type</span>
-                    <span class="info-value"><?= $industryLabel[$model->industry_type] ?? '—' ?></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Total Estimation Hours</span>
-                    <span class="info-value"><?= $model->total_estimation_hours ? $secToHM((int)$model->total_estimation_hours) : '—' ?></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Total Estimation Cost</span>
-                    <span class="info-value"><?= $model->total_estimation_cost ? '₹' . number_format((float)$model->total_estimation_cost, 2) : '—' ?></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Date Created</span>
-                    <span class="info-value"><?= $model->date ? date('d-m-Y', strtotime($model->date)) : '—' ?></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Live / Updated Date</span>
-                    <span class="info-value"><?= $model->live_updated_date ? date('d-m-Y', strtotime($model->live_updated_date)) : '—' ?></span>
-                </div>
+<div class="ui-page project-view">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($model->title) ?></h1>
+            <div class="ui-sub">
+                #<?= (int)$model->id ?> · <?= Html::encode($model->client->client_name ?? 'No client') ?> ·
+                <span class="ui-pill tone-<?= Project::statusTone($st) ?>"><?= Html::encode($model->getStatusLabel()) ?></span>
             </div>
         </div>
+        <div class="ui-actions">
+            <?php if ($canUpdate): ?>
+                <?= Html::a('<i class="fas fa-pen me-1"></i>Edit', ['update', 'id' => $model->id], ['class' => 'btn btn-outline-primary btn-sm', 'encode' => false]) ?>
+            <?php endif; ?>
+            <?php if ($activeAmc && $canViewAmc): ?>
+                <?= Html::a('<i class="fas fa-file-contract me-1"></i>View AMC', ['/amc/view', 'id' => $activeAmc->id], ['class' => 'btn btn-primary btn-sm', 'encode' => false]) ?>
+            <?php elseif ($isCompleted && !$activeAmc && $canStartAmc): ?>
+                <button type="button" class="btn btn-primary btn-sm js-start-amc" data-id="<?= $model->id ?>" data-live-date="<?= Html::encode((string)$model->live_updated_date) ?>">
+                    <i class="fas fa-play me-1"></i>Start AMC
+                </button>
+            <?php endif; ?>
+            <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
+    <div class="ui-tiles">
+        <div class="ui-tile"><div class="t-label">Type</div><div class="t-value"><?= Html::encode(Project::typeOptions()[(int)$model->project_type] ?? '—') ?></div>
+            <div class="t-sub"><?= Html::encode(Project::industryOptions()[(int)$model->industry_type] ?? 'Industry not set') ?></div></div>
+        <div class="ui-tile"><div class="t-label">Estimated hours</div><div class="t-value"><?= $estSecs > 0 ? $hm($estSecs) : '—' ?></div>
+            <div class="t-sub">Logged <?= $hm($totalEmpSecsAll) ?><?= $hasRange ? ' (in range)' : '' ?></div></div>
+        <div class="ui-tile"><div class="t-label">Estimated cost</div><div class="t-value"><?= (float)$model->total_estimation_cost > 0 ? '₹' . number_format((float)$model->total_estimation_cost, 2) : '—' ?></div></div>
+        <div class="ui-tile"><div class="t-label">Received / pending</div><div class="t-value text-success"><?= number_format($totalPaid, 2) ?></div>
+            <div class="t-sub <?= $totalPend > 0 ? 'text-danger' : '' ?>"><?= number_format($totalPend, 2) ?> pending</div></div>
+        <div class="ui-tile"><div class="t-label">Created</div><div class="t-value"><?= $d($model->date) ?></div>
+            <div class="t-sub">Live: <?= $d($model->live_updated_date) ?></div></div>
+    </div>
+
+    <?php if (trim((string)$model->description) !== ''): ?>
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header ui-section">Description</div>
+        <div class="card-body small"><?= nl2br(Html::encode($model->description)) ?></div>
+    </div>
+    <?php endif; ?>
+
     <?php if ($hasPhases): ?>
-    <!-- ── 2. Project Phases ──────────────────────────────────────────── -->
     <div class="row g-3 mb-3">
-        <div class="col-md-6">
+        <div class="col-lg-6">
             <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white"><h5 class="mb-0 fw-semibold">Project Phases</h5></div>
-                <div class="card-body table-responsive p-0">
-                    <table class="table proj-table table-striped mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px">#</th>
-                                <th>Phase</th>
-                                <th>Milestone</th>
-                                <th class="text-end">Estimated Hours</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
+                <div class="card-header ui-section">Phases &amp; milestones</div>
+                <div class="table-responsive">
+                    <table class="table list-table ui-table stack mb-0">
+                        <thead class="table-light"><tr><th>Milestone</th><th class="text-end">Estimated</th><th>Status</th></tr></thead>
                         <tbody>
-                        <?php foreach ($phases as $i => $ph): $ms = (int)$ph->milestone_status; ?>
+                        <?php foreach ($phases as $ph): $ms = (int)$ph->milestone_status; ?>
                             <tr>
-                                <td class="text-muted"><?= $i + 1 ?></td>
-                                <td><?= (int)$ph->phase_value ?></td>
-                                <td><?= (int)$ph->milestone_value ?></td>
-                                <td class="text-end"><?= $ph->milestone_hours ? $secToHM((int)$ph->milestone_hours) : '—' ?></td>
-                                <td>
-                                    <span class="badge bg-<?= $statusBadge[$ms] ?? 'secondary' ?>"><?= $statusLabel[$ms] ?? '—' ?></span>
-                                </td>
+                                <td class="cell-title">Phase <?= (int)$ph->phase_value ?> · M<?= (int)$ph->milestone_value ?></td>
+                                <td class="text-end" data-label="Estimated"><?= $ph->milestone_hours ? $hm((int)$ph->milestone_hours) : '—' ?></td>
+                                <td data-label="Status"><span class="ui-pill tone-<?= Project::milestoneStatusTone($ms) ?>"><?= Html::encode(Project::milestoneStatusOptions()[$ms] ?? '—') ?></span></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>
@@ -141,43 +105,30 @@ $totalPending  = array_sum(array_column($invoices, 'pending_amount'));
                 </div>
             </div>
         </div>
-
-        <!-- ── 3. Phase Based Hours ───────────────────────────────────────── -->
-        <div class="col-md-6">
+        <div class="col-lg-6">
             <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white"><h5 class="mb-0 fw-semibold">Phase Based Hours</h5></div>
-                <div class="card-body table-responsive p-0">
-                    <table class="table proj-table table-striped mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px">#</th>
-                                <th>Phase</th>
-                                <th>Milestone</th>
-                                <th class="text-end">Hours</th>
-                            </tr>
-                        </thead>
+                <div class="card-header ui-section">
+                    <span>Hours by milestone</span>
+                    <?php if ($phaseHours): ?><span class="ui-section-meta">Total <?= $hm((int)array_sum(array_column($phaseHours, 'total_secs'))) ?></span><?php endif; ?>
+                </div>
+                <div class="table-responsive">
+                    <table class="table list-table ui-table stack mb-0">
+                        <thead class="table-light"><tr><th>Milestone</th><th class="text-end">Logged</th></tr></thead>
                         <tbody>
-                        <?php if (empty($phaseHours)): ?>
-                            <tr><td colspan="4" class="text-center text-muted py-4">No work reports yet.</td></tr>
-                        <?php else: ?>
-                            <?php $phTotalSecs = 0; foreach ($phaseHours as $i => $pr):
-                                $phTotalSecs += (int)$pr['total_secs']; ?>
-                            <tr>
-                                <td class="text-muted"><?= $i + 1 ?></td>
-                                <td><?= (int)$pr['phase_value'] ?></td>
-                                <td><?= (int)$pr['milestone_value'] ?></td>
-                                <td class="text-end fw-semibold"><?= $secToHM((int)$pr['total_secs']) ?></td>
-                            </tr>
-                            <?php endforeach; ?>
+                        <?php if (!$phaseHours): ?>
+                            <tr class="ui-empty-row"><td colspan="2" class="ui-empty-cell">
+                                <?= $this->render('@backend/views/_ui/_empty', ['icon' => 'clock', 'title' => 'No work logged' . ($hasRange ? ' in this range' : ' yet'), 'small' => true]) ?>
+                            </td></tr>
                         <?php endif; ?>
-                        </tbody>
-                        <?php if (!empty($phaseHours)): ?>
-                        <tfoot class="table-light">
+                        <?php foreach ($phaseHours as $pr): ?>
                             <tr>
-                                <td colspan="3" class="text-end fw-semibold">Total Hours</td>
-                                <td class="text-end fw-bold"><?= $secToHM($phTotalSecs) ?></td>
+                                <td class="cell-title">Phase <?= (int)$pr['phase_value'] ?> · M<?= (int)$pr['milestone_value'] ?></td>
+                                <td class="text-end fw-semibold" data-label="Logged"><?= $hm((int)$pr['total_secs']) ?></td>
                             </tr>
-                        </tfoot>
+                        <?php endforeach; ?>
+                        </tbody>
+                        <?php if (count($phaseHours) > 1): ?>
+                        <tfoot><tr><td>Total</td><td class="text-end"><?= $hm((int)array_sum(array_column($phaseHours, 'total_secs'))) ?></td></tr></tfoot>
                         <?php endif; ?>
                     </table>
                 </div>
@@ -186,194 +137,123 @@ $totalPending  = array_sum(array_column($invoices, 'pending_amount'));
     </div>
     <?php endif; ?>
 
-    <!-- ── 4. Employee Based Hours ────────────────────────────────────── -->
+    <!-- Hours by employee (date range applies to both hour tables) -->
     <div class="card border-0 shadow-sm mb-3">
-        <div class="card-header bg-white">
-            <div class="d-flex justify-content-between align-items-center">
-                <h5 class="mb-0 fw-semibold">Employee Based Hours</h5>
-                <form method="get" action="<?= Url::to(['view', 'id' => $model->id]) ?>"
-                      class="d-flex gap-2 align-items-center">
-                    <input type="hidden" name="id" value="<?= $model->id ?>">
-                    <?= \kartik\date\DatePicker::widget([
-                        'name'          => 'from_date',
-                        'value'         => $fromDate,
-                        'type'          => \kartik\date\DatePicker::TYPE_INPUT,
-                        'pluginOptions' => ['format' => 'yyyy-mm-dd', 'autoclose' => true, 'todayHighlight' => true],
-                        'options'       => ['id' => 'filter-from-date', 'class' => 'form-control form-control-sm', 'placeholder' => 'From date'],
-                    ]) ?>
-                    <?= \kartik\date\DatePicker::widget([
-                        'name'          => 'to_date',
-                        'value'         => $toDate,
-                        'type'          => \kartik\date\DatePicker::TYPE_INPUT,
-                        'pluginOptions' => ['format' => 'yyyy-mm-dd', 'autoclose' => true, 'todayHighlight' => true],
-                        'options'       => ['id' => 'filter-to-date', 'class' => 'form-control form-control-sm', 'placeholder' => 'To date'],
-                    ]) ?>
-                    <button type="submit" class="btn btn-info btn-sm"><i class="fas fa-search"></i></button>
-                    <?php if ($fromDate || $toDate): ?>
-                        <?= Html::a('<i class="fas fa-times"></i>', ['view', 'id' => $model->id], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
-                    <?php endif; ?>
-                </form>
-            </div>
+        <div class="card-header ui-section flex-wrap">
+            <span>Hours by employee<?= $hasRange ? ' · ' . Html::encode(($fromDate ?: '…') . ' to ' . ($toDate ?: '…')) : '' ?></span>
+            <form method="get" action="<?= Url::to(['view', 'id' => $model->id]) ?>" class="d-flex flex-wrap gap-2 align-items-center" style="text-transform:none;letter-spacing:0">
+                <input type="hidden" name="id" value="<?= (int)$model->id ?>">
+                <div style="width:140px"><?= DatePicker::widget([
+                    'name' => 'from_date', 'value' => $fromDate, 'type' => DatePicker::TYPE_INPUT,
+                    'options' => ['id' => 'filter-from-date', 'class' => 'form-control form-control-sm', 'placeholder' => 'From', 'aria-label' => 'From date', 'autocomplete' => 'off', 'data-range-from' => '#filter-to-date'],
+                    'pluginOptions' => ['format' => 'yyyy-mm-dd', 'autoclose' => true, 'todayHighlight' => true],
+                ]) ?></div>
+                <div style="width:140px"><?= DatePicker::widget([
+                    'name' => 'to_date', 'value' => $toDate, 'type' => DatePicker::TYPE_INPUT,
+                    'options' => ['id' => 'filter-to-date', 'class' => 'form-control form-control-sm', 'placeholder' => 'To', 'aria-label' => 'To date', 'autocomplete' => 'off', 'data-range-to' => '#filter-from-date'],
+                    'pluginOptions' => ['format' => 'yyyy-mm-dd', 'autoclose' => true, 'todayHighlight' => true],
+                ]) ?></div>
+                <button type="submit" class="btn btn-outline-primary btn-sm" aria-label="Apply date range"><i class="fas fa-filter"></i></button>
+                <?php if ($hasRange): ?>
+                    <?= Html::a('Clear', ['view', 'id' => $model->id], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
+                <?php endif; ?>
+            </form>
         </div>
-        <div class="card-body table-responsive p-0">
-            <?php Pjax::begin([
-                'id'             => 'pjax-emp-hours',
-                'timeout'        => 5000,
-                'enablePushState' => false,
-                'clientOptions'  => ['scrollTo' => false],
-                'linkSelector'   => '#pjax-emp-hours .pagination a',
-                'formSelector'   => false,
-            ]); ?>
-            <table class="table proj-table table-striped mb-0">
+        <?php Pjax::begin([
+            'id' => 'pjax-emp-hours', 'timeout' => 8000, 'enablePushState' => false,
+            'clientOptions' => ['scrollTo' => false], 'linkSelector' => '#pjax-emp-hours .pagination a', 'formSelector' => false,
+        ]); ?>
+        <?php
+        $rows   = $empHoursProvider->getModels();
+        $pg     = $empHoursProvider->getPagination();
+        $offset = $pg ? $pg->getOffset() : 0;
+        ?>
+        <div class="table-responsive">
+            <table class="table list-table ui-table stack mb-0">
                 <thead class="table-light">
+                <tr>
+                    <th style="width:40px">#</th>
+                    <th>Employee</th>
+                    <?php if ($hasPhases): ?><th>Milestone</th><?php endif; ?>
+                    <th class="text-end">Hours</th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php if (!$rows): ?>
+                    <tr class="ui-empty-row"><td colspan="<?= $hasPhases ? 4 : 3 ?>" class="ui-empty-cell">
+                        <?= $this->render('@backend/views/_ui/_empty', ['icon' => 'user-clock', 'small' => true,
+                            'title' => 'No work logged' . ($hasRange ? ' in this range' : ' yet'),
+                            'text' => $hasRange ? 'Try a wider date range.' : 'Hours appear once work reports are filed.']) ?>
+                    </td></tr>
+                <?php endif; ?>
+                <?php foreach ($rows as $i => $row): ?>
                     <tr>
-                        <th style="width:40px">#</th>
-                        <th>Developer Name</th>
+                        <td class="cell-num muted"><?= $offset + $i + 1 ?></td>
+                        <td class="cell-title"><?= Html::encode($row['developer_name'] ?: '—') ?></td>
                         <?php if ($hasPhases): ?>
-                        <th>Phase</th>
-                        <th>Milestone</th>
+                            <td data-label="Milestone">Phase <?= (int)$row['phase_value'] ?> · M<?= (int)$row['milestone_value'] ?></td>
                         <?php endif; ?>
-                        <th class="text-end">Hours</th>
+                        <td class="text-end fw-semibold" data-label="Hours"><?= $hm((int)$row['total_secs']) ?></td>
                     </tr>
-                </thead>
-                <tbody>
-                    <?php
-                    $colSpan = $hasPhases ? 5 : 3;
-                    $empPageination = $empHoursProvider->getPagination();
-                    $empPageRows  = $empHoursProvider->getModels();
-                    $empOffset    = $empPageination ? $empPageination->getOffset() : 0;
-                    ?>
-                    <?php if (empty($empPageRows)): ?>
-                        <tr><td colspan="<?= $colSpan ?>" class="text-center text-muted py-4">No work reports found.</td></tr>
-                    <?php else: ?>
-                        <?php $rowNum = 0; foreach ($empPageRows as $row): $rowNum++; ?>
-                            <tr>
-                                <td class="text-muted"><?= $empOffset + $rowNum ?></td>
-                                <td><?= Html::encode($row['developer_name']) ?></td>
-                                <?php if ($hasPhases): ?>
-                                <td><?= (int)$row['phase_value'] ?></td>
-                                <td><?= (int)$row['milestone_value'] ?></td>
-                                <?php endif; ?>
-                                <td class="text-end fw-semibold"><?= $secToHM((int)$row['total_secs']) ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
+                <?php endforeach; ?>
                 </tbody>
-                <?php if ($empHoursProvider->getTotalCount() > 0): ?>
-                <tfoot class="table-light">
-                    <tr>
-                        <td colspan="<?= $colSpan - 1 ?>" class="fw-semibold text-end">Total Hours</td>
-                        <td class="text-end fw-bold"><?= $secToHM((int)$totalEmpSecsAll) ?></td>
-                    </tr>
-                </tfoot>
+                <?php if ($empHoursProvider->getTotalCount() > 1): ?>
+                <tfoot><tr><td colspan="<?= $hasPhases ? 3 : 2 ?>" class="text-end">Total (all employees)</td><td class="text-end"><?= $hm($totalEmpSecsAll) ?></td></tr></tfoot>
                 <?php endif; ?>
             </table>
-            <?php if ($empPageination && $empPageination->pageCount > 1): ?>
-            <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top">
-                <small class="text-muted">
-                    Showing <?= $empOffset + 1 ?>–<?= min($empOffset + $empPageination->pageSize, $empHoursProvider->getTotalCount()) ?>
-                    of <?= $empHoursProvider->getTotalCount() ?>
-                </small>
-                <?= \yii\widgets\LinkPager::widget([
-                    'pagination'     => $empPageination,
-                    'options'        => ['class' => 'pagination pagination-sm mb-0'],
-                    'firstPageLabel' => '«', 'lastPageLabel' => '»',
-                    'prevPageLabel'  => '‹', 'nextPageLabel' => '›',
-                    'maxButtonCount' => 5,
-                ]) ?>
-            </div>
-            <?php endif; ?>
-            <?php Pjax::end(); ?>
         </div>
+        <?php if ($pg && $pg->getPageCount() > 1): ?>
+        <div class="card-footer bg-white ui-pager">
+            <small class="text-muted">Showing <?= $offset + 1 ?>–<?= $offset + count($rows) ?> of <?= $empHoursProvider->getTotalCount() ?></small>
+            <?= LinkPager::widget([
+                'pagination' => $pg,
+                'options' => ['class' => 'pagination pagination-sm mb-0'],
+                'linkContainerOptions' => ['class' => 'page-item'],
+                'linkOptions' => ['class' => 'page-link'],
+                'disabledListItemSubTagOptions' => ['tag' => 'span', 'class' => 'page-link'],
+                'maxButtonCount' => 5,
+                'firstPageLabel' => '«', 'lastPageLabel' => '»', 'prevPageLabel' => '‹', 'nextPageLabel' => '›',
+            ]) ?>
+        </div>
+        <?php endif; ?>
+        <?php Pjax::end(); ?>
     </div>
 
-    <!-- ── 5. Project Payment Details ─────────────────────────────────── -->
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-header bg-white"><h5 class="mb-0 fw-semibold">Project Payment Details</h5></div>
-        <div class="card-body table-responsive p-0">
-            <table class="table proj-table table-striped mb-0">
+    <!-- Payments -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header ui-section"><span>Payments<?= $invoices ? ' (' . count($invoices) . ' invoices)' : '' ?></span></div>
+        <div class="table-responsive">
+            <table class="table list-table ui-table stack mb-0">
                 <thead class="table-light">
-                    <tr>
-                        <th style="width:40px">#</th>
-                        <th>Invoice No</th>
-                        <th>Invoice Date</th>
-                        <th>Currency</th>
-                        <th class="text-end">Received Amount</th>
-                        <th class="text-end">Pending Amount</th>
-                    </tr>
+                <tr><th style="width:40px">#</th><th>Invoice No</th><th>Date</th><th>Currency</th><th class="text-end">Received</th><th class="text-end">Pending</th></tr>
                 </thead>
                 <tbody>
-                    <?php if (empty($invoices)): ?>
-                        <tr><td colspan="6" class="text-center text-muted py-4">No invoices found.</td></tr>
-                    <?php else: ?>
-                        <?php foreach ($invoices as $i => $inv): ?>
-                            <tr>
-                                <td class="text-muted"><?= $i + 1 ?></td>
-                                <td><?= Html::encode($inv['invoice_no']) ?></td>
-                                <td><?= $inv['invoice_date'] ? date('d-m-Y', strtotime($inv['invoice_date'])) : '—' ?></td>
-                                <td><?= Html::encode($inv['currency'] ?: '—') ?></td>
-                                <td class="text-end"><?= number_format((float)$inv['paid_amount'], 2) ?></td>
-                                <td class="text-end"><?= number_format((float)$inv['pending_amount'], 2) ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-                <?php if (!empty($invoices)): ?>
-                <tfoot class="table-light">
+                <?php if (!$invoices): ?>
+                    <tr class="ui-empty-row"><td colspan="6" class="ui-empty-cell">
+                        <?= $this->render('@backend/views/_ui/_empty', ['icon' => 'file-invoice', 'title' => 'No invoices for this project', 'small' => true]) ?>
+                    </td></tr>
+                <?php endif; ?>
+                <?php foreach ($invoices as $i => $inv): ?>
                     <tr>
-                        <td colspan="4" class="fw-semibold text-end">Total Amount</td>
-                        <td class="text-end fw-bold"><?= number_format($totalPaid, 2) ?></td>
-                        <td class="text-end fw-bold"><?= number_format($totalPending, 2) ?></td>
+                        <td class="cell-num muted"><?= $i + 1 ?></td>
+                        <td class="cell-title"><?= Html::a(Html::encode($inv['invoice_no'] ?: 'INV-' . $inv['id']), ['/invoice/view', 'id' => $inv['id']], ['class' => 'text-reset text-decoration-none', 'target' => '_blank', 'rel' => 'noopener']) ?></td>
+                        <td class="small nowrap" data-label="Date"><?= $d($inv['invoice_date']) ?></td>
+                        <td class="small" data-label="Currency"><?= Html::encode($inv['currency'] ?: '—') ?></td>
+                        <td class="text-end nowrap text-success" data-label="Received"><?= number_format((float)$inv['paid_amount'], 2) ?></td>
+                        <td class="text-end nowrap <?= (float)$inv['pending_amount'] > 0 ? 'text-danger fw-semibold' : 'muted' ?>" data-label="Pending"><?= number_format((float)$inv['pending_amount'], 2) ?></td>
                     </tr>
-                </tfoot>
+                <?php endforeach; ?>
+                </tbody>
+                <?php if (count($invoices) > 1): ?>
+                <tfoot><tr><td colspan="4" class="text-end">Total</td><td class="text-end"><?= number_format($totalPaid, 2) ?></td><td class="text-end"><?= number_format($totalPend, 2) ?></td></tr></tfoot>
                 <?php endif; ?>
             </table>
         </div>
     </div>
 
+    <?php if ($isCompleted && !$activeAmc && $canStartAmc): ?>
+    <div class="d-none" aria-hidden="true">
+        <?= DatePicker::widget(['name' => '_live_date_assets', 'type' => DatePicker::TYPE_INPUT, 'pluginOptions' => ['format' => 'yyyy-mm-dd']]) ?>
+    </div>
+    <?php endif; ?>
 </div>
-
-<?php
-if ($isCompletedProject && $canStartAmc && !$activeAmc):
-    $setLiveDateUrl = Url::to(['set-live-date']);
-    $amcStartUrl    = Url::to(['/amc/start']);
-    $todayStr       = date('Y-m-d');
-    $liveDefault    = $model->live_updated_date ?: $todayStr;
-    $this->registerCss('.datepicker.datepicker-dropdown{z-index:20000 !important;}');
-    $this->registerJs(<<<JS
-jQuery('#proj-start-amc').on('click', function(){
-    var projectId = jQuery(this).data('id');
-    Swal.fire({
-        title: 'Project Live / Updated Date',
-        html: '<input type="text" id="proj-live-date" class="form-control form-control-sm text-center" '
-            + 'placeholder="Select date" autocomplete="off" readonly '
-            + 'style="background:#fff;cursor:pointer;max-width:220px;margin:0 auto;">',
-        confirmButtonText: 'Save & Continue',
-        showCancelButton: true,
-        allowOutsideClick: false,
-        didOpen: function(){
-            jQuery('#proj-live-date').kvDatepicker({
-                format: 'yyyy-mm-dd', autoclose: true, todayHighlight: true, endDate: '0d'
-            }).kvDatepicker('update', '$liveDefault');
-        },
-        preConfirm: function(){
-            var v = jQuery('#proj-live-date').val();
-            if (!v) { Swal.showValidationMessage('Please pick a date'); return false; }
-            return v;
-        }
-    }).then(function(r){
-        if (!r.isConfirmed || !r.value) { return; }
-        jQuery.ajax({
-            url: '$setLiveDateUrl', type: 'POST',
-            data: { id: projectId, live_updated_date: r.value, _csrf: yii.getCsrfToken() },
-            success: function(res){
-                if (!res.success) { Swal.fire({icon:'error', title:'Error', text: res.message || 'Failed'}); return; }
-                window.location.href = '$amcStartUrl' + '?project_id=' + projectId;
-            },
-            error: function(){ Swal.fire({icon:'error', title:'Error', text:'Request failed'}); }
-        });
-    });
-});
-JS, \yii\web\View::POS_READY);
-endif;
-?>

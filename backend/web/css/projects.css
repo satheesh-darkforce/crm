@@ -1,0 +1,24 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Projects + AMC module — loaded by ProjectAsset on top of page-ui.css.
+   Only module-specific pieces: the phase builder and the
+   date picker inside SweetAlert popups.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Inline status select in the project list */
+.ui-page .ui-table .js-project-status { width: 150px; font-size: .78rem; padding-top: .2rem; padding-bottom: .2rem; }
+
+/* Phase builder (project form) */
+.ui-page .phase-builder { background: var(--app-head-bg); border: 1px dashed var(--app-border); border-radius: var(--app-radius); padding: .85rem; }
+.ui-page .phase-builder .form-label { font-size: .72rem; }
+.ui-page #phase-table td { vertical-align: middle; }
+.ui-page #phase-table .form-control,
+.ui-page #phase-table .form-select { font-size: .8rem; }
+.ui-page .phase-sum { font-size: .8rem; color: var(--app-text-muted); }
+.ui-page .phase-sum.is-mismatch { color: var(--app-danger); font-weight: 600; }
+
+/* The date picker opened inside a SweetAlert popup must sit above it */
+.datepicker.datepicker-dropdown { z-index: 20000 !important; }
+
+@media (max-width: 767.98px) {
+    .ui-page .ui-table.stack .js-project-status { width: auto; min-width: 160px; }
+}

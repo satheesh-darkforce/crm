@@ -19,10 +19,12 @@ foreach ($uploads as $u) {
 }
 $uploadTypeLabels = AssetUpload::uploadTypeLabels();
 ?>
-<div class="asset-view">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= Html::encode($model->product_name) ?></h5>
-        <div class="d-flex gap-2">
+<div class="ui-page asset-view">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($model->product_name) ?></h1>
+        </div>
+        <div class="ui-actions">
             <?= Html::a('<i class="fas fa-pen"></i> Edit', ['update', 'id' => $model->id], ['class' => 'btn btn-outline-primary btn-sm', 'encode' => false]) ?>
             <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
         </div>

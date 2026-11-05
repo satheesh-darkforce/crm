@@ -2,12 +2,14 @@
 
 namespace backend\controllers;
 
+use backend\assets\ClientAsset;
 use backend\models\AccLedger;
 use backend\models\ClientModel;
 use backend\models\Invoice;
 use backend\models\User;
 use Yii;
 use yii\data\ArrayDataProvider;
+use yii\web\BadRequestHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
@@ -16,90 +18,80 @@ use yii\web\Response;
  */
 class ClientController extends Controller
 {
+    /** Full pages get the Clients stylesheet/script. */
+    public function render($view, $params = []): string
+    {
+        ClientAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     public function actionIndex(): string
     {
-        $db = Yii::$app->db;
-
         // Mirror Yii1 Client::search() filter set — individual fields, all LIKE-matched.
-        $req         = Yii::$app->request;
-        $name        = trim((string)$req->get('name', ''));          // legacy combined name/company filter
-        $clientName  = trim((string)$req->get('client_name', ''));
-        $companyName = trim((string)$req->get('company_name', ''));
-        $phone       = trim((string)$req->get('phone', ''));
-        $email       = trim((string)$req->get('email_id', ''));
-        $gstNo       = trim((string)$req->get('gst_no', ''));
-        $clientType  = trim((string)$req->get('client_type', ''));
+        $req     = Yii::$app->request;
+        $filters = [];
+        foreach (['name', 'client_name', 'company_name', 'phone', 'email_id', 'gst_no', 'client_type'] as $key) {
+            $value = $req->get($key, '');
+            $filters[$key] = is_string($value) ? mb_substr(trim($value), 0, 100) : ''; // arrays from tampered URLs are ignored
+        }
+        if ($filters['client_type'] !== '' && !isset(ClientModel::typeOptions()[(int)$filters['client_type']])) {
+            Yii::$app->session->setFlash('warning', 'Ignored an invalid client type filter.');
+            $filters['client_type'] = '';
+        }
 
         $where  = 'c.status = 1';
         $params = [];
-
-        if ($name !== '') {
-            $where .= " AND (c.client_name LIKE :legacyname OR c.company_name LIKE :legacyname)";
-            $params[':legacyname'] = '%' . $name . '%';
+        if ($filters['name'] !== '') { // legacy combined name/company filter
+            $where .= ' AND (c.client_name LIKE :legacyname OR c.company_name LIKE :legacyname)';
+            $params[':legacyname'] = '%' . $filters['name'] . '%';
         }
-        if ($clientName !== '') {
-            $where .= ' AND c.client_name LIKE :cname';
-            $params[':cname'] = '%' . $clientName . '%';
+        foreach (['client_name' => 'c.client_name', 'company_name' => 'c.company_name', 'phone' => 'c.phone',
+                  'email_id' => 'c.email_id', 'gst_no' => 'c.gst_no'] as $key => $column) {
+            if ($filters[$key] !== '') {
+                $where .= " AND $column LIKE :$key";
+                $params[":$key"] = '%' . $filters[$key] . '%';
+            }
         }
-        if ($companyName !== '') {
-            $where .= ' AND c.company_name LIKE :coname';
-            $params[':coname'] = '%' . $companyName . '%';
-        }
-        if ($phone !== '') {
-            $where .= ' AND c.phone LIKE :phone';
-            $params[':phone'] = '%' . $phone . '%';
-        }
-        if ($email !== '') {
-            $where .= ' AND c.email_id LIKE :email';
-            $params[':email'] = '%' . $email . '%';
-        }
-        if ($gstNo !== '') {
-            $where .= ' AND c.gst_no LIKE :gst';
-            $params[':gst'] = '%' . $gstNo . '%';
-        }
-        if ($clientType !== '' && in_array($clientType, ['1', '2', '3'], true)) {
+        if ($filters['client_type'] !== '') {
             $where .= ' AND c.client_type = :ctype';
-            $params[':ctype'] = (int)$clientType;
+            $params[':ctype'] = (int)$filters['client_type'];
         }
 
-        // Yii1 parity: join work_report directly on wr.client_id (NOT via project),
-        // sort by MAX(wr.work_id) DESC so clients with the most recent work activity
-        // appear first. last_work_date / cur_month / last_month aggregate from
-        // work_report.total_time (stored in SECONDS).
-        $rows = $db->createCommand("
+        // Yii1 parity: work_report joined on wr.client_id (NOT via project), clients
+        // with the most recent work first. total_time is stored in SECONDS.
+        // Aggregating work_report once per client in a derived table (with date
+        // ranges instead of DATE_FORMAT) keeps this ~5x faster than grouping the
+        // joined rows.
+        $curStart  = date('Y-m-01');
+        $lastStart = date('Y-m-01', strtotime($curStart . ' -1 month'));
+        $nextStart = date('Y-m-01', strtotime($curStart . ' +1 month'));
+        $rows = Yii::$app->db->createCommand("
             SELECT c.id, c.user_id, c.client_name, c.company_name,
                    c.phone, c.email_id, c.gst_no, c.logo, c.client_type, c.status,
-                   MAX(wr.work_id) AS max_work_id,
-                   MAX(wr.date)    AS last_work_date,
-                   SUM(CASE WHEN DATE_FORMAT(wr.date, '%Y-%m') = :curMonth
-                            THEN wr.total_time ELSE 0 END) AS cur_month_secs,
-                   SUM(CASE WHEN DATE_FORMAT(wr.date, '%Y-%m') = :lastMonth
-                            THEN wr.total_time ELSE 0 END) AS last_month_secs
+                   wr.max_work_id, wr.last_work_date,
+                   COALESCE(wr.cur_month_secs, 0)  AS cur_month_secs,
+                   COALESCE(wr.last_month_secs, 0) AS last_month_secs
             FROM client c
-            LEFT JOIN work_report wr ON wr.client_id = c.id AND wr.status = 1
+            LEFT JOIN (
+                SELECT client_id,
+                       MAX(work_id) AS max_work_id,
+                       MAX(date)    AS last_work_date,
+                       SUM(CASE WHEN date >= :curStart  AND date < :nextStart THEN total_time ELSE 0 END) AS cur_month_secs,
+                       SUM(CASE WHEN date >= :lastStart AND date < :curStart  THEN total_time ELSE 0 END) AS last_month_secs
+                FROM work_report
+                WHERE status = 1
+                GROUP BY client_id
+            ) wr ON wr.client_id = c.id
             WHERE $where
-            GROUP BY c.id
-            ORDER BY MAX(wr.work_id) IS NULL, MAX(wr.work_id) DESC, c.id DESC
-        ", array_merge($params, [
-            ':curMonth'  => date('Y-m'),
-            ':lastMonth' => date('Y-m', strtotime('-1 month')),
-        ]))->queryAll();
+            ORDER BY wr.max_work_id IS NULL, wr.max_work_id DESC, c.id DESC
+        ", array_merge($params, [':curStart' => $curStart, ':lastStart' => $lastStart, ':nextStart' => $nextStart]))->queryAll();
 
         $dataProvider = new ArrayDataProvider([
             'allModels'  => $rows,
             'pagination' => ['pageSize' => 20],
         ]);
 
-        return $this->render('index', [
-            'dataProvider' => $dataProvider,
-            'searchName'   => $name,
-            'clientName'   => $clientName,
-            'companyName'  => $companyName,
-            'phone'        => $phone,
-            'email'        => $email,
-            'gstNo'        => $gstNo,
-            'clientType'   => $clientType,
-        ]);
+        return $this->render('index', compact('dataProvider', 'filters'));
     }
 
     public function actionView(int $id): string
@@ -109,8 +101,6 @@ class ClientController extends Controller
         $lastMonth = date('Y-m', strtotime('-1 month'));
 
         // work_report.total_time is stored in SECONDS (Yii1 parity).
-        // Renamed *_secs to make the unit obvious — the previous *_mins names
-        // led to a formatter bug that displayed values 60× too large.
         $workRows = Yii::$app->db->createCommand("
             SELECT p.title AS project_title,
                    SUM(CASE WHEN DATE_FORMAT(wr.date,'%Y-%m') = :cur  THEN wr.total_time ELSE 0 END) AS cur_secs,
@@ -148,14 +138,19 @@ class ClientController extends Controller
 
     public function actionAccessPermissions(int $id): string|Response
     {
-        $client = $this->findModel($id);
+        $client  = $this->findModel($id);
         $granted = array_filter(explode(',', (string)$client->access_permissions));
 
         if (Yii::$app->request->isPost) {
-            $options = Yii::$app->request->post('accessoptions', []);
+            // Only routes offered on the page can be stored.
+            $allowed = array_merge(...array_map('array_keys', array_values(ClientModel::portalPermissionOptions())));
+            $posted  = Yii::$app->request->post('accessoptions', []);
+            $options = array_values(array_intersect($allowed, is_array($posted) ? $posted : []));
             $client->access_permissions = $options ? implode(',', $options) : null;
             $client->save(false);
-            Yii::$app->session->setFlash('success', 'Permissions saved.');
+            Yii::$app->session->setFlash('success', $options
+                ? 'Portal permissions saved (' . count($options) . ' granted).'
+                : 'Portal permissions saved. This client has no portal access.');
             return $this->redirect(['view', 'id' => $id]);
         }
 
@@ -164,43 +159,30 @@ class ClientController extends Controller
 
     public function actionCreate(): string|Response
     {
-        $client = new ClientModel();
+        $client = new ClientModel(['tax_exemption' => 0]);
         $user   = new User();
 
         if (Yii::$app->request->isPost) {
             $post = Yii::$app->request->post();
 
-            $user->username = trim($post['username'] ?? '');
+            $user->username = is_string($post['username'] ?? null) ? trim($post['username']) : '';
             $user->usertype = User::TYPE_CLIENT;
             $user->status   = 1;
-            $rawPassword    = trim($post['password'] ?? '');
+            $rawPassword    = is_string($post['password'] ?? null) ? $post['password'] : '';
 
             $client->load($post, 'ClientModel');
             $client->status = 1;
 
-            // Collect errors together
-            $hasUserError = false;
-            if ($rawPassword === '') {
-                $user->addError('password', 'Password is required.');
-                $hasUserError = true;
-            }
-            if (!$hasUserError) {
-                $user->setPassword($rawPassword);
-            }
-
-            $userValid   = !$hasUserError && $user->validate();
+            $loginValid  = ClientModel::validateLogin($user, $rawPassword);
             $clientValid = $client->validate();
 
-            if (!$userValid || !$clientValid) {
-                return $this->render('create', compact('client', 'user'));
+            if ($loginValid && $clientValid) {
+                if ($client->saveWithLogin($user)) {
+                    Yii::$app->session->setFlash('success', 'Client created successfully.');
+                    return $this->redirect(['view', 'id' => $client->id]);
+                }
+                Yii::$app->session->setFlash('error', 'The client could not be saved. Please try again — nothing was created.');
             }
-
-            if ($client->saveWithLogin($user)) {
-                Yii::$app->session->setFlash('success', 'Client created successfully.');
-                return $this->redirect(['view', 'id' => $client->id]);
-            }
-
-            $client->addError('client_name', 'Failed to save client record.');
         }
 
         return $this->render('create', compact('client', 'user'));
@@ -230,40 +212,52 @@ class ClientController extends Controller
     }
 
     /**
-     * Reset the client's login password (POST, modal form).
+     * Reset the client's login password (POST, modal form on the list and view pages).
      */
     public function actionResetPassword(int $id): Response
     {
-        if (!Yii::$app->request->isPost) { throw new \yii\web\BadRequestHttpException('POST only.'); }
-        $client = $this->findModel($id);
+        if (!Yii::$app->request->isPost) {
+            throw new BadRequestHttpException('POST only.');
+        }
+        $client   = $this->findModel($id);
+        $back     = Yii::$app->request->post('return') === 'view' ? ['view', 'id' => $id] : ['index'];
+        $password = Yii::$app->request->post('new_password', '');
+        $password = is_string($password) ? $password : '';
 
-        $newPassword = trim(Yii::$app->request->post('new_password', ''));
-        if ($newPassword === '') {
-            Yii::$app->session->setFlash('error', 'Password cannot be empty.');
-            return $this->redirect(['index']);
+        if ($error = ClientModel::passwordError($password)) {
+            Yii::$app->session->setFlash('error', $error);
+            return $this->redirect($back);
         }
 
         $user = User::findOne(['user_id' => $client->user_id]);
         if ($user) {
-            $user->setPassword($newPassword);
+            $user->setPassword(trim($password));
             $user->force_password_change = 1;
             $user->save(false);
-            Yii::$app->session->setFlash('success', "Password reset for {$client->client_name}.");
+            Yii::$app->session->setFlash('success', "Password reset for {$client->client_name}. They will be asked to change it at next login.");
         } else {
-            Yii::$app->session->setFlash('error', 'User account not found for this client.');
+            Yii::$app->session->setFlash('error', 'This client has no login account, so there is no password to reset.');
         }
 
-        return $this->redirect(['index']);
+        return $this->redirect($back);
     }
 
+    /**
+     * Deactivate (soft delete) a client and its portal login.
+     */
     public function actionDelete(int $id): Response
     {
-        if (!Yii::$app->request->isPost) { throw new \yii\web\BadRequestHttpException('POST only.'); }
+        if (!Yii::$app->request->isPost) {
+            throw new BadRequestHttpException('POST only.');
+        }
         $client         = $this->findModel($id);
         $client->status = 0;
         $client->save(false);
+        if ($client->user_id) {
+            User::updateAll(['status' => 0], ['user_id' => $client->user_id, 'usertype' => User::TYPE_CLIENT]);
+        }
 
-        Yii::$app->session->setFlash('success', 'Client deactivated.');
+        Yii::$app->session->setFlash('success', "{$client->client_name} was deactivated and can no longer log in.");
         return $this->redirect(['index']);
     }
 

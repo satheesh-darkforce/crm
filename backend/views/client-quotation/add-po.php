@@ -16,7 +16,7 @@ use yii\helpers\Url;
 $this->title = 'Add Purchase Order — ' . $rootQuote->quote_no;
 ?>
 <style>
-.po-wrap   { background:#f8fafc; padding:24px 20px; border-radius:14px; }
+.po-wrap   { padding:0; }
 .po-card   { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:22px 24px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.04); }
 .po-head   { padding-bottom:14px; margin-bottom:18px; border-bottom:2px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between; }
 .po-head h4{ margin:0; font-weight:700; color:#1e293b; }
@@ -24,17 +24,18 @@ $this->title = 'Add Purchase Order — ' . $rootQuote->quote_no;
 .required-star { color:#dc2626; }
 </style>
 
-<div class="po-wrap">
-    <div class="po-card">
-        <div class="po-head">
-            <h4><i class="fas fa-file-invoice-dollar me-2 text-primary"></i> Add Purchase Order</h4>
-            <a href="<?= Url::to(['view', 'id' => $returnId]) ?>" class="btn btn-sm btn-outline-secondary"
-               onclick="event.preventDefault(); window.location.replace(this.href); return false;">
-                <i class="fas fa-arrow-left me-1"></i> Back to Quotation
-            </a>
+<div class="ui-page po-wrap" style="max-width:1000px">
+    <div class="ui-head">
+        <div>
+            <h1>Add purchase order</h1>
+            <div class="ui-sub">Record the client's PO against this quotation.</div>
         </div>
-
-        <?php $form = ActiveForm::begin([
+        <div class="ui-actions">
+            <a href="<?= Url::to(['view', 'id' => $returnId]) ?>" class="btn btn-outline-secondary btn-sm" onclick="event.preventDefault(); window.location.replace(this.href); return false;"><i class="fas fa-arrow-left me-1"></i>Back to quotation</a>
+        </div>
+    </div>
+    <div class="po-card">
+<?php $form = ActiveForm::begin([
             'id' => 'po-form',
             'enableClientValidation' => true,
             'enableAjaxValidation'   => false,

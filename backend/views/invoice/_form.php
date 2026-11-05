@@ -12,6 +12,7 @@
 /** @var string $lutArn */
 /** @var int|string $invoiceCategoryParam */
 
+use backend\models\BankDetail;
 use kartik\select2\Select2;
 use yii\bootstrap5\ActiveForm;
 use yii\bootstrap5\Html;
@@ -28,177 +29,104 @@ if (!$client && !$isNew && $invoice->client_id) {
     $client = \backend\models\ClientModel::findOne($invoice->client_id);
 }
 
-// Invoice category label & color
-$categoryLabel = match ($catId) {
-    1 => 'Service Invoice',
-    2 => 'Sales Invoice',
-    default => 'Invoice',
-};
-$categoryColor = ($catId == 1) ? 'green' : 'red';
+$categoryLabel   = match ($catId) { 1 => 'Service invoice', 2 => 'Sales invoice', default => 'Invoice' };
+$clientTypeLabel = $client ? match ((int)$client->client_type) { 1 => 'Inter-state', 2 => 'Intra-state', 3 => 'International', default => 'Not set' } : '';
 
-// Client type label
-$clientTypeLabel = '';
-if ($client) {
-    $clientTypeLabel = match ((int)$client->client_type) {
-        1 => 'Inter-State',
-        2 => 'Intra-State',
-        3 => 'International',
-        default => 'Not Set',
-    };
-}
+// Tax rates come from the invoice (set by the controller from master settings), never hard-coded.
+$sgstPct = (float)($invoice->sgst_percent ?? 0);
+$cgstPct = (float)($invoice->cgst_percent ?? 0);
+$igstPct = (float)($invoice->igst_percent ?? 0);
 
-// Tax percentages
-$sgstPct = 0; $cgstPct = 0; $igstPct = 0;
-if ($client && !$client->tax_exemption) {
-    if ((int)$client->client_type === 2) { $sgstPct = 9; $cgstPct = 9; }
-    elseif ((int)$client->client_type === 1) { $igstPct = 18; }
-}
-
-// Transaction charge default
 $transactionChargePct = $invoice->transaction_charge_percent ?? 0;
+// New invoices start on the default bank account.
+if ($isNew && !$invoice->bank_id) {
+    $invoice->bank_id = BankDetail::defaultId();
+}
 ?>
 
 <?php $form = ActiveForm::begin([
     'id' => 'invoice-form',
-    'options' => ['onsubmit' => 'return validate()'],
+    'options' => ['onsubmit' => 'return validate()', 'class' => 'ui-form'],
 ]); ?>
 
-<?= $form->errorSummary($invoice) ?>
+<?= $form->errorSummary($invoice, ['class' => 'alert alert-danger', 'header' => '<p>Please fix the following:</p>']) ?>
+<p class="ui-req-note">Fields marked <b>*</b> are required.</p>
 
-<!-- ─── Top Card: Client Info (left) + Form Fields (right) ─── -->
-<div class="card mb-3">
-    <div class="card-body">
-        <div class="row">
-            <!-- LEFT: Read-only client info -->
-            <div class="col-md-6">
-                <table class="table table-borderless table-sm mb-0">
-                    <tr>
-                        <th class="text-nowrap" style="width:200px">Invoice Category :</th>
-                        <td>
-                            <span style="background-color:yellow; font-weight:bold; color:<?= $categoryColor ?>">
-                                <?= Html::encode($categoryLabel) ?>
-                            </span>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th>Invoice Number :</th>
-                        <td>
-                            <span style="background-color:yellow; font-weight:bold; color:<?= $categoryColor ?>">
-                                <?= Html::encode($nextNo ?? 'Auto-generated') ?>
-                            </span>
-                        </td>
-                    </tr>
-                    <?php if ($client): ?>
-                    <tr>
-                        <th>Client Name :</th>
-                        <td><?= Html::encode($client->client_name) ?></td>
-                    </tr>
-                    <tr>
-                        <th>Company Name :</th>
-                        <td><?= Html::encode($client->company_name) ?></td>
-                    </tr>
-                    <tr>
-                        <th>Client Type :</th>
-                        <td><?= Html::encode($clientTypeLabel) ?></td>
-                    </tr>
-                    <tr>
-                        <th>GST Number :</th>
-                        <td><?= Html::encode($client->gst_no) ?></td>
-                    </tr>
-                    <tr>
-                        <th>Tax Exemption Applicable? :</th>
-                        <td><?= $client->tax_exemption == 1 ? 'Yes' : 'No' ?></td>
-                    </tr>
-                    <?php if ($client->tax_exemption == 1): ?>
-                    <tr>
-                        <th>Tax Exemption Reason :</th>
-                        <td><?= Html::encode($client->tax_exemption_reason) ?></td>
-                    </tr>
-                    <?php endif; ?>
-                    <tr>
-                        <th>Address :</th>
-                        <td><?= Html::encode($client->address) ?></td>
-                    </tr>
+<div class="row g-3 mb-3">
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header ui-section d-flex align-items-center gap-2">Bill to
+                <span class="ui-pill tone-<?= $isSale ? 'warning' : 'accent' ?> ms-auto"><?= Html::encode($categoryLabel) ?></span>
+            </div>
+            <?php if ($client): ?>
+                <table class="table ui-detail mb-0">
+                    <tr><th scope="row">Invoice no.</th><td class="mono fw-semibold"><?= Html::encode($nextNo ?: 'Assigned on save') ?></td></tr>
+                    <tr><th scope="row">Company</th><td><?= Html::encode($client->company_name) ?><div class="small text-muted"><?= Html::encode($client->client_name) ?></div></td></tr>
+                    <tr><th scope="row">Client type</th><td><?= Html::encode($clientTypeLabel) ?></td></tr>
+                    <tr><th scope="row">GSTIN</th><td class="mono"><?= $client->gst_no ? Html::encode($client->gst_no) : '<span class="ui-pill tone-warning plain">Not set</span>' ?></td></tr>
+                    <tr><th scope="row">Tax exemption</th><td><?= $client->tax_exemption == 1 ? 'Yes — ' . Html::encode($client->tax_exemption_reason) : 'No' ?></td></tr>
+                    <tr><th scope="row">Address</th><td><?= nl2br(Html::encode($client->address)) ?></td></tr>
                     <?php if ((int)$client->client_type === 3 && $lutArn): ?>
-                    <tr>
-                        <th>LUT ARN :</th>
-                        <td><?= Html::encode($lutArn) ?></td>
-                    </tr>
-                    <?php endif; ?>
-                    <?php else: ?>
-                    <tr>
-                        <td colspan="2" class="text-danger">No client selected. Please use the invoice modal to select a client first.</td>
-                    </tr>
+                        <tr><th scope="row">LUT ARN</th><td class="mono"><?= Html::encode($lutArn) ?></td></tr>
                     <?php endif; ?>
                 </table>
-            </div>
+            <?php else: ?>
+                <div class="card-body">
+                    <?= $this->render('@backend/views/_ui/_empty', ['icon' => 'user-tie', 'title' => 'No client selected', 'small' => true,
+                        'text' => 'Start from "New tax invoice" or "New proforma" in the menu and pick the client there.']) ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
 
-            <!-- RIGHT: Editable form fields -->
-            <div class="col-md-6">
-                <div class="mb-3">
-                    <label class="form-label">Invoice Title <span class="text-danger">*</span></label>
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header ui-section">Invoice details</div>
+            <div class="card-body row g-3">
+                <div class="col-12 required">
+                    <label class="form-label" for="invoice-title">Invoice title</label>
                     <?= Html::activeTextInput($invoice, 'title', [
-                        'class' => 'form-control form-control-sm',
-                        'placeholder' => 'Invoice Title',
-                        'required' => true,
-                        'maxlength' => 500,
+                        'class' => 'form-control form-control-sm', 'placeholder' => 'e.g. Website maintenance — November', 'required' => true, 'maxlength' => 500,
                     ]) ?>
                 </div>
-                <div class="row g-2">
-                    <div class="col-sm-6 mb-3">
-                        <label class="form-label">Currency <span class="text-danger">*</span></label>
-                        <select id="invoice-currency-sel" name="Invoice[currency]" class="form-select form-select-sm" required>
-                            <?php foreach ($currencies ?? [] as $cur): ?>
-                            <option value="<?= $cur->id ?>" data-currencycode="<?= Html::encode($cur->currency) ?>"
-                                <?= (!$isNew && $invoice->currency == $cur->currency) ? 'selected' : '' ?>>
-                                <?= Html::encode($cur->title) ?>
-                            </option>
-                            <?php endforeach; ?>
-                            <?php if (empty($currencies)): ?>
-                            <option value="">—</option>
-                            <?php endif; ?>
-                        </select>
-                    </div>
-                    <div class="col-sm-6 mb-3">
-                        <label class="form-label">Currency Exchange Rate <span class="text-danger">*</span></label>
-                        <?= Html::activeInput('number', $invoice, 'currency_exchange_rate', [
-                            'id' => 'currency_exchange_rate',
-                            'class' => 'form-control form-control-sm',
-                            'min' => '1',
-                            'max' => '10000',
-                            'step' => '0.01',
-                            'required' => true,
-                            'placeholder' => 'Currency Exchange Rate',
-                        ]) ?>
-                    </div>
+                <div class="col-sm-6 required">
+                    <label class="form-label" for="invoice-currency-sel">Currency</label>
+                    <select id="invoice-currency-sel" name="Invoice[currency]" class="form-select form-select-sm" required>
+                        <?php foreach ($currencies ?? [] as $cur): ?>
+                        <option value="<?= $cur->id ?>" data-currencycode="<?= Html::encode($cur->currency) ?>"
+                            <?= (!$isNew && $invoice->currency == $cur->currency) ? 'selected' : '' ?>>
+                            <?= Html::encode($cur->title) ?>
+                        </option>
+                        <?php endforeach; ?>
+                        <?php if (empty($currencies)): ?>
+                        <option value="">—</option>
+                        <?php endif; ?>
+                    </select>
                 </div>
-                <div class="row g-2">
-                    <div class="col-sm-6 mb-3">
-                        <label class="form-label">Transaction Charge %</label>
-                        <?= Html::activeInput('number', $invoice, 'transaction_charge_percent', [
-                            'id' => 'transaction_charge_percent',
-                            'class' => 'form-control form-control-sm',
-                            'min' => '0',
-                            'max' => '100',
-                            'step' => '1',
-                            'value' => $transactionChargePct,
-                        ]) ?>
-                    </div>
-                    <div class="col-sm-6 mb-3">
-                        <label class="form-label">Payment Bank Info</label>
-                        <?php
-                        $bankData = ArrayHelper::map($banks ?? [], 'id', function ($b) {
-                            return $b->bank_name;
-                        });
-                        echo Select2::widget([
-                            'name' => 'Invoice[bank_id]',
-                            'value' => $invoice->bank_id,
-                            'data' => $bankData,
-                            'options' => ['placeholder' => 'Select Bank', 'id' => 'invoice-bank-id'],
-                            'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
-                        ]);
-                        ?>
-                    </div>
+                <div class="col-sm-6 required">
+                    <label class="form-label" for="currency_exchange_rate">Exchange rate (to ₹)</label>
+                    <?= Html::activeInput('number', $invoice, 'currency_exchange_rate', [
+                        'id' => 'currency_exchange_rate', 'class' => 'form-control form-control-sm text-end',
+                        'min' => '1', 'max' => '10000', 'step' => '0.01', 'required' => true, 'placeholder' => '1.00',
+                    ]) ?>
+                </div>
+                <div class="col-sm-6">
+                    <label class="form-label" for="transaction_charge_percent">Transaction charge %</label>
+                    <?= Html::activeInput('number', $invoice, 'transaction_charge_percent', [
+                        'id' => 'transaction_charge_percent', 'class' => 'form-control form-control-sm text-end',
+                        'min' => '0', 'max' => '100', 'step' => '1', 'value' => $transactionChargePct,
+                    ]) ?>
+                    <div class="form-text">Added to each line as you add it; locked once lines exist.</div>
+                </div>
+                <div class="col-sm-6">
+                    <label class="form-label" for="invoice-bank-id">Payment bank</label>
+                    <?= Select2::widget([
+                        'name' => 'Invoice[bank_id]', 'value' => $invoice->bank_id,
+                        'data' => ArrayHelper::map($banks ?? [], 'id', fn($b) => $b->bank_name . ' · ' . substr($b->acc_no, -4)),
+                        'options' => ['placeholder' => 'Select bank', 'id' => 'invoice-bank-id'], 'size' => Select2::SMALL,
+                        'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
+                    ]) ?>
+                    <div class="form-text">Printed on the invoice under "Payment bank info".</div>
                 </div>
             </div>
         </div>
@@ -214,22 +142,23 @@ $transactionChargePct = $invoice->transaction_charge_percent ?? 0;
 <?= Html::activeHiddenInput($invoice, 'milestone_value') ?>
 <?= Html::hiddenInput('Invoice[lut_arn]', ($client && (int)$client->client_type === 3) ? $lutArn : '') ?>
 
-<!-- ─── Bottom Card: Line Items Table ─── -->
-<div class="card">
+<!-- ─── Line items ─── -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header ui-section">Line items <span class="ui-section-meta">Fill the first row, then press + to add it</span></div>
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-striped table-sm" id="invoice-items-table">
-                <thead>
+            <table class="table table-sm list-table invoice-items mb-0" id="invoice-items-table">
+                <thead class="table-light">
                     <tr>
                         <th style="width:5%">#</th>
-                        <th style="width:<?= $isSale ? '12%' : '15%' ?>" class="text-danger">HSN/SAC <span>*</span></th>
-                        <th style="width:<?= $isSale ? '32%' : '60%' ?>" class="text-danger">Particulars <span>*</span></th>
+                        <th style="width:<?= $isSale ? '12%' : '15%' ?>">HSN/SAC <b class="text-danger">*</b></th>
+                        <th style="width:<?= $isSale ? '32%' : '60%' ?>">Particulars <b class="text-danger">*</b></th>
                         <?php if ($isSale): ?>
                             <th style="width:12%">Model</th>
                             <th style="width:8%">Qty</th>
                             <th style="width:12%">Rate</th>
                         <?php endif; ?>
-                        <th style="width:<?= $isSale ? '14%' : '20%' ?>" class="text-danger">Amount <span>*</span></th>
+                        <th style="width:<?= $isSale ? '14%' : '20%' ?>">Amount <b class="text-danger">*</b></th>
                         <th style="width:40px"></th>
                     </tr>
                 </thead>
@@ -372,8 +301,9 @@ $transactionChargePct = $invoice->transaction_charge_percent ?? 0;
             </div>
         </div>
 
-        <div class="mt-3">
-            <?= Html::submitButton('Preview', ['class' => 'btn btn-primary']) ?>
+        <div class="ui-form-actions mt-3">
+            <?= Html::submitButton('<i class="fas fa-eye me-1"></i>Preview', ['class' => 'btn btn-primary btn-sm px-4']) ?>
+            <span class="small text-muted">Nothing is final until you choose "Save and download" on the preview.</span>
         </div>
     </div>
 </div>

@@ -14,20 +14,16 @@ $pagination = $dataProvider->getPagination();
 $total      = $dataProvider->getTotalCount();
 $req        = Yii::$app->request;
 ?>
-<style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-</style>
 
-<div class="asset-handover-index">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page asset-handover-index">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Asset Handover</h5>
-            <small class="text-muted"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></small>
+            <h1>Asset Handover</h1>
+            <div class="ui-sub"><?= $total ?> record<?= $total != 1 ? 's' : '' ?></div>
         </div>
-        <?= Html::a('+ Add Handover', ['add-handover'], ['class' => 'btn btn-primary btn-sm']) ?>
+        <div class="ui-actions">
+            <?= Html::a('+ Add Handover', ['add-handover'], ['class' => 'btn btn-primary btn-sm']) ?>
+        </div>
     </div>
 
     <!-- Filters -->

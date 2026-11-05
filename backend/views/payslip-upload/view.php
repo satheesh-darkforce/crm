@@ -81,7 +81,6 @@ if ($actionIdx !== null) { $skipIdx[$actionIdx] = true; }
 .payslip-upload-view .csv-table thead .col-act { z-index: 4; background: #f4f6f9; }
 .payslip-upload-view .csv-table tbody tr:nth-child(odd) .col-act { background: #fafbfc; }
 .payslip-upload-view .csv-table tbody tr:hover           .col-act { background: #eef4ff; }
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
 /* Net Pay pinned sticky, immediately to the LEFT of the 92px-wide Action column. */
 .payslip-upload-view .csv-table .col-netpay {
     position: sticky; right: 92px; z-index: 2;
@@ -94,15 +93,15 @@ if ($actionIdx !== null) { $skipIdx[$actionIdx] = true; }
 .payslip-upload-view .csv-table tbody tr:hover           .col-netpay { background: #eef4ff; }
 </style>
 
-<div class="payslip-upload-view">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page payslip-upload-view">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold"><?= Html::encode($this->title) ?></h5>
-            <?php if (!$fileError && !empty($data)): ?>
-                <small class="text-muted"><?= count($data) ?> employee row<?= count($data) != 1 ? 's' : '' ?></small>
-            <?php endif; ?>
+            <h1><?= Html::encode($this->title) ?></h1>
+            <div class="ui-sub"><?= count($data) ?> employee row<?= count($data) != 1 ? 's' : '' ?></div>
         </div>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm">

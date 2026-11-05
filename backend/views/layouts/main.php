@@ -422,6 +422,17 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
         }
         #topbar .ms-auto { display: flex; align-items: center; gap: .6rem; min-width: 0; }
         #topbar .ms-auto > * { flex-shrink: 0; }
+        /* Phones: header buttons collapse to icon + count so the bar never
+           pushes the page wider than the screen. */
+        #topbar .tb-icon { display: none; }
+        #topbar .tb-user { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        @media (max-width: 575.98px) {
+            #topbar { gap: .5rem; }
+            #topbar .ms-auto { gap: .35rem; }
+            #topbar .tb-label { display: none; }
+            #topbar .tb-icon { display: inline-block; margin-right: .2rem; }
+            #topbar .tb-user { max-width: 92px; }
+        }
         .live-hdr-dot { width: .55rem; height: .55rem; border-radius: 50%; background: #e74c3c; display: inline-block; animation: live-hdr-pulse 1.3s infinite; }
         @keyframes live-hdr-pulse { 0% { box-shadow: 0 0 0 0 rgba(231,76,60,.6); } 70% { box-shadow: 0 0 0 6px rgba(231,76,60,0); } 100% { box-shadow: 0 0 0 0 rgba(231,76,60,0); } }
 
@@ -1146,27 +1157,27 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
 
         <!-- Live attendance dashboard (admins / those with the permission) -->
         <?php if ($ca('attendance/live')): ?>
-        <a href="<?= \yii\helpers\Url::to(['/attendance/live']) ?>" class="btn btn-sm btn-outline-danger position-relative d-flex align-items-center gap-1">
-            <span class="live-hdr-dot"></span> Live
+        <a href="<?= \yii\helpers\Url::to(['/attendance/live']) ?>" class="btn btn-sm btn-outline-danger position-relative d-flex align-items-center gap-1" title="Live attendance" aria-label="Live attendance">
+            <span class="live-hdr-dot"></span> <span class="tb-label">Live</span>
         </a>
         <?php endif; ?>
 
         <!-- Badges -->
         <?php if ($pendingLeaves > 0): ?>
-        <a href="<?= \yii\helpers\Url::to(['/leave/index']) ?>" class="btn btn-sm btn-outline-warning position-relative">
-            Leaves <span class="badge bg-danger"><?= $pendingLeaves ?></span>
+        <a href="<?= \yii\helpers\Url::to(['/leave/index']) ?>" class="btn btn-sm btn-outline-warning position-relative" title="Pending leave requests" aria-label="Pending leave requests">
+            <i class="fas fa-plane-departure tb-icon"></i><span class="tb-label">Leaves</span> <span class="badge bg-danger"><?= $pendingLeaves ?></span>
         </a>
         <?php endif; ?>
         <?php if ($openLeads > 0): ?>
-        <a href="<?= \yii\helpers\Url::to(['/lead/assigned']) ?>" class="btn btn-sm btn-outline-info position-relative" title="Unread lead follow-ups assigned to you">
-            Leads <span class="badge bg-danger"><?= $openLeads ?></span>
+        <a href="<?= \yii\helpers\Url::to(['/lead/assigned']) ?>" class="btn btn-sm btn-outline-primary position-relative" title="Unread lead follow-ups assigned to you" aria-label="Unread lead follow-ups assigned to you">
+            <i class="fas fa-bullseye tb-icon"></i><span class="tb-label">Leads</span> <span class="badge bg-danger"><?= $openLeads ?></span>
         </a>
         <?php endif; ?>
 
         <!-- User dropdown -->
         <div class="dropdown">
-            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                    data-bs-toggle="dropdown" aria-expanded="false">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle tb-user" type="button"
+                    data-bs-toggle="dropdown" aria-expanded="false" title="<?= Html::encode($username) ?>">
                 <?= Html::encode($username) ?>
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
@@ -1342,6 +1353,7 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
         // A "filter card" = a .card containing a GET form with at least one named text/select input.
         document.querySelectorAll('.card').forEach(function (card) {
             if (card.dataset.searchToggleApplied === '1') return;
+            if (card.closest('.ui-page')) return; // redesigned pages have their own Search toggle
             var form = card.querySelector('form[method="get" i], form[method="GET"]');
             if (!form) return;
             var meaningful = form.querySelector('input[name]:not([type="hidden"]):not([type="submit"]), select[name], textarea[name]');

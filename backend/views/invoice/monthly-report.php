@@ -4,229 +4,113 @@
 /** @var array $outTotals */
 /** @var \backend\models\InwardInvoice[] $inInvoices */
 /** @var array $inTotals */
-/** @var array $netTax */
+/** @var array $netTax   sgst, cgst, igst, total — output tax minus input credit */
 /** @var int $year */
 /** @var int $month */
 
+use common\components\UserAccess;
 use yii\bootstrap5\Html;
 use yii\helpers\Url;
 
-$this->title = 'Monthly GST Report — ' . date('F Y', mktime(0, 0, 0, $month, 1, $year));
+$label = date('F Y', mktime(0, 0, 0, $month, 1, $year));
+$this->title = 'Monthly GST Report — ' . $label;
 
-$months = [1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'June',
-           7=>'July',8=>'August',9=>'September',10=>'October',11=>'November',12=>'December'];
-$years  = range(date('Y'), date('Y') - 5);
+$money = fn($v) => number_format((float)$v, 2);
+$step  = fn(int $d) => ['monthly-report', 'year' => (int)date('Y', mktime(0, 0, 0, $month + $d, 1, $year)), 'month' => (int)date('n', mktime(0, 0, 0, $month + $d, 1, $year))];
+$isFuture = mktime(0, 0, 0, $month + 1, 1, $year) > time();
 
-$fmt = fn(float $v): string => '₹' . number_format($v, 2);
-?>
-<style>
-.list-table th{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.82rem}
-.list-table tfoot td{font-size:.82rem;font-weight:600}
-/* Local override — layout forces .table-responsive overflow:visible globally,
-   but these GST tables have 8 columns and need to scroll on narrow screens. */
-.invoice-monthly-report .table-responsive{overflow-x:auto!important}
-.invoice-monthly-report .list-table td,
-.invoice-monthly-report .list-table th{white-space:nowrap}
-@media (max-width:575.98px){
-    .invoice-monthly-report .gst-summary .card-body{padding:.5rem!important}
-    .invoice-monthly-report .gst-summary .small{font-size:.7rem}
+$monthOptions = [];
+for ($t = strtotime(date('Y-m-01')); $t >= strtotime('first day of -36 months'); $t = strtotime('-1 month', $t)) {
+    $monthOptions[date('Y-n', $t)] = date('F Y', $t);
 }
-</style>
 
-<div class="invoice-monthly-report">
+$tabs = array_filter([
+    'index'          => UserAccess::checkAccess('invoice/index') ? 'Tax invoices' : null,
+    'proforma'       => UserAccess::checkAccess('invoice/proforma') ? 'Proforma' : null,
+    'monthly-report' => 'Monthly GST report',
+]);
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0">Monthly GST Report</h5>
+/** One GST table (outward sales or inward purchases). */
+$table = function (array $rows, array $totals, string $party, callable $partyName, callable $link) use ($money) {
+    ob_start(); ?>
+    <div class="table-responsive">
+        <table class="table list-table ui-table stack mb-0">
+            <thead class="table-light">
+            <tr><th style="width:40px">#</th><th>Invoice</th><th><?= $party ?></th><th class="text-end">Taxable</th><th class="text-end">SGST</th><th class="text-end">CGST</th><th class="text-end">IGST</th><th class="text-end">Net</th></tr>
+            </thead>
+            <tbody>
+            <?php if (!$rows): ?>
+                <tr class="ui-empty-row"><td colspan="8" class="ui-empty-cell"><?= $this->render('@backend/views/_ui/_empty', ['icon' => 'file-invoice', 'title' => 'None this month', 'small' => true]) ?></td></tr>
+            <?php endif; ?>
+            <?php foreach ($rows as $i => $r): ?>
+                <tr>
+                    <td class="cell-num muted"><?= $i + 1 ?></td>
+                    <td class="cell-title"><?= $link($r) ?><div class="small text-muted fw-normal"><?= date('d M', strtotime($r->invoice_date)) ?></div></td>
+                    <td class="small" data-label="<?= $party ?>"><?= Html::encode($partyName($r)) ?></td>
+                    <td class="text-end num" data-label="Taxable"><?= $money($r->grand_total) ?></td>
+                    <td class="text-end num" data-label="SGST"><?= (float)$r->sgst_amount ? $money($r->sgst_amount) : '—' ?></td>
+                    <td class="text-end num" data-label="CGST"><?= (float)$r->cgst_amount ? $money($r->cgst_amount) : '—' ?></td>
+                    <td class="text-end num" data-label="IGST"><?= (float)$r->igst_amount ? $money($r->igst_amount) : '—' ?></td>
+                    <td class="text-end num fw-semibold" data-label="Net"><?= $money($r->net_total) ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+            <?php if ($rows): ?>
+            <tfoot class="table-light"><tr>
+                <td colspan="3" class="text-end small fw-semibold">Total</td>
+                <td class="text-end num fw-semibold"><?= $money($totals['grand']) ?></td><td class="text-end num fw-semibold"><?= $money($totals['sgst']) ?></td>
+                <td class="text-end num fw-semibold"><?= $money($totals['cgst']) ?></td><td class="text-end num fw-semibold"><?= $money($totals['igst']) ?></td>
+                <td class="text-end num fw-bold"><?= $money($totals['net']) ?></td>
+            </tr></tfoot>
+            <?php endif; ?>
+        </table>
     </div>
-
-    <!-- Period selector -->
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body py-2 px-3">
-            <form method="get" class="row g-2 align-items-center">
-                <div class="col-6 col-sm-4 col-md-2">
-                    <select name="month" class="form-select form-select-sm">
-                        <?php foreach ($months as $m => $name): ?>
-                            <option value="<?= $m ?>" <?= $m == $month ? 'selected' : '' ?>><?= $name ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-6 col-sm-4 col-md-2">
-                    <select name="year" class="form-select form-select-sm">
-                        <?php foreach ($years as $y): ?>
-                            <option value="<?= $y ?>" <?= $y == $year ? 'selected' : '' ?>><?= $y ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-12 col-sm-auto">
-                    <button class="btn btn-secondary btn-sm w-100 w-sm-auto">View</button>
-                </div>
+    <?php return ob_get_clean();
+};
+$tile = fn(string $name, float $v) => '<div class="ui-tile' . ($name === 'Total' ? ' is-accent' : '') . '"><div class="t-label">' . $name . ' ' . ($v < 0 ? 'credit' : 'payable') . '</div>'
+    . '<div class="t-value num' . ($v < 0 ? ' text-success' : '') . '">₹' . number_format(abs($v), 2) . '</div><div class="t-sub">' . ($v < 0 ? 'Input exceeds output' : 'Output − input') . '</div></div>';
+?>
+<div class="ui-page invoice-monthly-report">
+    <div class="ui-head">
+        <div>
+            <h1>GST for <?= Html::encode($label) ?></h1>
+            <div class="ui-sub"><?= count($outInvoices) ?> tax invoice<?= count($outInvoices) == 1 ? '' : 's' ?> out · <?= count($inInvoices) ?> purchase invoice<?= count($inInvoices) == 1 ? '' : 's' ?> in</div>
+        </div>
+        <div class="ui-actions">
+            <form method="get" action="<?= Url::to(['monthly-report']) ?>" class="d-flex gap-1 js-month-form">
+                <label class="visually-hidden" for="gst-month">Month</label>
+                <?= Html::dropDownList('ym', $year . '-' . $month, $monthOptions, ['id' => 'gst-month', 'class' => 'form-select form-select-sm', 'style' => 'min-width:160px']) ?>
+                <input type="hidden" name="year" value="<?= $year ?>"><input type="hidden" name="month" value="<?= $month ?>">
             </form>
-        </div>
-    </div>
-
-    <!-- GST Summary Box -->
-    <div class="row g-2 g-md-3 mb-3 gst-summary">
-        <div class="col-6 col-md-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body py-3">
-                    <div class="small text-muted mb-1 text-center">Net SGST Payable</div>
-                    <div class="fw-bold text-center fs-6 <?= $netTax['sgst'] >= 0 ? 'text-danger' : 'text-success' ?>">
-                        <?= $fmt($netTax['sgst']) ?>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body py-3">
-                    <div class="small text-muted mb-1 text-center">Net CGST Payable</div>
-                    <div class="fw-bold text-center fs-6 <?= $netTax['cgst'] >= 0 ? 'text-danger' : 'text-success' ?>">
-                        <?= $fmt($netTax['cgst']) ?>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body py-3">
-                    <div class="small text-muted mb-1 text-center">Net IGST Payable</div>
-                    <div class="fw-bold text-center fs-6 <?= $netTax['igst'] >= 0 ? 'text-danger' : 'text-success' ?>">
-                        <?= $fmt($netTax['igst']) ?>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="card border-0 shadow-sm border-2 h-100 <?= $netTax['total'] >= 0 ? 'border-danger' : 'border-success' ?>">
-                <div class="card-body py-3">
-                    <div class="small text-muted mb-1 text-center">Total Tax Due</div>
-                    <div class="fw-bold text-center fs-5 <?= $netTax['total'] >= 0 ? 'text-danger' : 'text-success' ?>">
-                        <?= $fmt($netTax['total']) ?>
-                    </div>
-                    <div class="text-center" style="font-size:.7rem;color:#6c757d">
-                        <?= $netTax['total'] < 0 ? '(Input credit surplus)' : '(Payable to Govt)' ?>
-                    </div>
-                </div>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Change month">
+                <?= Html::a('<i class="fas fa-chevron-left"></i><span class="visually-hidden">Previous month</span>', $step(-1), ['class' => 'btn btn-outline-secondary', 'encode' => false, 'title' => 'Previous month']) ?>
+                <?= $isFuture ? '<span class="btn btn-outline-secondary disabled" aria-disabled="true"><i class="fas fa-chevron-right"></i></span>'
+                    : Html::a('<i class="fas fa-chevron-right"></i><span class="visually-hidden">Next month</span>', $step(1), ['class' => 'btn btn-outline-secondary', 'encode' => false, 'title' => 'Next month']) ?>
             </div>
         </div>
     </div>
 
-    <div class="row g-3">
+    <?php if (count($tabs) > 1): ?>
+    <nav class="ui-tabs" aria-label="Invoice lists">
+        <?php foreach ($tabs as $r => $tab): ?>
+            <?= Html::a($tab, [$r], ['class' => $r === 'monthly-report' ? 'active' : '', 'aria-current' => $r === 'monthly-report' ? 'page' : null]) ?>
+        <?php endforeach; ?>
+    </nav>
+    <?php endif; ?>
 
-        <!-- Left: Outbound Invoices -->
-        <div class="col-lg-6">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                    <span class="fw-semibold" style="font-size:.85rem">Outbound Invoices (Sales)</span>
-                    <span class="badge bg-primary"><?= count($outInvoices) ?></span>
-                </div>
-                <div class="table-responsive">
-                    <table class="table list-table mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>#</th>
-                                <th>Invoice No</th>
-                                <th>Client</th>
-                                <th class="text-end">Taxable</th>
-                                <th class="text-end">SGST</th>
-                                <th class="text-end">CGST</th>
-                                <th class="text-end">IGST</th>
-                                <th class="text-end">Net</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                        <?php if (empty($outInvoices)): ?>
-                            <tr><td colspan="8" class="text-center text-muted py-4">No outbound invoices.</td></tr>
-                        <?php else: ?>
-                            <?php foreach ($outInvoices as $i => $inv): ?>
-                            <tr>
-                                <td class="text-muted"><?= $i + 1 ?></td>
-                                <td><a href="<?= Url::to(['view', 'id' => $inv->id]) ?>"
-                                       class="text-decoration-none fw-semibold text-dark small">
-                                    <?= Html::encode($inv->invoice_no) ?></a></td>
-                                <td class="small text-muted"><?= Html::encode($inv->client->client_name ?? '—') ?></td>
-                                <td class="text-end small">₹<?= number_format((float)$inv->grand_total, 2) ?></td>
-                                <td class="text-end small">₹<?= number_format((float)$inv->sgst_amount, 2) ?></td>
-                                <td class="text-end small">₹<?= number_format((float)$inv->cgst_amount, 2) ?></td>
-                                <td class="text-end small">₹<?= number_format((float)$inv->igst_amount, 2) ?></td>
-                                <td class="text-end small fw-semibold">₹<?= number_format((float)$inv->net_total, 2) ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                        </tbody>
-                        <?php if (!empty($outInvoices)): ?>
-                        <tfoot class="table-light">
-                            <tr>
-                                <td colspan="3" class="text-end">Total</td>
-                                <td class="text-end">₹<?= number_format($outTotals['grand'], 2) ?></td>
-                                <td class="text-end">₹<?= number_format($outTotals['sgst'], 2) ?></td>
-                                <td class="text-end">₹<?= number_format($outTotals['cgst'], 2) ?></td>
-                                <td class="text-end">₹<?= number_format($outTotals['igst'], 2) ?></td>
-                                <td class="text-end text-primary">₹<?= number_format($outTotals['net'], 2) ?></td>
-                            </tr>
-                        </tfoot>
-                        <?php endif; ?>
-                    </table>
-                </div>
-            </div>
-        </div>
+    <div class="ui-tiles">
+        <?= $tile('SGST', (float)$netTax['sgst']) . $tile('CGST', (float)$netTax['cgst']) . $tile('IGST', (float)$netTax['igst']) . $tile('Total', (float)$netTax['total']) ?>
+    </div>
 
-        <!-- Right: Inward Invoices -->
-        <div class="col-lg-6">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                    <span class="fw-semibold" style="font-size:.85rem">Inward Invoices (Purchases)</span>
-                    <span class="badge bg-secondary"><?= count($inInvoices) ?></span>
-                </div>
-                <div class="table-responsive">
-                    <table class="table list-table mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>#</th>
-                                <th>Invoice No</th>
-                                <th>Vendor</th>
-                                <th class="text-end">Taxable</th>
-                                <th class="text-end">SGST</th>
-                                <th class="text-end">CGST</th>
-                                <th class="text-end">IGST</th>
-                                <th class="text-end">Net</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                        <?php if (empty($inInvoices)): ?>
-                            <tr><td colspan="8" class="text-center text-muted py-4">No inward invoices.</td></tr>
-                        <?php else: ?>
-                            <?php foreach ($inInvoices as $i => $inv): ?>
-                            <tr>
-                                <td class="text-muted"><?= $i + 1 ?></td>
-                                <td class="fw-semibold small"><?= Html::encode($inv->invoice_number) ?></td>
-                                <td class="small text-muted"><?= Html::encode($inv->vendor->company_name ?? '—') ?></td>
-                                <td class="text-end small">₹<?= number_format((float)$inv->grand_total, 2) ?></td>
-                                <td class="text-end small">₹<?= number_format((float)$inv->sgst_amount, 2) ?></td>
-                                <td class="text-end small">₹<?= number_format((float)$inv->cgst_amount, 2) ?></td>
-                                <td class="text-end small">₹<?= number_format((float)$inv->igst_amount, 2) ?></td>
-                                <td class="text-end small fw-semibold">₹<?= number_format((float)$inv->net_total, 2) ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                        </tbody>
-                        <?php if (!empty($inInvoices)): ?>
-                        <tfoot class="table-light">
-                            <tr>
-                                <td colspan="3" class="text-end">Total</td>
-                                <td class="text-end">₹<?= number_format($inTotals['grand'], 2) ?></td>
-                                <td class="text-end">₹<?= number_format($inTotals['sgst'], 2) ?></td>
-                                <td class="text-end">₹<?= number_format($inTotals['cgst'], 2) ?></td>
-                                <td class="text-end">₹<?= number_format($inTotals['igst'], 2) ?></td>
-                                <td class="text-end text-secondary">₹<?= number_format($inTotals['net'], 2) ?></td>
-                            </tr>
-                        </tfoot>
-                        <?php endif; ?>
-                    </table>
-                </div>
-            </div>
-        </div>
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header ui-section">Sales — tax invoices <span class="ui-section-meta">Output tax ₹<?= $money($outTotals['sgst'] + $outTotals['cgst'] + $outTotals['igst']) ?></span></div>
+        <?= $table($outInvoices, $outTotals, 'Client', fn($r) => $r->client->company_name ?? $r->client->client_name ?? '—',
+            fn($r) => UserAccess::checkAccess('invoice/view') ? Html::a(Html::encode($r->invoice_no), ['view', 'id' => $r->id], ['class' => 'text-reset mono', 'target' => '_blank', 'rel' => 'noopener']) : '<span class="mono">' . Html::encode($r->invoice_no) . '</span>') ?>
+    </div>
 
+    <div class="card border-0 shadow-sm">
+        <div class="card-header ui-section">Purchases — inward invoices <span class="ui-section-meta">Input credit ₹<?= $money($inTotals['sgst'] + $inTotals['cgst'] + $inTotals['igst']) ?></span></div>
+        <?= $table($inInvoices, $inTotals, 'Vendor', fn($r) => $r->vendor->company_name ?? '—',
+            fn($r) => UserAccess::checkAccess('inward-invoice/view') ? Html::a(Html::encode($r->invoice_number), ['/inward-invoice/view', 'id' => $r->id], ['class' => 'text-reset']) : Html::encode($r->invoice_number)) ?>
     </div>
 </div>

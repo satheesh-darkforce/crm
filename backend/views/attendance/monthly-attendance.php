@@ -73,7 +73,6 @@ $leaveLabel = [
         max-height: 70vh;
     }
 }
-
 /* ≤ 1350px: drop the 882px sticky-column stack.
    - 360px phone: viewport is far smaller than the 882px sticky stack.
    - md (768–991): sidebar steals 252px, content box ~460–700px — still
@@ -82,7 +81,6 @@ $leaveLabel = [
      the 882px sticky stack still covers most/all date columns.
    Only Name stays sticky at left so each row is identifiable while the user
    scrolls horizontally. ≥ 1350px keeps the original sticky behavior.
-
    Subtle: the base rule `.att-grid thead th { position: sticky !important;
    top: 0 !important }` has higher specificity than `.sticky-X`, so we
    CANNOT cancel the header's `position: sticky` from a `.sticky-X` selector.
@@ -107,7 +105,6 @@ $leaveLabel = [
         left: auto !important;
         right: auto !important;
     }
-
     /* BODY cells: fully static (drop horizontal sticky). */
     #main-content .attendance-monthly .att-grid tbody .sticky-sno,
     #main-content .attendance-monthly .att-grid tbody .sticky-code,
@@ -121,14 +118,12 @@ $leaveLabel = [
     #main-content .attendance-monthly .att-grid tbody .sticky-totalleave {
         position: static !important;
     }
-
     /* Name column: keep sticky-left in both head and body, anchored at 0
        (# column is no longer sticky on its left, so 36px offset is gone). */
     #main-content .attendance-monthly .sticky-name {
         left: 0 !important;
     }
 }
-
 /* table-layout:fixed locks column widths from the first row (the header) so
    body cells can never drift out of alignment with their headers.
    width:max-content sizes the table naturally; min-width:100% fills the box. */
@@ -172,12 +167,10 @@ $leaveLabel = [
     word-break: break-word !important;
     overflow-wrap: break-word !important;
 }
-
 /* Left sticky columns — # / Name / Emp Code (Team non-sticky, matches Yii1) */
 #main-content .attendance-monthly .sticky-sno  { position: sticky; left: 0;    z-index: 2; width: 36px;  min-width: 36px;  max-width: 36px }
 #main-content .attendance-monthly .sticky-name { position: sticky; left: 36px; z-index: 2; width: 150px; min-width: 150px; max-width: 150px; text-align: left !important }
 #main-content .attendance-monthly .sticky-code { position: sticky; left: 186px;z-index: 2; width: 90px;  min-width: 90px;  max-width: 90px }
-
 /* Right sticky summary columns (offsets cascade right→left).
    Widths bumped so headers ("Total Leave", "Leave/Abs LOP") fit without spillover. */
 #main-content .attendance-monthly .sticky-clbackup  { position: sticky; right: 0;    z-index: 2; width: 78px; min-width: 78px; max-width: 78px }
@@ -188,7 +181,6 @@ $leaveLabel = [
 #main-content .attendance-monthly .sticky-totallate { position: sticky; right: 386px;z-index: 2; width: 70px; min-width: 70px; max-width: 70px }
 #main-content .attendance-monthly .sticky-totalabs  { position: sticky; right: 456px;z-index: 2; width: 70px; min-width: 70px; max-width: 70px }
 #main-content .attendance-monthly .sticky-totalleave{ position: sticky; right: 526px;z-index: 2; width: 80px; min-width: 80px; max-width: 80px }
-
 /* Header cells layered above body sticky cells */
 #main-content .attendance-monthly .att-grid thead .sticky-sno,
 #main-content .attendance-monthly .att-grid thead .sticky-name,
@@ -201,7 +193,6 @@ $leaveLabel = [
 #main-content .attendance-monthly .att-grid thead .sticky-totallate,
 #main-content .attendance-monthly .att-grid thead .sticky-totalabs,
 #main-content .attendance-monthly .att-grid thead .sticky-totalleave { z-index: 12; background: #f4f6f9 }
-
 /* Team + date columns — explicit widths so table-layout:fixed has known widths. */
 #main-content .attendance-monthly .att-team { width: 70px; min-width: 70px; max-width: 70px }
 #main-content .attendance-monthly .att-day  { width: 90px; min-width: 90px; max-width: 90px; font-size: .68rem; line-height: 1.25 }
@@ -212,23 +203,23 @@ $leaveLabel = [
 #main-content .attendance-monthly .att-time.late{ color: #c0392b }
 #main-content .attendance-monthly .att-time.ok  { color: #16794f }
 #main-content .attendance-monthly .att-tag{ font-size: .6rem; font-weight: 700; margin-left: 2px }
-
 /* Hover keeps sticky cells colour-synced with the row */
 #main-content .attendance-monthly .att-grid tbody tr:hover td { background: #f8f9ff }
-
 /* Cursor signals click-to-open on the cell */
 #main-content .attendance-monthly .att-grid td a { cursor: pointer }
 </style>
 
-<div class="attendance-monthly">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page attendance-monthly">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">Monthly Attendance</h5>
-            <small class="text-muted"><?= Html::encode(date('d M Y', strtotime($fromDate))) ?> &ndash; <?= Html::encode(date('d M Y', strtotime($toDate))) ?></small>
+            <h1>Monthly Attendance</h1>
+            <div class="ui-sub"><?= Html::encode(date('d M Y', strtotime($fromDate))) ?> &ndash; <?= Html::encode(date('d M Y', strtotime($toDate))) ?></div>
         </div>
-        <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#leavePolicyModal">
+        <div class="ui-actions">
+            <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#leavePolicyModal">
             <i class="bi bi-info-circle"></i> Click to view Leave Policy
         </button>
+        </div>
     </div>
 
     <!-- Legend (matches Yii1) -->
@@ -346,7 +337,7 @@ $leaveLabel = [
     .late-excuse-summary .le-value{font-size:1.4rem;font-weight:700;line-height:1.2}
     .late-excuse-summary .le-late{color:#c0392b}
     .late-excuse-summary .le-excuse{color:#0f7b53}
-    </style>
+</style>
     <?php endif; ?>
 
     <!-- Attendance Grid (no flex card wrapper — keeps overflow scroll inside .att-grid) -->

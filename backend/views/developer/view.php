@@ -25,7 +25,6 @@ $isExEmployee = (int)$model->status === 0;
 .work-report-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600}
 .work-report-table td{vertical-align:middle;font-size:.875rem}
 .work-report-table tfoot td{font-weight:600;border-top:2px solid #dee2e6}
-
 /* Employee profile card — gradient banner + grouped info tiles */
 .emp-detail-card{border:0;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(15,23,42,.06);background:#fff}
 .emp-detail-banner{
@@ -78,10 +77,12 @@ $isExEmployee = (int)$model->status === 0;
 .emp-tile.tile-wide{grid-column:1/-1}
 </style>
 
-<div class="developer-view">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="mb-0"><?= Html::encode($this->title) ?></h4>
-        <div class="d-flex gap-2">
+<div class="ui-page developer-view">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($this->title) ?></h1>
+        </div>
+        <div class="ui-actions">
             <?php if ($isExEmployee): ?>
             <span class="badge bg-secondary fs-6">Ex-Employee</span>
             <?php endif; ?>

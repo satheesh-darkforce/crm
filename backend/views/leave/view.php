@@ -14,10 +14,14 @@ $isPending = in_array($model->request_status, [
     \backend\models\LeaveRequests::REQ_STATUS_L1,
 ]);
 ?>
-<div class="leave-view">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="mb-0"><?= Html::encode($this->title) ?></h4>
-        <?= Html::a('Back', $backUrl, ['class' => 'btn btn-secondary btn-sm']) ?>
+<div class="ui-page leave-view">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($this->title) ?></h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('Back', $backUrl, ['class' => 'btn btn-secondary btn-sm']) ?>
+        </div>
     </div>
     <div class="row">
         <div class="col-md-6">

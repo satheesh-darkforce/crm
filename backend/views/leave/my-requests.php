@@ -21,9 +21,6 @@ $total      = $dataProvider->getTotalCount();
 $q = Yii::$app->request->get();
 ?>
 <style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
 .list-table tr.row-pending{background:#fffde7}
 /* Approved / rejected rows: fade text/background, never the td itself —
    `opacity` on a td creates a new stacking context that clips the action
@@ -32,9 +29,6 @@ $q = Yii::$app->request->get();
 .list-table tr.row-approved td .badge{filter:saturate(.85)}
 .list-table tr.row-rejected td{color:#94a3b8;background:#fbfbfd}
 .list-table tr.row-rejected td .badge{filter:saturate(.6)}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
-.pagination{--bs-pagination-font-size:.825rem}
-.pagination .page-link{border-radius:6px!important;margin:0 2px}
 /* Ensure the action dropdown floats above the table — without this the menu
    sits in the table cell's stacking context and is clipped by sibling rows. */
 .leave-my-requests .table-responsive{overflow:visible!important}
@@ -44,13 +38,15 @@ $q = Yii::$app->request->get();
 .leave-my-requests td .dropdown-menu{z-index:1080}
 </style>
 
-<div class="leave-my-requests">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="ui-page leave-my-requests">
+    <div class="ui-head">
         <div>
-            <h5 class="mb-0 fw-semibold">My Leave Requests</h5>
-            <small class="text-muted"><?= $total ?> request<?= $total != 1 ? 's' : '' ?></small>
+            <h1>My Leave Requests</h1>
+            <div class="ui-sub"><?= $total ?> request<?= $total != 1 ? 's' : '' ?></div>
         </div>
-        <?= Html::a('+ Add Leave Request', ['create'], ['class' => 'btn btn-primary btn-sm']) ?>
+        <div class="ui-actions">
+            <?= Html::a('+ Add Leave Request', ['create'], ['class' => 'btn btn-primary btn-sm']) ?>
+        </div>
     </div>
 
     <!-- Filter -->

@@ -16,10 +16,14 @@ use kartik\select2\Select2;
 $isNew = $model->isNewRecord;
 $this->title = $isNew ? 'Add IOT Product' : "Edit: {$model->product_name}";
 ?>
-<div class="iot-product-form">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= Html::encode($this->title) ?></h5>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+<div class="ui-page iot-product-form">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($this->title) ?></h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm">
@@ -153,7 +157,7 @@ $this->title = $isNew ? 'Add IOT Product' : "Edit: {$model->product_name}";
             <div class="col-12 d-flex gap-2 mt-2">
                 <?= Html::submitButton($isNew ? 'Create Product' : 'Save Changes', ['class' => 'btn btn-primary btn-sm px-4']) ?>
                 <?php if ($isNew): ?>
-                    <?= Html::submitButton('Save & Add New', ['class' => 'btn btn-success btn-sm px-4', 'name' => 'add_new', 'value' => '1']) ?>
+                    <?= Html::submitButton('Save & Add New', ['class' => 'btn btn-outline-primary btn-sm px-4', 'name' => 'add_new', 'value' => '1']) ?>
                 <?php endif; ?>
                 <?= Html::a('Cancel', ['index'], ['class' => 'btn btn-outline-secondary btn-sm']) ?>
             </div>

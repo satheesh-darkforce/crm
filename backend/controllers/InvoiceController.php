@@ -2,6 +2,8 @@
 
 namespace backend\controllers;
 
+use backend\assets\InvoiceAsset;
+use backend\components\SafeUpload;
 use backend\models\BankDetail;
 use backend\models\ClientModel;
 use backend\models\Currency;
@@ -18,8 +20,9 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Yii;
+use common\components\UserAccess;
 use yii\data\ActiveDataProvider;
-use yii\web\UploadedFile;
+use yii\filters\VerbFilter;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
@@ -28,43 +31,88 @@ use yii\web\Response;
  */
 class InvoiceController extends Controller
 {
+    /** Most line items an invoice may have. */
+    const MAX_ITEMS = 100;
+
     /**
-     * The proforma preview/confirm/discard actions are part of the create flow
-     * and have no separate permission — any authenticated backend user who can
-     * already create an invoice reaches them through the form's Preview button.
-     * The action bodies enforce that the row is actually a draft proforma.
+     * The draft preview / confirm / discard actions are part of the create flow and have
+     * no permission of their own: whoever may create or update invoices may use them.
+     * "Back & Edit" leads to invoice/update, so create also grants update on drafts.
      */
     public function behaviors(): array
     {
         $behaviors = parent::behaviors();
-        $previewActions = [
-            'preview-proforma', 'confirm-proforma', 'discard-proforma',
-            'preview-invoice',
-        ];
-        // "Back & Edit" on the preview page redirects to invoice/update. If the
-        // user has invoice/create permission, treat them as having update too —
-        // the preview is part of the create flow, so anyone who created the
-        // draft must also be able to edit it before confirming.
+        $canWrite = fn() => UserAccess::checkAccess('invoice/create') || UserAccess::checkAccess('invoice/update');
         $behaviors['access']['rules'] = array_merge(
             [
                 [
-                    'allow'   => true,
-                    'roles'   => ['@'],
-                    'actions' => $previewActions,
-                ],
-                [
                     'allow'         => true,
                     'roles'         => ['@'],
-                    'actions'       => ['update'],
-                    'matchCallback' => function () {
-                        return \common\components\UserAccess::checkAccess('invoice/create')
-                            || \common\components\UserAccess::checkAccess('invoice/update');
-                    },
+                    'actions'       => ['preview-proforma', 'confirm-proforma', 'discard-proforma', 'preview-invoice', 'confirminvoice', 'update'],
+                    'matchCallback' => $canWrite,
                 ],
             ],
             $behaviors['access']['rules']
         );
+        $behaviors['verbs'] = ['class' => VerbFilter::class, 'actions' => array_fill_keys([
+            'confirm-proforma', 'discard-proforma', 'convert-to-invoice', 'confirminvoice', 'update-tds',
+            'add-receipt', 'delete-receipt', 'cancel',
+        ], ['POST'])];
         return $behaviors;
+    }
+
+    /**
+     * Clean list / export filters once: dates must be Y-m-d, ids and statuses digits,
+     * arrays from tampered URLs are dropped and a reversed date range is swapped.
+     */
+    public function beforeAction($action): bool
+    {
+        if (!parent::beforeAction($action)) {
+            return false;
+        }
+        $req     = Yii::$app->request;
+        $params  = $req->getQueryParams();
+        $ignored = [];
+        foreach ($params as $k => $v) {
+            if (is_array($v)) {
+                unset($params[$k]);
+            }
+        }
+        foreach (['from_date', 'to_date'] as $k) {
+            if (isset($params[$k]) && trim((string)$params[$k]) !== '') {
+                $d = \DateTime::createFromFormat('!Y-m-d', trim((string)$params[$k]));
+                if ($d && $d->format('Y-m-d') === trim((string)$params[$k])) {
+                    $params[$k] = $d->format('Y-m-d');
+                } else {
+                    $ignored[] = str_replace('_', ' ', $k);
+                    unset($params[$k]);
+                }
+            }
+        }
+        foreach (['client_id', 'payment_status', 'invoice_status', 'invoice_category', 'download_id'] as $k) {
+            if (isset($params[$k]) && $params[$k] !== '' && !ctype_digit((string)$params[$k])) {
+                $ignored[] = str_replace('_', ' ', $k);
+                unset($params[$k]);
+            }
+        }
+        if (isset($params['invoice_no'])) {
+            $params['invoice_no'] = mb_substr(trim((string)$params['invoice_no']), 0, 100);
+        }
+        if (!empty($params['from_date']) && !empty($params['to_date']) && $params['to_date'] < $params['from_date']) {
+            [$params['from_date'], $params['to_date']] = [$params['to_date'], $params['from_date']];
+        }
+        $req->setQueryParams($params);
+        if ($ignored && !$req->isAjax) {
+            Yii::$app->session->setFlash('warning', 'Ignored an invalid filter value (' . implode(', ', array_unique($ignored)) . ').');
+        }
+        return true;
+    }
+
+    /** Full pages get the Invoices module stylesheet and script (printable pages render partials). */
+    public function render($view, $params = []): string
+    {
+        InvoiceAsset::register($this->getView());
+        return parent::render($view, $params);
     }
 
     public function actionIndex(): string
@@ -496,12 +544,11 @@ class InvoiceController extends Controller
         // Use 'S' to get PDF as string, then send via Yii response to avoid "headers already sent"
         $pdfContent = $mpdf->Output($fileName . '.pdf', \Mpdf\Output\Destination::STRING_RETURN);
 
-        $response = Yii::$app->response;
-        $response->format = \yii\web\Response::FORMAT_RAW;
-        $response->headers->set('Content-Type', 'application/pdf');
-        $response->headers->set('Content-Disposition', 'attachment; filename="' . $fileName . '.pdf"');
-        $response->content = $pdfContent;
-        return $response;
+        // Slashes, quotes and control characters are not allowed in a download name.
+        $safeName = trim(preg_replace('~[/:*?"<>|\x00-\x1F' . preg_quote('\\', '~') . ']+~u', '-', $fileName), " -.");
+        return Yii::$app->response->sendContentAsFile($pdfContent, ($safeName !== '' ? $safeName : 'invoice-' . $invoice->id) . '.pdf', [
+            'mimeType' => 'application/pdf',
+        ]);
     }
 
     public function actionCreate(): string|Response
@@ -595,7 +642,7 @@ class InvoiceController extends Controller
 
         if (Yii::$app->request->isPost) {
             $post = Yii::$app->request->post();
-            $invoice->load($post, 'Invoice');
+            $this->loadForm($invoice, $post);
             $invoice->invoice_date   = date('Y-m-d H:i:s');
             $invoice->created_date   = date('Y-m-d H:i:s');
             $invoice->created_by     = Yii::$app->user->id;
@@ -652,68 +699,15 @@ class InvoiceController extends Controller
                 }
             }
 
-            // Accept both Yii1-style arrays (particular[], particularamount[], hsn_sac[])
-            // and Yii2-style items[] array. For sale invoices, model[]/qty[]/rate[]
-            // are additionally posted (any may be missing per row).
-            $items       = $post['items'] ?? [];
-            $particulars = $post['particular'] ?? [];
-            $amounts     = $post['particularamount'] ?? [];
-            $hsnSacs     = $post['hsn_sac'] ?? [];
-            $models      = $post['model'] ?? [];
-            $qtys        = $post['qty'] ?? [];
-            $rates       = $post['rate'] ?? [];
-
-            // If Yii1-style arrays are present, convert to unified format
-            if (!empty($particulars)) {
-                $items = [];
-                foreach ($particulars as $i => $part) {
-                    $items[] = [
-                        'particulars' => $part,
-                        'amount'      => $amounts[$i] ?? 0,
-                        'hsn_sac'     => $hsnSacs[$i] ?? '',
-                        'model'       => $models[$i] ?? '',
-                        'qty'         => $qtys[$i]   ?? '',
-                        'rate'        => $rates[$i]  ?? '',
-                    ];
+            // Line items, currency and referenced records — all checked on the server.
+            [$validItems, $grandTotal, $formErrors] = $this->readItems($post, (float)$invoice->transaction_charge_percent);
+            $this->resolveCurrency($invoice);
+            $formErrors = array_merge($this->checkReferences($invoice), $formErrors);
+            if ($formErrors) {
+                foreach ($formErrors as $msg) {
+                    Yii::$app->session->addFlash('error', $msg);
                 }
-            }
-
-            // Resolve currency from DB ID if numeric (Yii1-style form submits currency ID)
-            $currencyId = $invoice->currency;
-            if ($currencyId && is_numeric($currencyId)) {
-                $currencyRecord = Currency::findOne((int)$currencyId);
-                if ($currencyRecord) {
-                    $invoice->currency          = $currencyRecord->currency;
-                    $invoice->currency_in_words = $currencyRecord->in_words;
-                }
-            }
-
-            $grandTotal = 0.0;
-            $validItems = [];
-            $hasPartialItems = false;
-            foreach ($items as $item) {
-                $hasParticulars = !empty(trim($item['particulars'] ?? ''));
-                $hasAmount = (isset($item['amount']) && $item['amount'] !== '' && (float)$item['amount'] > 0)
-                    || ((float)($item['qty'] ?? 0) > 0 && (float)($item['rate'] ?? 0) > 0);
-                // Skip completely empty rows
-                if (!$hasParticulars && !$hasAmount) continue;
-                // Flag rows that have amount but no description
-                if (!$hasParticulars && $hasAmount) {
-                    $hasPartialItems = true;
-                    continue;
-                }
-                $amt = isset($item['amount']) && $item['amount'] !== ''
-                    ? (float)$item['amount']
-                    : (float)($item['qty'] ?? 1) * (float)($item['rate'] ?? 0);
-                $grandTotal += $amt;
-                $validItems[] = $item;
-            }
-            if (empty($validItems)) {
-                Yii::$app->session->setFlash('error', 'Please add at least one line item with a description.');
                 return $this->render('create', compact('invoice', 'clients', 'projects', 'banks', 'nextNo', 'clientTypes', 'preClient', 'currencies', 'hsnCodes', 'lutArn', 'invoiceCategoryParam'));
-            }
-            if ($hasPartialItems) {
-                Yii::$app->session->setFlash('warning', 'Some line items were skipped because they had an amount but no description.');
             }
 
             $sgstAmt = round($grandTotal * (float)($invoice->sgst_percent ?? 0) / 100, 2);
@@ -754,30 +748,7 @@ class InvoiceController extends Controller
                     );
                 }
                 if ($invoice->save()) {
-                    foreach ($validItems as $item) {
-                        $detail              = new InvoiceDetails();
-                        $detail->invoice_id  = $invoice->id;
-                        $detail->particulars = trim($item['particulars']);
-                        $detail->sac         = trim($item['hsn_sac'] ?? '');
-                        // Sale-only optional columns. Stored if present on the
-                        // table (model + quantity + unit_rate were added later
-                        // than the Yii1 schema).
-                        if ($detail->hasAttribute('model')) {
-                            $m = trim((string)($item['model'] ?? ''));
-                            $detail->model = $m !== '' ? $m : null;
-                        }
-                        if ($detail->hasAttribute('quantity')) {
-                            $detail->quantity = isset($item['qty']) && $item['qty'] !== '' ? (float)$item['qty'] : null;
-                        }
-                        if ($detail->hasAttribute('unit_rate')) {
-                            $detail->unit_rate = isset($item['rate']) && $item['rate'] !== '' ? (float)$item['rate'] : null;
-                        }
-                        $detail->amount      = isset($item['amount']) && $item['amount'] !== ''
-                            ? (float)$item['amount']
-                            : (float)($item['qty'] ?? 1) * (float)($item['rate'] ?? 0);
-                        $detail->status      = 1;
-                        $detail->save(false);
-                    }
+                    $this->saveItems($invoice, $validItems);
                     $transaction->commit();
                     // Both proforma and tax-invoice drafts go to a preview page
                     // with Save & Download / Back & Edit buttons.
@@ -838,7 +809,7 @@ class InvoiceController extends Controller
 
         if (Yii::$app->request->isPost) {
             $post = Yii::$app->request->post();
-            $invoice->load($post, 'Invoice');
+            $this->loadForm($invoice, $post);
             $invoice->updated_date = date('Y-m-d H:i:s');
             $invoice->updated_by   = Yii::$app->user->id;
 
@@ -867,68 +838,15 @@ class InvoiceController extends Controller
                 }
             }
 
-            // Accept both Yii1-style arrays (particular[], particularamount[], hsn_sac[])
-            // and Yii2-style items[] array. For sale invoices, model[]/qty[]/rate[]
-            // are additionally posted (any may be missing per row).
-            $items       = $post['items'] ?? [];
-            $particulars = $post['particular'] ?? [];
-            $amounts     = $post['particularamount'] ?? [];
-            $hsnSacs     = $post['hsn_sac'] ?? [];
-            $models      = $post['model'] ?? [];
-            $qtys        = $post['qty'] ?? [];
-            $rates       = $post['rate'] ?? [];
-
-            // If Yii1-style arrays are present, convert to unified format
-            if (!empty($particulars)) {
-                $items = [];
-                foreach ($particulars as $i => $part) {
-                    $items[] = [
-                        'particulars' => $part,
-                        'amount'      => $amounts[$i] ?? 0,
-                        'hsn_sac'     => $hsnSacs[$i] ?? '',
-                        'model'       => $models[$i] ?? '',
-                        'qty'         => $qtys[$i]   ?? '',
-                        'rate'        => $rates[$i]  ?? '',
-                    ];
+            // Line items, currency and referenced records — all checked on the server.
+            [$validItems, $grandTotal, $formErrors] = $this->readItems($post, (float)$invoice->transaction_charge_percent);
+            $this->resolveCurrency($invoice);
+            $formErrors = array_merge($this->checkReferences($invoice), $formErrors);
+            if ($formErrors) {
+                foreach ($formErrors as $msg) {
+                    Yii::$app->session->addFlash('error', $msg);
                 }
-            }
-
-            // Resolve currency from DB ID if numeric (the form submits the currency ID).
-            // Without this the update path would persist the raw ID (e.g. "2") into
-            // invoice.currency, which then shows as "2" in Total in words on preview.
-            $currencyId = $invoice->currency;
-            if ($currencyId && is_numeric($currencyId)) {
-                $currencyRecord = Currency::findOne((int)$currencyId);
-                if ($currencyRecord) {
-                    $invoice->currency          = $currencyRecord->currency;
-                    $invoice->currency_in_words = $currencyRecord->in_words;
-                }
-            }
-
-            $grandTotal = 0.0;
-            $validItems = [];
-            $hasPartialItems = false;
-            foreach ($items as $item) {
-                $hasParticulars = !empty(trim($item['particulars'] ?? ''));
-                $hasAmount = (isset($item['amount']) && $item['amount'] !== '' && (float)$item['amount'] > 0)
-                    || ((float)($item['qty'] ?? 0) > 0 && (float)($item['rate'] ?? 0) > 0);
-                if (!$hasParticulars && !$hasAmount) continue;
-                if (!$hasParticulars && $hasAmount) {
-                    $hasPartialItems = true;
-                    continue;
-                }
-                $amt = isset($item['amount']) && $item['amount'] !== ''
-                    ? (float)$item['amount']
-                    : (float)($item['qty'] ?? 1) * (float)($item['rate'] ?? 0);
-                $grandTotal += $amt;
-                $validItems[] = $item;
-            }
-            if (empty($validItems)) {
-                Yii::$app->session->setFlash('error', 'Please add at least one line item with a description.');
                 return $this->render('update', compact('invoice', 'clients', 'projects', 'banks', 'clientTypes', 'preClient', 'currencies', 'hsnCodes', 'lutArn', 'invoiceCategoryParam'));
-            }
-            if ($hasPartialItems) {
-                Yii::$app->session->setFlash('warning', 'Some line items were skipped because they had an amount but no description.');
             }
             $sgstAmt = round($grandTotal * (float)($invoice->sgst_percent ?? 0) / 100, 2);
             $cgstAmt = round($grandTotal * (float)($invoice->cgst_percent ?? 0) / 100, 2);
@@ -943,33 +861,22 @@ class InvoiceController extends Controller
             $invoice->net_total   = round($rawNet);
             $invoice->round_off   = round($invoice->net_total - $rawNet, 2);
 
-            if ($invoice->save()) {
-                InvoiceDetails::updateAll(['status' => 0], ['invoice_id' => $invoice->id]);
-                foreach ($validItems as $item) {
-                    $detail              = new InvoiceDetails();
-                    $detail->invoice_id  = $invoice->id;
-                    $detail->particulars = trim($item['particulars']);
-                    $detail->sac         = trim($item['hsn_sac'] ?? '');
-                    // Sale-only optional columns. Stored only when present on
-                    // the table (model + quantity + unit_rate were added later
-                    // than the Yii1 schema).
-                    if ($detail->hasAttribute('model')) {
-                        $m = trim((string)($item['model'] ?? ''));
-                        $detail->model = $m !== '' ? $m : null;
-                    }
-                    if ($detail->hasAttribute('quantity')) {
-                        $detail->quantity = isset($item['qty']) && $item['qty'] !== '' ? (float)$item['qty'] : null;
-                    }
-                    if ($detail->hasAttribute('unit_rate')) {
-                        $detail->unit_rate = isset($item['rate']) && $item['rate'] !== '' ? (float)$item['rate'] : null;
-                    }
-                    $detail->amount      = isset($item['amount']) && $item['amount'] !== ''
-                        ? (float)$item['amount']
-                        : (float)($item['qty'] ?? 1) * (float)($item['rate'] ?? 0);
-                    $detail->status      = 1;
-                    $detail->save(false);
+            // Header and lines change together or not at all.
+            $transaction = Yii::$app->db->beginTransaction();
+            try {
+                $saved = $invoice->save();
+                if ($saved) {
+                    InvoiceDetails::updateAll(['status' => 0], ['invoice_id' => $invoice->id, 'status' => 1]);
+                    $this->saveItems($invoice, $validItems);
+                    $transaction->commit();
+                } else {
+                    $transaction->rollBack();
                 }
-
+            } catch (\Throwable $e) {
+                $transaction->rollBack();
+                throw $e;
+            }
+            if ($saved) {
                 $label = (int)$invoice->invoice_role === Invoice::ROLE_PROFORMA ? 'Proforma' : 'Invoice';
                 Yii::$app->session->setFlash('success', $label . ' updated.');
                 // Drafts (status=-1) opened from the preview page's "Back & Edit"
@@ -1114,8 +1021,20 @@ class InvoiceController extends Controller
             return $this->redirect(['view', 'id' => $id]);
         }
 
+        // Check the GSTIN and date before anything changes.
+        $gstNo = strtoupper(preg_replace('/\s+/', '', (string)Yii::$app->request->post('client_gst_no', '')));
+        if ($gstNo !== '' && !preg_match('/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/', $gstNo)) {
+            Yii::$app->session->setFlash('error', 'That GSTIN is not valid. It has 15 characters, e.g. 33ABCDE1234F1Z5.');
+            return $this->redirect(['proforma']);
+        }
+        $invoiceDateRaw = trim((string)Yii::$app->request->post('invoice_date', ''));
+        $parsedDate     = \DateTime::createFromFormat('!Y-m-d', $invoiceDateRaw);
+        if ($invoiceDateRaw !== '' && (!$parsedDate || $parsedDate->format('Y-m-d') !== $invoiceDateRaw || $invoiceDateRaw > date('Y-m-d'))) {
+            Yii::$app->session->setFlash('error', 'Pick a valid invoice date that is not in the future.');
+            return $this->redirect(['proforma']);
+        }
+
         // Update client GST if supplied
-        $gstNo = trim(Yii::$app->request->post('client_gst_no', ''));
         if ($gstNo && $invoice->client && empty($invoice->client->gst_no)) {
             $invoice->client->gst_no = $gstNo;
             $invoice->client->save(false);
@@ -1127,9 +1046,8 @@ class InvoiceController extends Controller
             ]));
         }
 
-        // INV-012: use user-supplied date, fallback to today
-        $invoiceDateRaw = trim(Yii::$app->request->post('invoice_date', ''));
-        $invoiceDate    = ($invoiceDateRaw && strtotime($invoiceDateRaw)) ? $invoiceDateRaw : date('Y-m-d');
+        // INV-012: use the (already checked) date, fallback to today
+        $invoiceDate = $invoiceDateRaw !== '' ? $invoiceDateRaw : date('Y-m-d');
 
         $db          = Yii::$app->db;
         $transaction = $db->beginTransaction();
@@ -1146,10 +1064,9 @@ class InvoiceController extends Controller
             $invoice->updated_date = date('Y-m-d H:i:s');
             $invoice->updated_by   = Yii::$app->user->id;
             $invoice->save(false);
-            $transaction->commit();
-
-            // C5: Create GL entries for confirmed tax invoice
+            // C5: ledger entries in the same transaction — a failure leaves the invoice unconfirmed.
             \common\components\AccountingUtility::accountsLedgerEntryForOutInvoice($invoice);
+            $transaction->commit();
         } catch (\Exception $e) {
             $transaction->rollBack();
             throw $e;
@@ -1178,6 +1095,14 @@ class InvoiceController extends Controller
         $db          = Yii::$app->db;
         $transaction = $db->beginTransaction();
         try {
+            // Lock the row: a double click or a second tab must not number the draft twice.
+            $locked = Invoice::findBySql('SELECT * FROM invoice WHERE id = :id FOR UPDATE', [':id' => $invoice->id])->one();
+            if (!$locked || (int)$locked->status !== -1) {
+                $transaction->rollBack();
+                Yii::$app->session->setFlash('info', 'This invoice was already saved' . ($locked && $locked->invoice_no ? ' as ' . $locked->invoice_no : '') . '.');
+                return $this->redirect(['index']);
+            }
+            $invoice = $locked;
             // Generate invoice number
             $c = $invoice->client_id ? ClientModel::findOne(['id' => $invoice->client_id, 'status' => 1]) : null;
             [$invoice->invoice_no, $invoice->invoice_prefix, $invoice->invoice_unique_no] = $this->generateInvoiceNumberLocked(
@@ -1191,10 +1116,9 @@ class InvoiceController extends Controller
             $invoice->updated_date = date('Y-m-d H:i:s');
             $invoice->updated_by   = Yii::$app->user->id;
             $invoice->save(false);
-            $transaction->commit();
-
-            // C5: Create GL entries
+            // C5: ledger entries in the same transaction — a failure leaves the invoice unconfirmed.
             \common\components\AccountingUtility::accountsLedgerEntryForOutInvoice($invoice);
+            $transaction->commit();
         } catch (\Exception $e) {
             $transaction->rollBack();
             throw $e;
@@ -1217,13 +1141,29 @@ class InvoiceController extends Controller
         $invoice = $this->findModel($id);
         $this->ensureNotCancelled($invoice);
 
-        $invoice->tds_percent = (float)Yii::$app->request->post('tds_percent', 0);
-        $invoice->tds_amount  = (float)Yii::$app->request->post('tds_amount', 0);
+        $pct = trim((string)Yii::$app->request->post('tds_percent', '0'));
+        $amt = trim((string)Yii::$app->request->post('tds_amount', '0'));
+        $max = round((float)$invoice->net_total - (float)$invoice->paid_amount, 2);
+        $error = null;
+        if (!is_numeric($pct === '' ? '0' : $pct) || !is_numeric($amt === '' ? '0' : $amt)) {
+            $error = 'TDS percent and amount must be numbers.';
+        } elseif ((float)$pct < 0 || (float)$pct > 100) {
+            $error = 'TDS percent must be between 0 and 100.';
+        } elseif ((float)$amt < 0) {
+            $error = 'TDS amount cannot be negative.';
+        } elseif ((float)$amt > $max + 0.005) {
+            $error = 'TDS cannot be more than the unpaid amount (' . number_format(max(0, $max), 2) . ').';
+        }
 
-        $this->recalcPaymentStatus($invoice);
-        $invoice->save(false);
-
-        Yii::$app->session->setFlash('success', 'TDS updated for ' . ($invoice->invoice_no ?: '#' . $id) . '.');
+        if ($error) {
+            Yii::$app->session->setFlash('error', $error);
+        } else {
+            $invoice->tds_percent = round((float)$pct, 2);
+            $invoice->tds_amount  = round((float)$amt, 2);
+            $this->recalcPaymentStatus($invoice);
+            $invoice->save(false);
+            Yii::$app->session->setFlash('success', 'TDS updated for ' . ($invoice->invoice_no ?: '#' . $id) . '.');
+        }
 
         // _from lets callers redirect back to the list pages (index / proforma) instead of view
         $from = Yii::$app->request->post('_from', 'view');
@@ -1276,120 +1216,89 @@ class InvoiceController extends Controller
     {
         $invoice = $this->findModel($id);
         $this->ensureNotCancelled($invoice);
-        $post    = Yii::$app->request->post();
-
-        if ((int)$invoice->payment_status === Invoice::PAYMENT_STATUS_PAID) {
-            Yii::$app->session->setFlash('error', 'This invoice is already fully paid. No further payments can be recorded.');
-            return $this->redirect(['view', 'id' => $id]);
+        $req  = Yii::$app->request;
+        $data = is_array($req->post('InvoiceReceipt')) ? $req->post('InvoiceReceipt') : [];
+        $val  = fn($k) => isset($data[$k]) && is_scalar($data[$k]) ? trim((string)$data[$k]) : (is_scalar($req->post($k)) ? trim((string)$req->post($k)) : '');
+        $back = in_array($req->post('_from'), ['receipts', 'create-receipt'], true) ? ['receipts', 'id' => $id] : ['view', 'id' => $id];
+        if ($req->post('_from') === 'create-receipt') {
+            $back = ['create-receipt', 'invoice_id' => $id];
         }
 
-        $amount = (float)($post['InvoiceReceipt']['receipt_amount'] ?? $post['receipt_amount'] ?? 0);
-        if ($amount <= 0) {
-            Yii::$app->session->setFlash('error', 'Invalid payment amount.');
-            return $this->redirect(['view', 'id' => $id]);
+        $mode    = ctype_digit($val('payment_mode')) ? (int)$val('payment_mode') : InvoiceReceipt::MODE_BANK;
+        $receipt = new InvoiceReceipt([
+            'invoice_id'      => $invoice->id,
+            'receipt_date'    => $val('receipt_date') !== '' ? $val('receipt_date') : date('Y-m-d'),
+            'receipt_amount'  => is_numeric($val('receipt_amount')) ? round((float)$val('receipt_amount'), 2) : null,
+            'payment_mode'    => $mode,
+            'payment_remarks' => $val('payment_remarks'),
+            'created_date'    => date('Y-m-d H:i:s'),
+            'created_by'      => Yii::$app->user->id,
+            'status'          => 1,
+            'receipt_no'      => 'pending', // real number is assigned under lock below
+        ]);
+        // Only the fields of the chosen payment mode are kept.
+        $modeFields = [
+            InvoiceReceipt::MODE_CASH   => ['cash_date'],
+            InvoiceReceipt::MODE_CHEQUE => ['cheque_sender_bank', 'cheque_no', 'cheque_date', 'cheque_amount', 'cheque_received_bank', 'cheque_received_ac_no', 'cheque_deposit_date'],
+            InvoiceReceipt::MODE_BANK   => ['bank_sender_bank', 'bank_ref_no', 'bank_amount', 'bank_date', 'bank_received_bank', 'bank_received_ac_no'],
+            InvoiceReceipt::MODE_PAYPAL => ['paypal_ref_no', 'paypal_amount', 'paypal_payment_date'],
+        ][$mode] ?? [];
+        foreach ($modeFields as $f) {
+            $v = $val($f);
+            $receipt->$f = $v === '' ? null : (str_ends_with($f, '_amount') ? (is_numeric($v) ? round((float)$v, 2) : $v) : $v);
         }
 
-        $mode = (int)($post['InvoiceReceipt']['payment_mode'] ?? $post['payment_mode'] ?? InvoiceReceipt::MODE_BANK);
-
-        $receipt                  = new InvoiceReceipt();
-        $receipt->invoice_id      = $invoice->id;
-        $receipt->receipt_date    = $post['InvoiceReceipt']['receipt_date'] ?? $post['receipt_date'] ?? date('Y-m-d');
-        $receipt->receipt_amount  = $amount;
-        $receipt->payment_mode    = $mode;
-        $receipt->payment_remarks = trim($post['InvoiceReceipt']['payment_remarks'] ?? $post['payment_remarks'] ?? '');
-        $receipt->created_date    = date('Y-m-d H:i:s');
-        $receipt->created_by      = Yii::$app->user->id;
-        $receipt->status          = 1;
-
-        // Payment mode-specific fields
-        $rData = $post['InvoiceReceipt'] ?? [];
-        if ($mode === InvoiceReceipt::MODE_CASH) {
-            $receipt->cash_date = $rData['cash_date'] ?? null;
-        } elseif ($mode === InvoiceReceipt::MODE_CHEQUE) {
-            $receipt->cheque_sender_bank    = $rData['cheque_sender_bank'] ?? null;
-            $receipt->cheque_no             = $rData['cheque_no'] ?? null;
-            $receipt->cheque_date           = $rData['cheque_date'] ?? null;
-            $receipt->cheque_amount         = (float)($rData['cheque_amount'] ?? 0) ?: null;
-            $receipt->cheque_received_bank  = $rData['cheque_received_bank'] ?? null;
-            $receipt->cheque_received_ac_no = $rData['cheque_received_ac_no'] ?? null;
-            $receipt->cheque_deposit_date   = $rData['cheque_deposit_date'] ?? null;
-        } elseif ($mode === InvoiceReceipt::MODE_BANK) {
-            $receipt->bank_sender_bank   = $rData['bank_sender_bank'] ?? null;
-            $receipt->bank_ref_no        = $rData['bank_ref_no'] ?? null;
-            $receipt->bank_amount        = (float)($rData['bank_amount'] ?? 0) ?: null;
-            $receipt->bank_date          = $rData['bank_date'] ?? null;
-            $receipt->bank_received_bank = $rData['bank_received_bank'] ?? null;
-            $receipt->bank_received_ac_no = $rData['bank_received_ac_no'] ?? null;
-        } elseif ($mode === InvoiceReceipt::MODE_PAYPAL) {
-            $receipt->paypal_ref_no        = $rData['paypal_ref_no'] ?? null;
-            $receipt->paypal_amount        = (float)($rData['paypal_amount'] ?? 0) ?: null;
-            $receipt->paypal_payment_date  = $rData['paypal_payment_date'] ?? null;
+        if (!$receipt->validate()) {
+            Yii::$app->session->setFlash('error', implode(' ', $receipt->getErrorSummary(false)));
+            return $this->redirect($back);
         }
 
-        // Snapshot balance fields
-        $previousPaid             = (float)$invoice->paid_amount;
-        $receipt->pending_amount  = max(0, (float)$invoice->net_total - (float)$invoice->tds_amount - $previousPaid);
-        $receipt->paid_amount     = $previousPaid + $amount;
-        $receipt->balance_amount  = max(0, (float)$invoice->net_total - (float)$invoice->tds_amount - $receipt->paid_amount);
-
-        // INV-002: Generate receipt number inside transaction to prevent race conditions
         $db          = Yii::$app->db;
         $transaction = $db->beginTransaction();
         try {
-            $lastNo = (int)$db->createCommand(
-                'SELECT COALESCE(MAX(receipt_unique_no), 0) FROM invoice_receipt WHERE status = 1 FOR UPDATE'
-            )->queryScalar();
-            $receipt->receipt_unique_no = $lastNo + 1;
-            $receipt->receipt_no        = 'REC-' . date('Y') . '-' . str_pad($lastNo + 1, 4, '0', STR_PAD_LEFT);
+            // Lock the invoice so two people cannot record the same balance at once.
+            $locked  = Invoice::findBySql('SELECT * FROM invoice WHERE id = :id FOR UPDATE', [':id' => $invoice->id])->one();
+            $balance = round((float)$locked->net_total - (float)$locked->tds_amount - (float)$locked->paid_amount, 2);
+            if ((int)$locked->payment_status === Invoice::PAYMENT_STATUS_PAID || $balance <= 0) {
+                $transaction->rollBack();
+                Yii::$app->session->setFlash('error', 'This invoice is already fully paid. No further payments can be recorded.');
+                return $this->redirect($back);
+            }
+            if ((float)$receipt->receipt_amount > $balance + 0.005) {
+                $transaction->rollBack();
+                Yii::$app->session->setFlash('error', 'The amount (' . number_format((float)$receipt->receipt_amount, 2) . ') is more than the balance due ('
+                    . number_format($balance, 2) . '). Record TDS separately if it was deducted.');
+                return $this->redirect($back);
+            }
+            $invoice = $locked;
 
+            // Receipt numbers never repeat, including numbers of deleted receipts.
+            $lastNo = (int)$db->createCommand('SELECT COALESCE(MAX(receipt_unique_no), 0) FROM invoice_receipt FOR UPDATE')->queryScalar();
+            $receipt->receipt_unique_no = $lastNo + 1;
+            $receipt->receipt_no        = 'REC-' . date('Y') . '-' . str_pad((string)($lastNo + 1), 4, '0', STR_PAD_LEFT);
+            $receipt->pending_amount    = $balance;
+            $receipt->paid_amount       = round((float)$invoice->paid_amount + (float)$receipt->receipt_amount, 2);
+            $receipt->balance_amount    = max(0, round($balance - (float)$receipt->receipt_amount, 2));
             $receipt->save(false);
 
-            // Update invoice totals
-            $totalPaid = (float)InvoiceReceipt::find()
-                ->where(['invoice_id' => $invoice->id, 'status' => 1])
-                ->sum('receipt_amount');
-            $invoice->paid_amount = $totalPaid;
+            $invoice->paid_amount = (float)InvoiceReceipt::find()->where(['invoice_id' => $invoice->id, 'status' => 1])->sum('receipt_amount');
             $this->recalcPaymentStatus($invoice);
             $invoice->save(false);
-
             $transaction->commit();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $transaction->rollBack();
             throw $e;
         }
 
-        // Upload receipt attachments (matches Yii1 InvoicereceiptController::actionCreate)
-        $attachments = UploadedFile::getInstancesByName('attachments');
-        if (!empty($attachments)) {
-            $uploadDir = Yii::getAlias('@backend/web/uploads/invoice_receipt_attachments');
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0755, true);
-            }
-            $i = 1;
-            foreach ($attachments as $file) {
-                $fileName = 'attachment_' . $receipt->id . '_' . $i . '.' . $file->extension;
-                $filePath = $uploadDir . '/' . $fileName;
-                if ($file->saveAs($filePath)) {
-                    $att = new InvoiceReceiptAttachment();
-                    $att->invoice_receipt_id = $receipt->id;
-                    $att->path = '/uploads/invoice_receipt_attachments/' . $fileName;
-                    $att->status = 1;
-                    $att->save(false);
-                }
-                $i++;
-            }
-        }
+        // Files after the commit: a rejected file never loses the payment.
+        SafeUpload::flashRejected(SafeUpload::save('attachments', 'invoice_receipt_attachments', 'receipt_' . $receipt->id,
+            function (string $path) use ($receipt) {
+                (new InvoiceReceiptAttachment(['invoice_receipt_id' => $receipt->id, 'path' => $path, 'status' => 1]))->save(false);
+            }));
 
         $curSym = (string)($invoice->currency !== '' ? $invoice->currency : '₹');
-        Yii::$app->session->setFlash('success', 'Payment of ' . $curSym . ' ' . number_format($amount, 2) . ' recorded.');
-
-        $from = Yii::$app->request->post('_from', 'view');
-        if ($from === 'receipts') {
-            return $this->redirect(['receipts', 'id' => $id]);
-        } elseif ($from === 'create-receipt') {
-            return $this->redirect(['receipts', 'id' => $id]);
-        }
-        return $this->redirect(['view', 'id' => $id]);
+        Yii::$app->session->setFlash('success', 'Payment of ' . $curSym . ' ' . number_format((float)$receipt->receipt_amount, 2) . ' recorded as ' . $receipt->receipt_no . '.');
+        return $this->redirect($req->post('_from') === 'create-receipt' ? ['receipts', 'id' => $id] : $back);
     }
 
     /**
@@ -1397,30 +1306,27 @@ class InvoiceController extends Controller
      */
     public function actionDeleteReceipt(int $id): Response
     {
-        if (!Yii::$app->request->isPost) {
-            throw new \yii\web\BadRequestHttpException('POST required.');
-        }
         $receipt = InvoiceReceipt::findOne(['id' => $id, 'status' => 1]);
         if (!$receipt) {
-            throw new NotFoundHttpException('Receipt not found.');
+            Yii::$app->session->setFlash('info', 'That receipt was already deleted.');
+            return $this->redirect(Yii::$app->request->referrer ?: ['index']);
+        }
+        $invoice = $this->findModel((int)$receipt->invoice_id);
+
+        $transaction = Yii::$app->db->beginTransaction();
+        try {
+            $receipt->updateAttributes(['status' => 0, 'deleted_by' => Yii::$app->user->id, 'deleted_at' => date('Y-m-d H:i:s')]);
+            $invoice->paid_amount = (float)InvoiceReceipt::find()->where(['invoice_id' => $invoice->id, 'status' => 1])->sum('receipt_amount');
+            $this->recalcPaymentStatus($invoice);
+            $invoice->save(false);
+            $transaction->commit();
+        } catch (\Throwable $e) {
+            $transaction->rollBack();
+            throw $e;
         }
 
-        $invoiceId         = $receipt->invoice_id;
-        $receipt->status     = 0;
-        $receipt->deleted_by = Yii::$app->user->id;
-        $receipt->deleted_at = date('Y-m-d H:i:s');
-        $receipt->save(false);
-
-        $invoice   = $this->findModel($invoiceId);
-        $totalPaid = (float)InvoiceReceipt::find()
-            ->where(['invoice_id' => $invoiceId, 'status' => 1])
-            ->sum('receipt_amount');
-        $invoice->paid_amount = $totalPaid;
-        $this->recalcPaymentStatus($invoice);
-        $invoice->save(false);
-
-        Yii::$app->session->setFlash('success', 'Receipt deleted.');
-        return $this->redirect(['receipts', 'id' => $invoiceId]);
+        Yii::$app->session->setFlash('success', 'Receipt ' . $receipt->receipt_no . ' deleted.');
+        return $this->redirect(['receipts', 'id' => $invoice->id]);
     }
 
     /**
@@ -1470,6 +1376,10 @@ class InvoiceController extends Controller
     {
         $year  = (int)Yii::$app->request->get('year', date('Y'));
         $month = (int)Yii::$app->request->get('month', date('n'));
+        if ($year < 2000 || $year > (int)date('Y') + 1 || $month < 1 || $month > 12) {
+            Yii::$app->session->setFlash('warning', 'That month is not available; showing the current month.');
+            [$year, $month] = [(int)date('Y'), (int)date('n')];
+        }
 
         $from = sprintf('%04d-%02d-01', $year, $month);
         $to   = date('Y-m-t', strtotime($from));
@@ -1680,10 +1590,168 @@ class InvoiceController extends Controller
         return $this->asJson($result);
     }
 
+    /** Fields the invoice form may set. Numbers, totals, status, role and payments never come from the browser. */
+    private const FORM_FIELDS = [
+        'client_id', 'title', 'invoice_category', 'project_id', 'phase_value', 'milestone_value', 'currency',
+        'currency_exchange_rate', 'transaction_charge_percent', 'bank_id', 'lut_arn', 'terms_and_conditions', 'to_address',
+    ];
+
+    private function loadForm(Invoice $invoice, array $post): void
+    {
+        $data = is_array($post['Invoice'] ?? null) ? $post['Invoice'] : [];
+        $data = array_map(fn($v) => is_scalar($v) ? trim((string)$v) : null, array_intersect_key($data, array_flip(self::FORM_FIELDS)));
+        $invoice->setAttributes($data, false);
+        foreach (['project_id', 'phase_value', 'milestone_value', 'bank_id'] as $optional) {
+            if ($invoice->$optional === '') {
+                $invoice->$optional = null;
+            }
+        }
+    }
+
+    /**
+     * Read the posted line items (Yii1-style particular[] arrays or items[] rows).
+     * Rows with quantity and rate are priced qty × rate plus the transaction charge
+     * (the form adds the same charge when a line is added); other rows use their amount.
+     *
+     * @return array{0: array, 1: float, 2: string[]} [valid items, sum of amounts, error messages]
+     */
+    private function readItems(array $post, float $chargePct = 0.0): array
+    {
+        $chargePct = max(0.0, min(100.0, $chargePct));
+        $rows = [];
+        if (!empty($post['particular']) && is_array($post['particular'])) {
+            $col = fn($k, $i) => is_array($post[$k] ?? null) && isset($post[$k][$i]) && is_scalar($post[$k][$i]) ? trim((string)$post[$k][$i]) : '';
+            foreach (array_keys($post['particular']) as $i) {
+                $rows[] = ['particulars' => $col('particular', $i), 'amount' => $col('particularamount', $i), 'hsn_sac' => $col('hsn_sac', $i),
+                           'model' => $col('model', $i), 'qty' => $col('qty', $i), 'rate' => $col('rate', $i)];
+            }
+        } elseif (is_array($post['items'] ?? null)) {
+            foreach ($post['items'] as $row) {
+                if (is_array($row)) {
+                    $rows[] = array_map(fn($v) => is_scalar($v) ? trim((string)$v) : '', $row + ['particulars' => '', 'amount' => '', 'hsn_sac' => '', 'model' => '', 'qty' => '', 'rate' => '']);
+                }
+            }
+        }
+
+        $items = $errors = [];
+        $sum = 0.0;
+        foreach ($rows as $row) {
+            $hasQtyRate = $row['qty'] !== '' && $row['rate'] !== '';
+            if ($row['particulars'] === '' && $row['amount'] === '' && !$hasQtyRate) {
+                continue; // blank row
+            }
+            $n = count($items) + 1;
+            foreach (['amount', 'qty', 'rate'] as $k) {
+                if ($row[$k] !== '' && !is_numeric($row[$k])) {
+                    $errors[] = "Line $n: $k must be a number.";
+                    continue 2;
+                }
+            }
+            $amount = $hasQtyRate
+                ? round((float)$row['qty'] * (float)$row['rate'] * (1 + $chargePct / 100), 2)
+                : round((float)$row['amount'], 2);
+            if ($row['particulars'] === '') {
+                $errors[] = "Line $n: enter a description.";
+            } elseif (mb_strlen($row['particulars']) > 5000) {
+                $errors[] = "Line $n: the description is too long.";
+            }
+            if ($hasQtyRate && ((float)$row['qty'] <= 0 || (float)$row['rate'] < 0)) {
+                $errors[] = "Line $n: quantity must be more than 0 and the rate cannot be negative.";
+            } elseif ($amount <= 0) {
+                $errors[] = "Line $n: the amount must be more than 0.";
+            } elseif ($amount > 9999999999) {
+                $errors[] = "Line $n: the amount is too large.";
+            }
+            if (mb_strlen($row['hsn_sac']) > 255 || mb_strlen($row['model']) > 255) {
+                $errors[] = "Line $n: HSN/SAC or model is too long.";
+            }
+            $row['amount'] = $amount;
+            $items[] = $row;
+            $sum += $amount;
+        }
+        if (!$items && !$errors) {
+            $errors[] = 'Add at least one line item with a description and amount.';
+        }
+        if (count($items) > self::MAX_ITEMS) {
+            $errors[] = 'An invoice can have at most ' . self::MAX_ITEMS . ' line items.';
+        }
+        return [$items, round($sum, 2), $errors];
+    }
+
+    /** The form posts the currency row id; store its code and words (Yii1 behaviour). */
+    private function resolveCurrency(Invoice $invoice): void
+    {
+        if ($invoice->currency !== null && ctype_digit((string)$invoice->currency)) {
+            $currency = Currency::findOne(['id' => (int)$invoice->currency, 'status' => 1]);
+            $invoice->currency = $currency->currency ?? null;
+            if ($currency) {
+                $invoice->currency_in_words = $currency->in_words;
+            }
+        }
+    }
+
+    /** Client, bank, project and category must point at real, active records. */
+    private function checkReferences(Invoice $invoice): array
+    {
+        $errors = [];
+        if (!$invoice->client_id || !ClientModel::find()->where(['id' => (int)$invoice->client_id, 'status' => 1])->exists()) {
+            $errors[] = 'Choose an active client.';
+        }
+        if (!in_array((int)$invoice->invoice_category, [Invoice::CATEGORY_SERVICE, Invoice::CATEGORY_PRODUCT], true)) {
+            $errors[] = 'Choose whether this is a service or sales invoice.';
+        }
+        if ($invoice->bank_id && !BankDetail::find()->where(['id' => (int)$invoice->bank_id, 'status' => 1])->exists()
+            && (string)$invoice->bank_id !== (string)$invoice->getOldAttribute('bank_id')) {
+            $errors[] = 'That bank account was removed — pick another one.';
+        }
+        if ($invoice->project_id && !Project::find()->where(['id' => (int)$invoice->project_id, 'status' => 1])->exists()
+            && (string)$invoice->project_id !== (string)$invoice->getOldAttribute('project_id')) {
+            $errors[] = 'That project was removed — pick another one.';
+        }
+        if (empty($invoice->currency)) {
+            $errors[] = 'Choose a currency.';
+        }
+        if (trim((string)$invoice->title) === '') {
+            $errors[] = 'Enter a title for the invoice.';
+        }
+        return $errors;
+    }
+
+    /** Insert the line rows of an invoice (caller holds the transaction). */
+    private function saveItems(Invoice $invoice, array $items): void
+    {
+        foreach ($items as $item) {
+            $detail = new InvoiceDetails([
+                'invoice_id'  => $invoice->id,
+                'particulars' => $item['particulars'],
+                'sac'         => $item['hsn_sac'],
+                'amount'      => $item['amount'],
+                'status'      => 1,
+            ]);
+            // Sale-only columns, added after the Yii1 schema.
+            if ($detail->hasAttribute('model')) {
+                $detail->model = $item['model'] !== '' ? $item['model'] : null;
+            }
+            if ($detail->hasAttribute('quantity')) {
+                $detail->quantity = $item['qty'] !== '' ? (float)$item['qty'] : null;
+            }
+            if ($detail->hasAttribute('unit_rate')) {
+                $detail->unit_rate = $item['rate'] !== '' ? (float)$item['rate'] : null;
+            }
+            $detail->save(false);
+        }
+    }
+
     private function findModel(int $id): Invoice
     {
         // status=1 (active) or status=-1 (draft) — exclude only soft-deleted (status=0)
-        $model = Invoice::find()->where(['id' => $id])->andWhere(['!=', 'status', 0])->one();
+        $query = Invoice::find()->where(['id' => $id])->andWhere(['!=', 'status', 0]);
+        // A client login sees only its own confirmed, active tax invoices (same set as "My Invoices").
+        if ((int)(Yii::$app->user->identity->usertype ?? 0) === 3) {
+            $clientId = ClientModel::find()->select('id')->where(['user_id' => Yii::$app->user->id, 'status' => 1])->scalar();
+            $query->andWhere(['client_id' => $clientId ?: 0, 'status' => 1, 'invoice_status' => 1, 'invoice_role' => Invoice::ROLE_TAX_INVOICE]);
+        }
+        $model = $query->one();
         if (!$model) {
             throw new NotFoundHttpException('Invoice not found.');
         }

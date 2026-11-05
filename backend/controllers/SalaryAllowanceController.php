@@ -12,6 +12,13 @@ use yii\web\Response;
 
 class SalaryAllowanceController extends Controller
 {
+    /** Full pages get the HR module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        \backend\assets\HrAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     /** Redirect index → deductions (Manage Allowances screen has been retired). */
     public function actionIndex(): Response
     {

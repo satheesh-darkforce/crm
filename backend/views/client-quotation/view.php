@@ -32,8 +32,8 @@ $fmtDate  = static fn($d) => !empty($d) ? date('d M Y', strtotime((string) $d)) 
 $fmtStamp = static fn($d) => !empty($d) ? date('d M Y, h:i A', strtotime((string) $d)) : '—';
 ?>
 <style>
-.cq-wrap           { background: #f8fafc; padding: 28px 20px; border-radius: 15px; }
-.cq-hero           { background: linear-gradient(135deg,#0ea5e9 0%,#6366f1 100%); color:#fff; padding: 24px 28px; border-radius: 14px; box-shadow: 0 10px 25px -10px rgba(14,165,233,.4); margin-bottom: 22px; }
+.cq-wrap           { padding: 0; }
+.cq-hero           { background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%); color:#fff; padding: 24px 28px; border-radius: 14px; box-shadow: none; margin-bottom: 22px; }
 .cq-hero h2        { margin: 0 0 4px; font-weight: 700; letter-spacing: .3px; }
 .cq-hero .hero-sub { opacity: .9; font-size: .78rem; text-transform: uppercase; letter-spacing: .6px; font-weight: 600; }
 .cq-hero .hero-meta{ font-size: .85rem; opacity: .95; margin-top: 12px; }
@@ -68,7 +68,7 @@ $fmtStamp = static fn($d) => !empty($d) ? date('d M Y, h:i A', strtotime((string
 .reason-box.soft   { background: #fffbeb; border-color: #fde68a; color: #78350f; }
 </style>
 
-<div class="cq-wrap">
+<div class="ui-page cq-wrap">
 
     <!-- Hero ───────────────────────────────────────────────────────────── -->
     <div class="cq-hero d-flex flex-wrap justify-content-between align-items-start">

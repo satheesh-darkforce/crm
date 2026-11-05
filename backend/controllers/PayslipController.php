@@ -21,6 +21,13 @@ use yii\web\Response;
  */
 class PayslipController extends Controller
 {
+    /** Full pages get the HR module stylesheet and script. */
+    public function render($view, $params = []): string
+    {
+        \backend\assets\HrAsset::register($this->getView());
+        return parent::render($view, $params);
+    }
+
     // ------------------------------------------------------------------ index (one row per distinct month)
 
     /**
@@ -541,6 +548,8 @@ class PayslipController extends Controller
     {
         $model = Payslip::findOne(['id' => $id, 'status' => 1]);
         if (!$model) { throw new NotFoundHttpException('Payslip not found.'); }
+        // payslip/view is a developer default: it must only open the user's own payslips.
+        \backend\components\HrAccess::ensureOwnOrManager($model->developer_id, ['payslip/create', 'payslip/update', 'payslip/selectmonth', 'payslip/createpayslip'], 'Payslip');
         return $model;
     }
 

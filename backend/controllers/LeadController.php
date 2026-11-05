@@ -2,6 +2,7 @@
 
 namespace backend\controllers;
 
+use backend\assets\LeadAsset;
 use backend\components\LeadAccess;
 use backend\components\LeadFiles;
 use backend\components\LeadMailer;
@@ -47,6 +48,13 @@ class LeadController extends Controller
     private const CREATE_ONLY_FIELDS = ['nextfollowup_date', 'nextfollowup_time', 'description'];
 
     private const LIST_FILTERS = ['client_name', 'contact_no', 'email', 'country', 'contact_person_name', 'title', 'lead_status', 'assigned_to', 'from_date', 'to_date'];
+
+    /** Full pages get the Leads stylesheet/script; renderAjax() partials do not need them. */
+    public function render($view, $params = []): string
+    {
+        LeadAsset::registerFor($this->getView());
+        return parent::render($view, $params);
+    }
 
     // ── Lists ────────────────────────────────────────────────────────────────
 
@@ -282,34 +290,28 @@ class LeadController extends Controller
             return $this->redirect(['converted']);
         }
 
+        // Client phones are bare digits; drop a +91 / 0 prefix when 10 digits remain.
+        $digits = fn($phone) => preg_replace('/^(?:91|0)(?=\d{10}$)/', '', preg_replace('/\D/', '', (string)$phone));
         $client = new ClientModel([
             'client_name'    => $lead->client_name,
             'company_name'   => $lead->company_name ?: $lead->client_name,
             'contact_person' => $lead->contact_person_name ?: $lead->client_name,
             'address'        => $lead->address,
-            'phone'          => preg_replace('/\D/', '', (string)$lead->contact_no),
-            'alt_phone'      => preg_replace('/\D/', '', (string)$lead->contact_no2),
+            'phone'          => $digits($lead->contact_no),
+            'alt_phone'      => $digits($lead->contact_no2),
             'email_id'       => $lead->email,
         ]);
         $user = new User();
 
         if (Yii::$app->request->isPost) {
             $post = Yii::$app->request->post();
-            $user->username = trim($post['username'] ?? '');
+            $user->username = is_string($post['username'] ?? null) ? trim($post['username']) : '';
             $user->usertype = User::TYPE_CLIENT;
             $user->status   = 1;
-            $password       = trim($post['password'] ?? '');
             $client->load($post, 'ClientModel');
             $client->status = 1;
 
-            $userValid = true;
-            if ($password === '') {
-                $user->addError('password', 'Password is required.');
-                $userValid = false;
-            } else {
-                $user->setPassword($password);
-                $userValid = $user->validate();
-            }
+            $userValid   = ClientModel::validateLogin($user, is_string($post['password'] ?? null) ? $post['password'] : '');
             $clientValid = $client->validate();
 
             if ($userValid && $clientValid && $client->saveWithLogin($user)) {
@@ -331,13 +333,19 @@ class LeadController extends Controller
 
         $filters = [];
         foreach (['account_name', 'first_name', 'last_name', 'designation', 'email_id', 'phone_number', 'city'] as $field) {
-            $value = trim((string)$request->get($field, ''));
+            $value = $request->get($field, '');
+            $value = is_string($value) ? mb_substr(trim($value), 0, 100) : '';
             $filters[$field] = $value;
             if ($value !== '') {
                 $query->andWhere(['like', $field, $value]);
             }
         }
-        $filters['status'] = (string)$request->get('status', '');
+        $status = $request->get('status', '');
+        $filters['status'] = is_string($status) ? trim($status) : '';
+        if ($filters['status'] !== '' && !array_key_exists((int)$filters['status'], LeadMaster::statusOptions())) {
+            Yii::$app->session->setFlash('warning', 'Ignored an invalid status filter.');
+            $filters['status'] = '';
+        }
         if ($filters['status'] !== '') {
             $query->andWhere(['status' => (int)$filters['status']]);
         }
@@ -504,7 +512,28 @@ class LeadController extends Controller
         $request = Yii::$app->request;
         $filters = [];
         foreach (self::LIST_FILTERS as $key) {
-            $filters[$key] = trim((string)$request->get($key, ''));
+            $value = $request->get($key, '');
+            $filters[$key] = is_string($value) ? mb_substr(trim($value), 0, 100) : ''; // arrays from tampered URLs are ignored
+        }
+
+        // Values that cannot match anything are cleared from the form and explained.
+        $ignored = [];
+        if ($filters['lead_status'] !== '' && !array_key_exists((int)$filters['lead_status'], Lead::leadStatusOptions())) {
+            $ignored[] = 'lead status';
+            $filters['lead_status'] = '';
+        }
+        if ($filters['assigned_to'] !== '' && !ctype_digit($filters['assigned_to'])) {
+            $ignored[] = 'assigned to';
+            $filters['assigned_to'] = '';
+        }
+        foreach (['from_date' => 'from date', 'to_date' => 'to date'] as $key => $label) {
+            if ($filters[$key] !== '' && !$this->validDate($filters[$key])) {
+                $ignored[] = $label;
+                $filters[$key] = '';
+            }
+        }
+        if ($ignored) {
+            Yii::$app->session->setFlash('warning', 'Ignored an invalid search value (' . implode(', ', $ignored) . '). Dates must be YYYY-MM-DD.');
         }
 
         foreach (['client_name', 'contact_no', 'email', 'country', 'contact_person_name', 'title'] as $field) {

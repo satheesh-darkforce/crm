@@ -63,10 +63,14 @@ $paymentLedgerUrl = Url::to(['/inward-invoice/get-payment-ledgers']);
 .invoice_table .select2-container .select2-selection--single .select2-selection__arrow { height: 24px; }
 </style>
 
-<div class="iot-purchase-form">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-semibold mb-0"><?= Html::encode($this->title) ?></h5>
-        <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['purchased'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+<div class="ui-page iot-purchase-form">
+    <div class="ui-head">
+        <div>
+            <h1><?= Html::encode($this->title) ?></h1>
+        </div>
+        <div class="ui-actions">
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Back', ['purchased'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm">

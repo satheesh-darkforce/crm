@@ -69,25 +69,107 @@ class Task extends ActiveRecord
     const ASSIGN_TYPE_FULL    = 1;
     const ASSIGN_TYPE_PARTIAL = 2;
 
+    /** Add/Edit Task and subtask forms: only these fields can be posted (owners, status etc. are server-set). */
+    const SCENARIO_FORM = 'form';
+
+    /** Expected time cap: 1,000 hours (seconds). */
+    const MAX_EXPECTED_TIME = 3600000;
+
     public static function tableName(): string
     {
         return 'task';
     }
 
+    public function scenarios(): array
+    {
+        $scenarios = parent::scenarios();
+        $scenarios[self::SCENARIO_FORM] = [
+            'project_id', 'assign_type', 'assigned_to', 'priority', 'task',
+            'expected_delivery_date', 'expected_time', 'description',
+        ];
+        return $scenarios;
+    }
+
     public function rules(): array
     {
+        // Checks that only matter when the value is new or edited — 7,000+ legacy
+        // tasks share names, and old deadlines are naturally in the past.
+        $changed = fn(string $attr) => fn($m) => $m->isNewRecord
+            || strcasecmp(trim((string)$m->getOldAttribute($attr)), trim((string)$m->$attr)) !== 0;
+
         return [
             [['task', 'description'], 'trim'],
             [['task', 'project_id', 'assigned_to', 'status', 'priority', 'expected_delivery_date', 'expected_time', 'assign_type'], 'required'],
             [['parent_id', 'project_id', 'client_id', 'task_status',
               'created_by', 'priority', 'assigned_by', 'assigned_to', 'is_read', 'assign_type', 'status'], 'integer'],
             [['total_time'], 'integer', 'min' => 0],
-            [['expected_time'], 'integer', 'min' => 60, 'tooSmall' => 'Hour Of Work Required must be at least 1 minute.'],
-            [['description'], 'string'],
-            [['expected_delivery_date', 'start_time', 'end_time', 'completed_date', 'created_date'], 'safe'],
+            [['expected_time'], 'integer', 'min' => 60, 'max' => self::MAX_EXPECTED_TIME,
+                'tooSmall' => 'Hour Of Work Required must be at least 1 minute.',
+                'tooBig' => 'Hour Of Work Required cannot exceed 1,000 hours.'],
+            [['priority'], 'in', 'range' => array_keys(self::priorityOptions()), 'message' => 'Choose a valid priority.'],
+            [['assign_type'], 'in', 'range' => array_keys(self::assignTypeOptions()), 'message' => 'Choose a valid assign type.'],
+            [['task_status'], 'in', 'range' => array_keys(self::statusOptions())],
+            [['description'], 'string', 'max' => 10000],
+            [['expected_delivery_date'], 'date', 'format' => 'php:Y-m-d', 'message' => 'Enter the deadline as YYYY-MM-DD.',
+                'when' => $changed('expected_delivery_date')],
+            [['expected_delivery_date'], 'compare', 'compareValue' => date('Y-m-d'), 'operator' => '>=', 'type' => 'string',
+                'message' => 'The deadline cannot be in the past.', 'when' => $changed('expected_delivery_date')],
+            [['assigned_to'], 'exist', 'targetClass' => User::class, 'targetAttribute' => 'user_id',
+                'filter' => ['and', ['status' => 1], ['!=', 'usertype', User::TYPE_CLIENT]],
+                'message' => 'Select an active employee.', 'when' => $changed('assigned_to')],
+            [['project_id'], 'exist', 'targetClass' => Project::class, 'targetAttribute' => 'id', 'filter' => ['status' => 1],
+                'message' => 'Select an active project.', 'when' => $changed('project_id')],
+            [['start_time', 'end_time', 'completed_date', 'created_date'], 'safe'],
             [['task'], 'string', 'max' => 255],
-            [['task'], 'unique', 'message' => 'A task with this name already exists.'],
+            [['task'], 'unique', 'filter' => ['status' => 1], 'message' => 'A task with this name already exists.', 'when' => $changed('task')],
         ];
+    }
+
+    public static function statusOptions(): array
+    {
+        return [
+            self::STATUS_PENDING    => 'Pending',
+            self::STATUS_ACCEPTED   => 'Accepted',
+            self::STATUS_ONGOING    => 'On going',
+            self::STATUS_REOPEN     => 'Re-opened',
+            self::STATUS_COMPLETED  => 'Completed',
+            self::STATUS_REASSIGNED => 'Re-assigned',
+        ];
+    }
+
+    /** Pill tone for a status (see .ui-pill in page-ui.css). */
+    public static function statusTone(int $status): string
+    {
+        return [
+            self::STATUS_PENDING    => 'warning',
+            self::STATUS_ACCEPTED   => 'neutral',
+            self::STATUS_ONGOING    => 'accent',
+            self::STATUS_REOPEN     => 'danger',
+            self::STATUS_COMPLETED  => 'success',
+            self::STATUS_REASSIGNED => 'neutral',
+        ][$status] ?? 'neutral';
+    }
+
+    public static function priorityOptions(): array
+    {
+        return [self::PRIORITY_HIGH => 'High', self::PRIORITY_MEDIUM => 'Medium', self::PRIORITY_LOW => 'Low'];
+    }
+
+    public static function priorityTone(int $priority): string
+    {
+        return [self::PRIORITY_HIGH => 'danger', self::PRIORITY_MEDIUM => 'warning', self::PRIORITY_LOW => 'neutral'][$priority] ?? 'neutral';
+    }
+
+    public static function assignTypeOptions(): array
+    {
+        return [self::ASSIGN_TYPE_FULL => 'Full', self::ASSIGN_TYPE_PARTIAL => 'Partial'];
+    }
+
+    /** Seconds → "HH:MM" (hours can exceed 24), or '—' for none. */
+    public static function hm(?int $secs): string
+    {
+        $s = (int)$secs;
+        return $s > 0 ? sprintf('%02d:%02d', intdiv($s, 3600), intdiv($s % 3600, 60)) : '—';
     }
 
     public function attributeLabels(): array
@@ -157,15 +239,7 @@ class Task extends ActiveRecord
 
     public function getStatusLabel(): string
     {
-        return match ((int)$this->task_status) {
-            self::STATUS_PENDING    => 'Pending',
-            self::STATUS_ACCEPTED   => 'Accepted',
-            self::STATUS_ONGOING    => 'On Going',
-            self::STATUS_REOPEN     => 'Re Open',
-            self::STATUS_COMPLETED  => 'Completed',
-            self::STATUS_REASSIGNED => 'Re Assigned',
-            default                 => 'Unknown',
-        };
+        return self::statusOptions()[(int)$this->task_status] ?? 'Unknown';
     }
 
     public function getStatusBadge(): string

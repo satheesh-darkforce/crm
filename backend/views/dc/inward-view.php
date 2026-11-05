@@ -22,13 +22,13 @@ $alreadyReturned = !empty($model['inward_dc_no']) && DcDetail::find()
 ?>
 
 <style>
-.dc-view-wrap      { background-color: #f8fafc; padding: 28px 20px; border-radius: 15px; }
-.dc-hero           { background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%); color: #fff; padding: 24px 28px; border-radius: 14px; box-shadow: 0 10px 25px -10px rgba(245,158,11,.45); margin-bottom: 24px; }
+.dc-view-wrap      { padding: 0; }
+.dc-hero           { background: linear-gradient(135deg, #0f766e 0%, #b45309 160%); color: #fff; padding: 24px 28px; border-radius: 14px; box-shadow: none; margin-bottom: 24px; }
 .dc-hero h2        { margin: 0 0 4px 0; font-weight: 700; letter-spacing: .3px; }
 .dc-hero .hero-sub { opacity: .9; font-size: .9rem; }
 .dc-hero .hero-meta{ font-size: .82rem; opacity: .95; margin-top: 10px; }
 .dc-hero .btn      { border-radius: 8px; font-weight: 600; }
-.dc-hero .btn-outline-light:hover { color: #f59e0b; }
+.dc-hero .btn-outline-light:hover { color: #0f766e; }
 .dc-section        { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 22px 24px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04); }
 .dc-section-head   { display:flex; align-items:center; padding-bottom: 12px; margin-bottom: 18px; border-bottom: 2px solid #f1f5f9; }
 .dc-section-head h5{ margin: 0; font-weight: 700; color: #1e293b; font-size: 1rem; text-transform: uppercase; letter-spacing: .5px; }
@@ -47,7 +47,7 @@ $alreadyReturned = !empty($model['inward_dc_no']) && DcDetail::find()
 .dc-table .qty-badge   { display: inline-block; min-width: 38px; text-align: center; padding: 3px 10px; border-radius: 999px; background: #ecfeff; color: #0e7490; font-weight: 600; font-size: .85rem; }
 </style>
 
-<div class="dc-view-wrap">
+<div class="ui-page dc-view-wrap">
     <div class="dc-hero d-flex flex-wrap justify-content-between align-items-start">
         <div>
             <div class="hero-sub text-uppercase small fw-semibold">Inward Delivery Challan</div>

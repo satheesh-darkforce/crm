@@ -21,6 +21,14 @@ use yii\db\ActiveRecord;
  */
 class AssetMaintenance extends ActiveRecord
 {
+    use \backend\components\GuardedAttributes;
+
+    /** Set by the controller, never by the form. */
+    protected static function guardedAttributes(): array
+    {
+        return ['status', 'invoice_bill'];
+    }
+
     public static function tableName(): string { return 'assets_maintenance'; }
 
     public function rules(): array

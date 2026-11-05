@@ -30,17 +30,13 @@ $canDelete = UserAccess::checkAccess('asset/delete-master');
 $req = '<span class="text-danger">*</span>';
 ?>
 <style>
-.list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
-.list-table td{vertical-align:middle;font-size:.875rem}
-.list-table tbody tr:hover{background:#f8f9ff}
-.act-btn{padding:.2rem .45rem;font-size:.78rem;line-height:1.3}
 .cat-sidebar .nav-link{color:#333;padding:.45rem .75rem;font-size:.85rem;border-radius:.25rem;margin-bottom:2px}
 .cat-sidebar .nav-link:hover{background:#e9ecef}
 .cat-sidebar .nav-link.active{background:#0d6efd;color:#fff;font-weight:600}
 </style>
 
-<div class="asset-categories-index">
-    <h5 class="fw-semibold mb-3">Assets &gt; Categories</h5>
+<div class="ui-page asset-categories-index">
+    <div class="ui-head"><div><h1>Asset Lookup Tables</h1><div class="ui-sub">Categories, brands, locations and tags used on assets</div></div></div>
 
     <div class="row">
         <!-- Left Sidebar: Tabs -->
@@ -83,7 +79,7 @@ $req = '<span class="text-danger">*</span>';
                         <?php endif; ?>
                     </form>
                     <?php if ($canAdd): ?>
-                        <button class="btn btn-danger btn-sm" onclick="openModal()">ADD</button>
+                        <button class="btn btn-primary btn-sm" onclick="openModal()">+ Add</button>
                     <?php endif; ?>
                 </div>
                 <div class="table-responsive">
