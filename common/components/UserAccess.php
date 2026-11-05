@@ -665,6 +665,20 @@ class UserAccess
             'lead/update' => [
                 'lead/delete-attachment',
             ],
+            // Product catalogue: the list includes the detail page and the
+            // picker search; editing includes removing the product image.
+            'product/index' => [
+                'product/view',
+                'product/search',
+            ],
+            'product/update' => [
+                'product/remove-image',
+                'product/toggle-active',
+            ],
+            'product/categories' => [
+                'product/category-save',
+                'product/category-delete',
+            ],
             // PO Listing permission: View + Edit of existing POs.
             'po/index' => [
                 'po/view',

@@ -111,6 +111,7 @@ $navGroupMap = [
     'client-quotation'      => 'nav-quotation',
     'dc'                    => 'nav-quotation',
     'delivery-product'      => 'nav-quotation',
+    'product'               => 'nav-products',
     'quotation'             => 'nav-quotation',
     'po'                    => 'nav-po',
     'po-dashboard'          => 'nav-po',
@@ -564,93 +565,133 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
 
 <?php if (!Yii::$app->user->isGuest): ?>
 
+    <?php
+    // Sidebar groups are captured into $navBlocks and printed in the order of
+    // params['sidebar.groups']; links whose route is in params['sidebar.hiddenRoutes']
+    // are left out. Nothing is deleted — see HIDDEN_MODULES.md.
+    $navBlocks       = [];
+    $navHiddenRoutes = Yii::$app->params['sidebar.hiddenRoutes'] ?? [];
+    $nav = fn(string $route): bool => !in_array($route, $navHiddenRoutes, true) && $ca($route);
+    ?>
+    <?php ob_start(); ?>
     <!-- 1. Dashboard -->
-    <?php if ($ca('site/index')): ?>
+    <?php if ($nav('site/index')): ?>
     <a class="nav-link" href="<?= \yii\helpers\Url::to(['/site/index']) ?>">
         <span class="sidebar-icon"><i class="fas fa-bars"></i></span> Dashboard
     </a>
     <?php endif; ?>
+    <?php $navBlocks['dashboard'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 2. Clients -->
-    <?php if ($ca('client/index') || $ca('client/create')): ?>
+    <?php if ($nav('client/index') || $nav('client/create')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-clients" aria-expanded="<?= $navAria('nav-clients') ?>">
         <span class="sidebar-icon"><i class="fas fa-building"></i></span> Clients
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-clients') ?>" id="nav-clients">
-        <?php if ($ca('client/index')): ?>
+        <?php if ($nav('client/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/client/index']) ?>">Clients</a>
         <?php endif; ?>
-        <?php if ($ca('client/create')): ?>
+        <?php if ($nav('client/create')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/client/create']) ?>">Add New Client</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['clients'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
+    <!-- 2b. Products & services catalogue -->
+    <?php if ($nav('product/index') || $nav('product/create') || $nav('product/categories')): ?>
+    <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-products" aria-expanded="<?= $navAria('nav-products') ?>">
+        <span class="sidebar-icon"><i class="fas fa-boxes"></i></span> Products
+        <span class="arrow"><i class="fas fa-caret-right"></i></span>
+    </a>
+    <div class="collapse nav-sublist <?= $navOpen('nav-products') ?>" id="nav-products">
+        <?php if ($nav('product/index')): ?>
+        <a class="nav-link" href="<?= \yii\helpers\Url::to(['/product/index']) ?>">Products &amp; Services</a>
+        <?php endif; ?>
+        <?php if ($nav('product/create')): ?>
+        <a class="nav-link" href="<?= \yii\helpers\Url::to(['/product/create']) ?>">Add Product</a>
+        <?php endif; ?>
+        <?php if ($nav('product/categories')): ?>
+        <a class="nav-link" href="<?= \yii\helpers\Url::to(['/product/categories']) ?>">Categories</a>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+    <?php $navBlocks['products'] = ob_get_clean(); ?>
+
+    <?php ob_start(); ?>
     <!-- 3. Projects -->
-    <?php if ($ca('project/index') || $ca('project/create')): ?>
+    <?php if ($nav('project/index') || $nav('project/create')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-projects" aria-expanded="<?= $navAria('nav-projects') ?>">
         <span class="sidebar-icon"><i class="fas fa-folder"></i></span> Projects
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-projects') ?>" id="nav-projects">
-        <?php if ($ca('project/index')): ?>
+        <?php if ($nav('project/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/project/index']) ?>">Projects</a>
         <?php endif; ?>
-        <?php if ($ca('project/create')): ?>
+        <?php if ($nav('project/create')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/project/create']) ?>">Add New Project</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['projects'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 3b. AMC -->
-    <?php if ($ca('amc/projects') || $ca('amc/active') || $ca('amc/renew-list') || $ca('amc/ended') || $ca('amc/completed-projects')): ?>
+    <?php if ($nav('amc/projects') || $nav('amc/active') || $nav('amc/renew-list') || $nav('amc/ended') || $nav('amc/completed-projects')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-amc" aria-expanded="<?= $navAria('nav-amc') ?>">
         <span class="sidebar-icon"><i class="fas fa-tools"></i></span> AMC
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-amc') ?>" id="nav-amc">
-        <?php if ($ca('amc/projects')): ?>
+        <?php if ($nav('amc/projects')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/amc/projects']) ?>">AMC Projects</a>
         <?php endif; ?>
-        <?php if ($ca('amc/active')): ?>
+        <?php if ($nav('amc/active')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/amc/active']) ?>">Active AMC</a>
         <?php endif; ?>
-        <?php if ($ca('amc/renew-list')): ?>
+        <?php if ($nav('amc/renew-list')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/amc/renew-list']) ?>">Current Month Renew</a>
         <?php endif; ?>
-        <?php if ($ca('amc/ended')): ?>
+        <?php if ($nav('amc/ended')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/amc/ended']) ?>">Ended AMC</a>
         <?php endif; ?>
         <?php /* Completed Projects menu hidden per request — the amc/completed-projects
                 action + view still exist; re-add this link to expose it again. */ ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['amc'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 4. Employees -->
-    <?php if ($ca('developer/index') || $ca('developer/create')): ?>
+    <?php if ($nav('developer/index') || $nav('developer/create')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-employees" aria-expanded="<?= $navAria('nav-employees') ?>">
         <span class="sidebar-icon"><i class="fas fa-user"></i></span> Employees
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-employees') ?>" id="nav-employees">
-        <?php if ($ca('developer/index')): ?>
+        <?php if ($nav('developer/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/developer/index']) ?>">Employees</a>
         <?php endif; ?>
-        <?php if ($ca('developer/create')): ?>
+        <?php if ($nav('developer/create')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/developer/create']) ?>">Add New Employee</a>
         <?php endif; ?>
-        <?php if ($ca('developer/ex-employees')): ?>
+        <?php if ($nav('developer/ex-employees')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/developer/ex-employees']) ?>">Ex-Employees</a>
         <?php endif; ?>
-        <?php if ($ca('developer/create-payslip')): ?>
+        <?php if ($nav('developer/create-payslip')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/developer/create-payslip']) ?>">Create Payslip</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['employees'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 5. Work Reports -->
-    <?php if ($ca('work-report/index') || $ca('work-report/create') || $ca('work-report/my-work-reports')): ?>
+    <?php if ($nav('work-report/index') || $nav('work-report/create') || $nav('work-report/my-work-reports')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-workreports" aria-expanded="<?= $navAria('nav-workreports') ?>">
         <span class="sidebar-icon"><i class="fas fa-chart-bar"></i></span> Work Reports
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
@@ -660,413 +701,441 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
                // permission. Admin / sub-admin headers do not show this link at all (Yii1
                // parity with maestro_erp/protected/components/admin_header.php).
                // Yii1 parity: grayed out while a task timer is running. ?>
-        <?php if (!$isAdmin && !$isSubAdmin && $ca('work-report/create')): ?>
+        <?php if (!$isAdmin && !$isSubAdmin && $nav('work-report/create')): ?>
         <a class="nav-link<?= $hasRunningTask ? ' wr-disabled' : '' ?>"
            href="<?= \yii\helpers\Url::to(['/work-report/create']) ?>"
            <?php if ($hasRunningTask): ?>title="Stop your running task before adding a work report" aria-disabled="true"<?php endif; ?>>Add Work Report</a>
         <?php endif; ?>
-        <?php if ($ca('work-report/my-work-reports')): ?>
+        <?php if ($nav('work-report/my-work-reports')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/work-report/my-work-reports']) ?>">My Work Reports</a>
         <?php endif; ?>
-        <?php if ($ca('project/all-project')): ?>
+        <?php if ($nav('project/all-project')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/project/all-project']) ?>">All Projects</a>
         <?php endif; ?>
-        <?php if ($ca('work-report/index')): ?>
+        <?php if ($nav('work-report/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/work-report/index']) ?>">Daily Work Report</a>
         <?php endif; ?>
-        <?php if ($ca('work-report/yesterday')): ?>
+        <?php if ($nav('work-report/yesterday')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/work-report/yesterday']) ?>">Employee yesterday's work report</a>
         <?php endif; ?>
-        <?php if ($ca('work-report/developer-current-month')): ?>
+        <?php if ($nav('work-report/developer-current-month')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/work-report/developer-current-month']) ?>">Employee monthly work report</a>
         <?php endif; ?>
-        <?php if ($ca('work-report/cumulative-employee')): ?>
+        <?php if ($nav('work-report/cumulative-employee')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/work-report/cumulative-employee']) ?>">Employee based cumulative report</a>
         <?php endif; ?>
-        <?php if ($ca('work-report/monthly-by-project')): ?>
+        <?php if ($nav('work-report/monthly-by-project')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/work-report/monthly-by-project']) ?>">Project based monthly work report</a>
         <?php endif; ?>
-        <?php if ($ca('work-report/cumulative-client')): ?>
+        <?php if ($nav('work-report/cumulative-client')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/work-report/cumulative-client']) ?>">Client based cumulative report</a>
         <?php endif; ?>
-        <?php if ($ca('work-report/monthly-by-employee')): ?>
+        <?php if ($nav('work-report/monthly-by-employee')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/work-report/monthly-by-employee']) ?>">Monthly report</a>
         <?php endif; ?>
-        <?php if ($ca('work-report/overall')): ?>
+        <?php if ($nav('work-report/overall')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/work-report/overall']) ?>">Overall report</a>
         <?php endif; ?>
-        <?php if ($ca('work-report/performance')): ?>
+        <?php if ($nav('work-report/performance')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/work-report/performance']) ?>">Performance report</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['workreports'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 6. Tasks -->
-    <?php if ($ca('task/index') || $ca('task/create') || $ca('task/my-new-task-list') || $ca('task/completed-task-list') || $ca('task/assigned-tasks')): ?>
+    <?php if ($nav('task/index') || $nav('task/create') || $nav('task/my-new-task-list') || $nav('task/completed-task-list') || $nav('task/assigned-tasks')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-tasks" aria-expanded="<?= $navAria('nav-tasks') ?>">
         <span class="sidebar-icon"><i class="fas fa-check"></i></span> Tasks
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-tasks') ?>" id="nav-tasks">
-        <?php if ($ca('task/index')): ?>
+        <?php if ($nav('task/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/task/index']) ?>">My Tasks</a>
         <?php endif; ?>
-        <?php if ($ca('task/create')): ?>
+        <?php if ($nav('task/create')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/task/create']) ?>">Add Task</a>
         <?php endif; ?>
-        <?php if ($ca('task/my-new-task-list')): ?>
+        <?php if ($nav('task/my-new-task-list')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/task/my-new-task-list']) ?>">My New Tasks</a>
         <?php endif; ?>
-        <?php if ($ca('task/completed-task-list')): ?>
+        <?php if ($nav('task/completed-task-list')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/task/completed-task-list']) ?>">Completed Task List</a>
         <?php endif; ?>
-        <?php if ($ca('task/assigned-tasks')): ?>
+        <?php if ($nav('task/assigned-tasks')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/task/assigned-tasks']) ?>">Assigned Task List</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['tasks'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 7. Leads -->
-    <?php if ($ca('lead/index') || $ca('lead/my-leads') || $ca('lead/create') || $ca('lead/assigned') || $ca('lead/converted') || $ca('lead/dropped') || $ca('lead/lead-master') || $ca('lead/upload-lead')): ?>
+    <?php if ($nav('lead/index') || $nav('lead/my-leads') || $nav('lead/create') || $nav('lead/assigned') || $nav('lead/converted') || $nav('lead/dropped') || $nav('lead/lead-master') || $nav('lead/upload-lead')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-leads" aria-expanded="<?= $navAria('nav-leads') ?>">
         <span class="sidebar-icon"><i class="fas fa-bullseye"></i></span> Leads
         <?= $openLeads > 0 ? '<span class="badge bg-danger ms-1">' . $openLeads . '</span>' : '' ?>
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-leads') ?>" id="nav-leads">
-        <?php if ($ca('lead/index')): ?>
+        <?php if ($nav('lead/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/index']) ?>">Manage Leads</a>
         <?php endif; ?>
-        <?php if ($ca('lead/my-leads')): ?>
+        <?php if ($nav('lead/my-leads')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/my-leads']) ?>">My Leads</a>
         <?php endif; ?>
-        <?php if ($ca('lead/create')): ?>
+        <?php if ($nav('lead/create')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/create']) ?>">Add New Lead</a>
         <?php endif; ?>
-        <?php if ($ca('lead/assigned')): ?>
+        <?php if ($nav('lead/assigned')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/assigned']) ?>">
             Assigned Leads <?= $openLeads > 0 ? '<span class="badge bg-danger">' . $openLeads . '</span>' : '' ?>
         </a>
         <?php endif; ?>
-        <?php if ($ca('lead/converted')): ?>
+        <?php if ($nav('lead/converted')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/converted']) ?>">Converted Leads</a>
         <?php endif; ?>
-        <?php if ($ca('lead/dropped')): ?>
+        <?php if ($nav('lead/dropped')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/dropped']) ?>">Dropped Leads</a>
         <?php endif; ?>
         <?php /* Proposals stays hidden until that module is rolled out.
-        <?php if ($ca('proposal/index')): ?>
+        <?php if ($nav('proposal/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/proposal/index']) ?>">Proposals</a>
         <?php endif; ?>
         */ ?>
-        <?php if ($ca('lead/lead-master')): ?>
+        <?php if ($nav('lead/lead-master')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/lead-master']) ?>">Lead Master</a>
         <?php endif; ?>
-        <?php if ($ca('lead/upload-lead')): ?>
+        <?php if ($nav('lead/upload-lead')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/upload-lead']) ?>">Upload Lead</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['leads'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 8. Domains -->
-    <?php if ($ca('domain/index') || $ca('domain/create')): ?>
+    <?php if ($nav('domain/index') || $nav('domain/create')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-domains" aria-expanded="<?= $navAria('nav-domains') ?>">
         <span class="sidebar-icon"><i class="fas fa-globe"></i></span> Domains
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-domains') ?>" id="nav-domains">
-        <?php if ($ca('domain/index')): ?>
+        <?php if ($nav('domain/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/domain/index']) ?>">Domains</a>
         <?php endif; ?>
-        <?php if ($ca('domain/create')): ?>
+        <?php if ($nav('domain/create')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/domain/create']) ?>">Add Domain</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['domains'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 9. Invoices (matches Yii1 admin_header / developer_header submenu order) -->
-    <?php if ($ca('invoice/index') || $ca('invoice/create') || $ca('invoice/proforma') || $ca('inward-invoice/index') || $ca('inward-invoice/create') || $ca('invoice/monthly-report') || $ca('bank-detail/index') || $ca('bank-detail/create') || $ca('settings/invoice') || $ca('invoice/client-invoice')): ?>
+    <?php if ($nav('invoice/index') || $nav('invoice/create') || $nav('invoice/proforma') || $nav('inward-invoice/index') || $nav('inward-invoice/create') || $nav('invoice/monthly-report') || $nav('bank-detail/index') || $nav('bank-detail/create') || $nav('settings/invoice') || $nav('invoice/client-invoice')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-invoices" aria-expanded="<?= $navAria('nav-invoices') ?>">
         <span class="sidebar-icon"><i class="fas fa-file-alt"></i></span> <?= $isClient ? 'My Invoices' : 'Invoices' ?>
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-invoices') ?>" id="nav-invoices">
         <?php if ($isClient): ?>
-            <?php if ($ca('invoice/client-invoice')): ?>
+            <?php if ($nav('invoice/client-invoice')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/invoice/client-invoice']) ?>">My Invoices</a>
             <?php endif; ?>
         <?php else: ?>
-            <?php if ($ca('invoice/index')): ?>
+            <?php if ($nav('invoice/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/invoice/index']) ?>">Invoices</a>
             <?php endif; ?>
-            <?php if ($ca('invoice/create')): ?>
+            <?php if ($nav('invoice/create')): ?>
             <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#addInvoiceModal"
                onclick="openInvoiceModal('Add Invoice', '1')">Add Invoice</a>
             <?php endif; ?>
-            <?php if ($ca('invoice/proforma')): ?>
+            <?php if ($nav('invoice/proforma')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/invoice/proforma']) ?>">Proforma Invoices</a>
             <?php endif; ?>
-            <?php if ($ca('invoice/create')): ?>
+            <?php if ($nav('invoice/create')): ?>
             <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#addInvoiceModal"
                onclick="openInvoiceModal('Add Proforma Invoice', '2')">Add Proforma</a>
             <?php endif; ?>
-            <?php if ($ca('inward-invoice/index')): ?>
+            <?php if ($nav('inward-invoice/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/inward-invoice/index']) ?>">Inward Invoices</a>
             <?php endif; ?>
-            <?php if ($ca('inward-invoice/create')): ?>
+            <?php if ($nav('inward-invoice/create')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/inward-invoice/create']) ?>">Add Inward Invoices</a>
             <?php endif; ?>
-            <?php if ($ca('invoice/monthly-report')): ?>
+            <?php if ($nav('invoice/monthly-report')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/invoice/monthly-report']) ?>">Monthly Report</a>
             <?php endif; ?>
-            <?php if ($ca('bank-detail/index')): ?>
+            <?php if ($nav('bank-detail/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/bank-detail/index']) ?>">Payment Bank Details</a>
             <?php endif; ?>
-            <?php if ($ca('bank-detail/create')): ?>
+            <?php if ($nav('bank-detail/create')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/bank-detail/create']) ?>">Add Bank Detail</a>
             <?php endif; ?>
             <?php /* TODO: Uncomment when Quotation module is ready for use
-            <?php if ($ca('quotation/index')): ?>
+            <?php if ($nav('quotation/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/quotation/index']) ?>">Quotations</a>
             <?php endif; ?>
             */ ?>
-            <?php if ($ca('settings/invoice')): ?>
+            <?php if ($nav('settings/invoice')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/settings/invoice']) ?>">Invoice Settings</a>
             <?php endif; ?>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['invoices'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 10. Vendors -->
-    <?php if ($ca('vendor/index') || $ca('vendor/create')): ?>
+    <?php if ($nav('vendor/index') || $nav('vendor/create')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-vendors" aria-expanded="<?= $navAria('nav-vendors') ?>">
         <span class="sidebar-icon"><i class="fas fa-box"></i></span> Vendors
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-vendors') ?>" id="nav-vendors">
-        <?php if ($ca('vendor/index')): ?>
+        <?php if ($nav('vendor/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/vendor/index']) ?>">Vendors</a>
         <?php endif; ?>
-        <?php if ($ca('vendor/create')): ?>
+        <?php if ($nav('vendor/create')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/vendor/create']) ?>">Add Vendor</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['vendors'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 11. Attendance -->
     <?php
     // Yii1 parity: sub-admin only sees the toggle when at least one child item
     // is permitted (admin always sees it). Without this, sub-admins without any
     // attendance grants saw an empty Attendance group.
     $showAttendanceMenu = $isAdmin
-        || $ca('attendance/index') || $ca('attendance/my-attendance') || $ca('leave/my-requests')
-        || $ca('leave/create') || $ca('leave/index') || $ca('attendance/monthly-attendance')
-        || $ca('permission/index') || $ca('permission/create')
-        || $ca('attendance/leave-settings') || $ca('holiday/index') || $ca('rfid-card/index');
+        || $nav('attendance/index') || $nav('attendance/my-attendance') || $nav('leave/my-requests')
+        || $nav('leave/create') || $nav('leave/index') || $nav('attendance/monthly-attendance')
+        || $nav('permission/index') || $nav('permission/create')
+        || $nav('attendance/leave-settings') || $nav('holiday/index') || $nav('rfid-card/index');
     ?>
     <?php if ($showAttendanceMenu): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-attendance" aria-expanded="<?= $navAria('nav-attendance') ?>">
-        <span class="sidebar-icon"><i class="fas fa-clock"></i></span> <?= ($isAdmin || $isSubAdmin) ? 'Attendance' : 'My Attendance' ?>
+        <span class="sidebar-icon"><i class="fas fa-user-clock"></i></span> <?= ($isAdmin || $isSubAdmin) ? 'HR' : 'My Attendance' ?>
         <?= $pendingLeaves > 0 ? '<span class="badge bg-danger">' . $pendingLeaves . '</span>' : '' ?>
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-attendance') ?>" id="nav-attendance">
         <?php if ($isAdmin || $isSubAdmin): ?>
             <!-- Admin / Sub-admin: Yii1 admin_header layout with access checks for sub-admin -->
-            <?php if ($isAdmin || $ca('attendance/index')): ?>
+            <?php if ($isAdmin || $nav('attendance/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/attendance/index']) ?>">Attendance</a>
             <?php endif; ?>
-            <?php if ($ca('attendance/live')): ?>
+            <?php if ($nav('attendance/live')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/attendance/live']) ?>">Live Attendance</a>
             <?php endif; ?>
-            <?php if ($isAdmin || $ca('leave/create')): ?>
+            <?php if ($isAdmin || $nav('leave/create')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/leave/create']) ?>">Add Leave Request</a>
             <?php endif; ?>
-            <?php if ($isAdmin || $ca('leave/index')): ?>
+            <?php if ($isAdmin || $nav('leave/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/leave/index']) ?>">
                 Leave Requests <?= $pendingLeaves > 0 ? '<span class="badge bg-danger">' . $pendingLeaves . '</span>' : '' ?>
             </a>
             <?php endif; ?>
-            <?php if ($isAdmin || $ca('permission/index')): ?>
+            <?php if ($isAdmin || $nav('permission/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/permission/index']) ?>">Permission Requests</a>
             <?php endif; ?>
-            <?php if ($isAdmin || $ca('attendance/monthly-attendance')): ?>
+            <?php if ($isAdmin || $nav('attendance/monthly-attendance')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/attendance/monthly-attendance']) ?>">Monthly Attendance</a>
             <?php endif; ?>
-            <?php if ($isAdmin || $ca('attendance/leave-settings')): ?>
+            <?php if ($isAdmin || $nav('attendance/leave-settings')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/attendance/leave-settings']) ?>">Leave Settings</a>
             <?php endif; ?>
-            <?php if ($isAdmin || $ca('holiday/index')): ?>
+            <?php if ($isAdmin || $nav('holiday/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/holiday/index']) ?>">Holiday's Settings</a>
             <?php endif; ?>
-            <?php if ($isAdmin || $ca('rfid-card/index')): ?>
+            <?php if ($isAdmin || $nav('rfid-card/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/rfid-card/index']) ?>">Manage RFID Cards</a>
             <?php endif; ?>
         <?php else: ?>
             <!-- Developer / Client: Yii1 developer_header layout with access checks -->
-            <?php if ($ca('attendance/index')): ?>
+            <?php if ($nav('attendance/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/attendance/index']) ?>">All Attendance</a>
             <?php endif; ?>
-            <?php if ($ca('attendance/my-attendance')): ?>
+            <?php if ($nav('attendance/my-attendance')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/attendance/my-attendance']) ?>">My Attendance</a>
             <?php endif; ?>
-            <?php if ($ca('leave/my-requests')): ?>
+            <?php if ($nav('leave/my-requests')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/leave/my-requests']) ?>">My Leave Requests</a>
             <?php endif; ?>
-            <?php if ($ca('leave/create')): ?>
+            <?php if ($nav('leave/create')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/leave/create']) ?>">Send Leave Requests</a>
             <?php endif; ?>
-            <?php if ($ca('permission/index')): ?>
+            <?php if ($nav('permission/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/permission/index']) ?>">
                 <?= \common\components\UserAccess::checkSpecificMenuAccess('permission/index') ? 'Permission Requests' : 'My Permissions' ?>
             </a>
             <?php endif; ?>
-            <?php if ($ca('permission/create')): ?>
+            <?php if ($nav('permission/create')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/permission/create']) ?>">Request Permission</a>
             <?php endif; ?>
-            <?php if ($ca('leave/index') && ($isAdmin || ($isDev && \common\components\UserAccess::checkSpecificMenuAccess('leave/index')))): ?>
+            <?php if ($nav('leave/index') && ($isAdmin || ($isDev && \common\components\UserAccess::checkSpecificMenuAccess('leave/index')))): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/leave/index']) ?>">
                 Leave Requests <?= $pendingLeaves > 0 ? '<span class="badge bg-danger">' . $pendingLeaves . '</span>' : '' ?>
             </a>
             <?php endif; ?>
-            <?php if ($ca('attendance/monthly-attendance')): ?>
+            <?php if ($nav('attendance/monthly-attendance')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/attendance/monthly-attendance']) ?>">Monthly Attendance</a>
             <?php endif; ?>
-            <?php if ($ca('attendance/leave-settings')): ?>
+            <?php if ($nav('attendance/leave-settings')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/attendance/leave-settings']) ?>">Leave Settings</a>
             <?php endif; ?>
-            <?php if ($ca('holiday/index')): ?>
+            <?php if ($nav('holiday/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/holiday/index']) ?>">Holiday's Settings</a>
             <?php endif; ?>
-            <?php if ($ca('rfid-card/index')): ?>
+            <?php if ($nav('rfid-card/index')): ?>
             <a class="nav-link" href="<?= \yii\helpers\Url::to(['/rfid-card/index']) ?>">Manage RFID Cards</a>
             <?php endif; ?>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['hr'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 12. Pay Slip -->
-    <?php if ($ca('payslip/index') || $ca('salary-allowance/index') || $ca('payslip-upload/index') || $ca('payslip-upload/developer')): ?>
+    <?php if ($nav('payslip/index') || $nav('salary-allowance/index') || $nav('payslip-upload/index') || $nav('payslip-upload/developer')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-payroll" aria-expanded="<?= $navAria('nav-payroll') ?>">
         <span class="sidebar-icon">&#x1F4B0;</span> Pay Slip
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-payroll') ?>" id="nav-payroll">
-        <?php if ($ca('payslip-upload/developer') && $user && !$user->isAdmin() && !$user->isSubAdmin()): ?>
+        <?php if ($nav('payslip-upload/developer') && $user && !$user->isAdmin() && !$user->isSubAdmin()): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/payslip-upload/developer']) ?>">My Payslips</a>
         <?php endif; ?>
-        <?php if ($ca('salary-allowance/deductions')): ?>
+        <?php if ($nav('salary-allowance/deductions')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/salary-allowance/deductions']) ?>">Manage Deductions</a>
         <?php endif; ?>
-        <?php if ($ca('salary-allowance/earnings-split')): ?>
+        <?php if ($nav('salary-allowance/earnings-split')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/salary-allowance/earnings-split']) ?>">Earnings Split</a>
         <?php endif; ?>
-        <?php if ($ca('payslip-upload/index')): ?>
+        <?php if ($nav('payslip-upload/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/payslip-upload/index']) ?>">Manage Payslips</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['payslip'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 13. Assets -->
-    <?php if ($ca('asset/index') || $ca('asset/maintenance') || $ca('asset/categories') || $ca('asset/handover')): ?>
+    <?php if ($nav('asset/index') || $nav('asset/maintenance') || $nav('asset/categories') || $nav('asset/handover')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-assets" aria-expanded="<?= $navAria('nav-assets') ?>">
         <span class="sidebar-icon"><i class="fas fa-box"></i></span> Assets
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-assets') ?>" id="nav-assets">
-        <?php if ($ca('asset/index')): ?>
+        <?php if ($nav('asset/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/asset/index']) ?>">Assets</a>
         <?php endif; ?>
-        <?php if ($ca('asset/maintenance')): ?>
+        <?php if ($nav('asset/maintenance')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/asset/maintenance']) ?>">Assets Maintenance</a>
         <?php endif; ?>
-        <?php if ($ca('asset/categories')): ?>
+        <?php if ($nav('asset/categories')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/asset/categories']) ?>">Assets Categories</a>
         <?php endif; ?>
-        <?php if ($ca('asset/handover')): ?>
+        <?php if ($nav('asset/handover')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/asset/handover']) ?>">Assets Handover</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['assets'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- 14. IOT -->
-    <?php if ($ca('iot-product/index') || $ca('iot-product/masters') || $ca('iot-product/pick-vendor')): ?>
+    <?php if ($nav('iot-product/index') || $nav('iot-product/masters') || $nav('iot-product/pick-vendor')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-iot" aria-expanded="<?= $navAria('nav-iot') ?>">
         <span class="sidebar-icon"><i class="fas fa-plug"></i></span> IOT
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-iot') ?>" id="nav-iot">
-        <?php if ($ca('iot-product/index')): ?>
+        <?php if ($nav('iot-product/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/iot-product/index']) ?>">Products</a>
         <?php endif; ?>
-        <?php if ($ca('iot-product/masters')): ?>
+        <?php if ($nav('iot-product/masters')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/iot-product/masters']) ?>">IOT Masters</a>
         <?php endif; ?>
-        <?php if ($ca('iot-product/issued')): ?>
+        <?php if ($nav('iot-product/issued')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/iot-product/issued']) ?>">Issued Products</a>
         <?php endif; ?>
-        <?php if ($ca('iot-product/non-purchased')): ?>
+        <?php if ($nav('iot-product/non-purchased')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/iot-product/non-purchased']) ?>">Non Purchased Products</a>
         <?php endif; ?>
-        <?php if ($ca('iot-product/purchased')): ?>
+        <?php if ($nav('iot-product/purchased')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/iot-product/purchased']) ?>">Purchased Products</a>
         <?php endif; ?>
-        <?php if ($ca('iot-product/pick-vendor')): ?>
+        <?php if ($nav('iot-product/pick-vendor')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/iot-product/pick-vendor']) ?>">Add Purchased Products</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['iot'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- Quotation / Delivery (merged from delivery app, 2026-04-17) -->
-    <?php if ($ca('quotation-dashboard/index') || $ca('client-quotation/index') || $ca('dc/index') || $ca('dc/inward-index') || $ca('delivery-product/index')): ?>
+    <?php if ($nav('quotation-dashboard/index') || $nav('client-quotation/index') || $nav('dc/index') || $nav('dc/inward-index') || $nav('delivery-product/index')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-quotation" aria-expanded="<?= $navAria('nav-quotation') ?>">
-        <span class="sidebar-icon"><i class="fas fa-file-alt"></i></span> Quotation &amp; DC
+        <span class="sidebar-icon"><i class="fas fa-file-signature"></i></span> Quotations
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-quotation') ?>" id="nav-quotation">
-        <?php if ($ca('quotation-dashboard/index')): ?>
+        <?php if ($nav('quotation-dashboard/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/quotation-dashboard/index']) ?>">Dashboard</a>
         <?php endif; ?>
-        <?php if ($ca('client-quotation/index')): ?>
+        <?php if ($nav('client-quotation/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/client-quotation/index']) ?>">Quotations</a>
         <?php endif; ?>
-        <?php if ($ca('client-quotation/create')): ?>
+        <?php if ($nav('client-quotation/create')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/client-quotation/create']) ?>">Add Quotation</a>
         <?php endif; ?>
-        <?php if ($ca('dc/index')): ?>
+        <?php if ($nav('dc/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/dc/index']) ?>">Delivery Challans</a>
         <?php endif; ?>
-        <?php if ($ca('dc/create')): ?>
+        <?php if ($nav('dc/create')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/dc/create']) ?>">Add Delivery Challan</a>
         <?php endif; ?>
-        <?php if ($ca('dc/inward-index')): ?>
+        <?php if ($nav('dc/inward-index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/dc/inward-index']) ?>">Inward Delivery Challans</a>
         <?php endif; ?>
-        <?php if ($ca('delivery-product/index')): ?>
+        <?php if ($nav('delivery-product/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/delivery-product/index']) ?>">Products</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['quotations'] = ob_get_clean(); ?>
 
+    <?php ob_start(); ?>
     <!-- Purchase Order module -->
-    <?php if ($ca('po-dashboard/index') || $ca('po/create') || $ca('po/index')): ?>
+    <?php if ($nav('po-dashboard/index') || $nav('po/create') || $nav('po/index')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-po" aria-expanded="<?= $navAria('nav-po') ?>">
         <span class="sidebar-icon"><i class="fas fa-file-invoice-dollar"></i></span> Purchase Order
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-po') ?>" id="nav-po">
-        <?php if ($ca('po-dashboard/index')): ?>
+        <?php if ($nav('po-dashboard/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/po-dashboard/index']) ?>">PO Dashboard</a>
         <?php endif; ?>
-        <?php if ($ca('po/create')): ?>
+        <?php if ($nav('po/create')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/po/create']) ?>">Add PO</a>
         <?php endif; ?>
-        <?php if ($ca('po/index')): ?>
+        <?php if ($nav('po/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/po/index']) ?>">PO Listing</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php $navBlocks['po'] = ob_get_clean(); ?>
 
+    <?php
+    foreach (Yii::$app->params['sidebar.groups'] ?? array_keys($navBlocks) as $navKey) {
+        echo $navBlocks[$navKey] ?? '';
+    }
+    ?>
     <?php /* 15. PM Tool — hidden for now, use later
     <?php if ($ca('pm-task/index') || $ca('pm-quotation/index') || $ca('project-management/index')): ?>
     <a class="nav-group-toggle" data-bs-toggle="collapse" href="#nav-pm" aria-expanded="false">

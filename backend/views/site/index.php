@@ -230,9 +230,9 @@ $projectTypes = ['' => 'Select Project Type', 1 => 'Productive', 2 => 'Non Produ
                             <button type="submit" id="filter-btn" class="btn btn-info btn-sm"><i class="bi bi-search"></i> Search</button>
                         </div>
                     </form>
-<script>
-(function(){var $f=$('#filter-from-date'),$t=$('#filter-to-date'),$e=$('#to-date-error'),$b=$('#filter-btn');function p(v){var d=new Date(v);return v&&!isNaN(d)?d:null;}function v(){var f=p($f.val()),t=p($t.val());if(f&&t&&t<f){$e.show();$b.prop('disabled',true);return false;}$e.hide();$b.prop('disabled',false);return true;}$f.on('changeDate change',function(){var fv=$f.val();$t.datepicker('setStartDate',fv||null);if(p(fv)&&p($t.val())&&p($t.val())<p(fv)){$t.val('').datepicker('update');}v();});$t.on('changeDate change',v);$f.closest('form').on('submit',function(){return v();});}());
-</script>
+<?php $this->registerJs(<<<'JS'
+(function(){var $f=$('#filter-from-date'),$t=$('#filter-to-date'),$e=$('#to-date-error'),$b=$('#filter-btn');function p(v){var d=new Date(v);return v&&!isNaN(d)?d:null;}function v(){var f=p($f.val()),t=p($t.val());if(f&&t&&t<f){$e.show();$b.prop('disabled',true);return false;}$e.hide();$b.prop('disabled',false);return true;}$f.on('changeDate change',function(){var fv=$f.val();$t.kvDatepicker('setStartDate',fv||null);if(p(fv)&&p($t.val())&&p($t.val())<p(fv)){$t.val('').kvDatepicker('update');}v();});$t.on('changeDate change',v);$f.closest('form').on('submit',function(){return v();});}());
+JS); ?>
                 </div>
                 <div class="card-body p-0 table-responsive">
                     <?php Pjax::begin(['id' => 'pjax-prev-month', 'timeout' => 5000, 'enablePushState' => false, 'clientOptions' => ['scrollTo' => false]]) ?>
@@ -321,7 +321,7 @@ $projectTypes = ['' => 'Select Project Type', 1 => 'Productive', 2 => 'Non Produ
 
 </div>
 
-<script>
+<?php $this->registerJs(<<<'JS'
 // Preserve scroll position across Pjax pagination on the dashboard.
 // scrollTo:false alone is not enough — replacing the table changes layout
 // height which the browser may re-anchor against, so we snapshot and restore.
@@ -341,4 +341,4 @@ $projectTypes = ['' => 'Select Project Type', 1 => 'Productive', 2 => 'Non Produ
         });
     });
 })();
-</script>
+JS); ?>

@@ -274,9 +274,12 @@ class SiteController extends BaseController
             return ['/site/index'];
         }
 
-        // Client role → redirect to client-specific projects page
+        // Client role → their invoices (a visible CRM module); the projects page
+        // is the fallback while the Projects module is hidden (HIDDEN_MODULES.md).
         if ($user->isClient()) {
-            return ['/project/client-projects'];
+            return \common\components\UserAccess::checkAccess('invoice/client-invoice')
+                ? ['/invoice/client-invoice']
+                : ['/project/client-projects'];
         }
 
         // Try common developer landing pages in priority order

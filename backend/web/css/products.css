@@ -1,0 +1,45 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Products — catalogue, categories.
+   Loaded by ProductAsset on top of page-ui.css. Module-specific pieces only.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* List: thumbnail + name */
+.ui-page .p-thumb {
+    width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex: 0 0 40px;
+    background: var(--app-surface-alt, #f1f5f9); border: 1px solid var(--app-border);
+    display: inline-flex; align-items: center; justify-content: center; color: var(--app-text-muted); font-size: .9rem;
+}
+.ui-page .p-name { display: flex; gap: .65rem; align-items: center; min-width: 0; }
+.ui-page .p-name .p-title { font-weight: 600; color: var(--app-text-strong); }
+.ui-page .p-name .p-sub { font-size: .76rem; color: var(--app-text-muted); }
+.ui-page tr.is-inactive .p-title { color: var(--app-text-muted); }
+.ui-page .p-was { text-decoration: line-through; color: var(--app-text-muted); font-size: .76rem; margin-left: .3rem; }
+.ui-page .p-off { color: var(--app-accent); font-size: .74rem; font-weight: 600; margin-left: .3rem; }
+
+/* Form sections */
+.ui-page .p-section { background: #fff; border: 1px solid var(--app-border); border-radius: var(--app-radius); padding: 1rem 1.1rem; margin-bottom: 1rem; }
+.ui-page .p-section > h2 { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--app-text-muted); margin: 0 0 .8rem; }
+.ui-page .p-hint { font-size: .76rem; color: var(--app-text-muted); }
+.ui-page .p-preview { font-size: .82rem; background: var(--app-surface-alt, #f8fafc); border-radius: 8px; padding: .5rem .7rem; }
+
+/* Repeaters (features, specifications) */
+.ui-page .p-repeat-row { display: flex; gap: .5rem; align-items: center; margin-bottom: .45rem; }
+.ui-page .p-repeat-row .form-control { flex: 1 1 auto; }
+.ui-page .p-repeat-row .p-spec-name { flex: 0 0 38%; }
+.ui-page .p-repeat-remove { flex: 0 0 auto; }
+
+/* Image */
+.ui-page .p-image { max-width: 100%; max-height: 260px; border-radius: var(--app-radius); border: 1px solid var(--app-border); object-fit: contain; background: #fff; }
+.ui-page .p-image-empty {
+    height: 180px; border-radius: var(--app-radius); border: 1px dashed var(--app-border);
+    display: flex; align-items: center; justify-content: center; color: var(--app-text-muted); flex-direction: column; gap: .3rem;
+}
+
+/* Detail page */
+.ui-page .p-features { margin: 0; padding-left: 1.1rem; }
+.ui-page .p-features li { margin-bottom: .25rem; }
+
+@media (max-width: 575.98px) {
+    .ui-page .p-repeat-row { flex-wrap: wrap; }
+    .ui-page .p-repeat-row .p-spec-name { flex: 1 1 100%; }
+}
