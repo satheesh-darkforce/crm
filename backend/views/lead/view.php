@@ -4,6 +4,7 @@
 /** @var \backend\models\LeadFollowers[] $followers */
 /** @var int $openFollowUps */
 /** @var \backend\models\LeadAttachments[] $attachments */
+/** @var array $insight  score, band, actions, duplicates, estimate (LeadInsight) */
 /** @var bool $assignedView  opened from Assigned Leads: follow-up status is read-only */
 
 use backend\components\LeadAccess;
@@ -38,6 +39,10 @@ $row = function (string $label, $value, bool $raw = false) {
             </div>
         </div>
         <div class="ui-actions">
+            <?php if ($dial = $lead->getDialNumber()): ?>
+                <?= Html::a('<i class="fas fa-phone me-1"></i>Call', 'tel:+' . $dial, ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+                <?= Html::a('<i class="fab fa-whatsapp me-1"></i>WhatsApp', 'https://wa.me/' . $dial, ['class' => 'btn btn-outline-success btn-sm', 'encode' => false, 'target' => '_blank', 'rel' => 'noopener']) ?>
+            <?php endif; ?>
             <?php if (count($options) > 1): ?>
                 <?= Html::dropDownList('lead_status', $ls, $options, [
                     'class' => 'form-select form-select-sm js-lead-status', 'style' => 'width:auto;min-width:180px',
@@ -55,6 +60,8 @@ $row = function (string $label, $value, bool $raw = false) {
             <?= Html::a('<i class="fas fa-arrow-left me-1"></i>Back', $backUrl, ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
         </div>
     </div>
+
+    <?= $this->render('_insight', ['lead' => $lead, 'insight' => $insight]) ?>
 
     <div class="row g-3 mb-3">
         <div class="col-lg-6">
@@ -80,10 +87,10 @@ $row = function (string $label, $value, bool $raw = false) {
                 <table class="table ui-detail">
                     <?= $row('Project', $lead->title) ?>
                     <?= $row('Subject', $lead->subject) ?>
-                    <?= $row('Priority', $lead->getPriorityLabel()) ?>
+                    <?= $row('Temperature', $lead->getPriorityLabel()) ?>
                     <?= $row('Mode', $lead->getModeLabel() . ((int)$lead->mode === Lead::MODE_OTHER && $lead->other_mode ? ' — ' . $lead->other_mode : '')) ?>
                     <?= $row('Current Stage', $lead->getStageLabel()) ?>
-                    <?= $row('Lead Value (in dollars)', $lead->lead_value) ?>
+                    <?= $row('Estimated value (₹)', $lead->lead_value) ?>
                     <?= $row('Expected Budget', $lead->expected_budget) ?>
                     <?= $row('Industry', $lead->industry) ?>
                     <?= $row('Offering Service', $lead->offering_service) ?>
@@ -92,7 +99,9 @@ $row = function (string $label, $value, bool $raw = false) {
                         'label' => Lead::formatDateTime($lead->meeting_reported_date),
                         'state' => $isClosed ? '' : Lead::followUpState($lead->meeting_reported_date),
                     ]), true) ?>
-                    <?= $row('Assigned To', Lead::userLabel($lead->assignedTo)) ?>
+                    <?= $row('Sales person', Lead::userLabel($lead->assignedTo)) ?>
+                    <?= $row('Site visit', implode(' · ', array_filter([$lead->site_visit_date ? Lead::formatDateTime($lead->site_visit_date) : '', $lead->site_visit_by ? Lead::userLabel($lead->siteVisitBy) : '']))) ?>
+                    <?= $row('Quotation by', $lead->quotation_by ? Lead::userLabel($lead->quotationBy) : '') ?>
                     <?= $row('Created By', Lead::userLabel($lead->createdBy)) ?>
                     <?= $row('Created Date', Lead::formatDateTime($lead->created_date)) ?>
                     <?php if ($ls === Lead::LEAD_STATUS_CONVERTED): ?>
@@ -106,9 +115,16 @@ $row = function (string $label, $value, bool $raw = false) {
         </div>
         <div class="col-12">
             <div class="card border-0 shadow-sm">
-                <div class="card-header ui-section">Description</div>
-                <div class="card-body small">
-                    <?= trim((string)$lead->description) !== '' ? Lead::renderRichText($lead->description) : '<span class="text-muted">No description.</span>' ?>
+                <div class="card-header ui-section">Enquiry</div>
+                <table class="table ui-detail mb-0">
+                    <?= $row('Source', $lead->getSourceLabel()) ?>
+                    <?= $row('Interested in', $lead->interests ? implode(', ', array_map(fn($c) => $c->name, $lead->interests)) : '') ?>
+                    <?= $row('Approx. area', $lead->getAreaLabel()) ?>
+                    <?= $row('Installation wanted by', $lead->expected_install_date ? date('d M Y', strtotime($lead->expected_install_date)) : '') ?>
+                </table>
+                <div class="card-body small border-top">
+                    <div class="text-muted text-uppercase fw-semibold mb-1" style="font-size:.7rem;letter-spacing:.04em">Requirement</div>
+                    <?= trim((string)$lead->description) !== '' ? Lead::renderRichText($lead->description) : '<span class="text-muted">No requirement noted.</span>' ?>
                 </div>
             </div>
         </div>

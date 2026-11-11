@@ -3,6 +3,7 @@
 /** @var \backend\models\Lead $lead */
 /** @var array $users  user_id => username */
 /** @var array|string $cancelUrl */
+/** @var array<int,string>|null $categories  product category id => name */
 
 use backend\components\LeadFiles;
 use backend\controllers\Controller;
@@ -14,6 +15,7 @@ use yii\bootstrap5\ActiveForm;
 use yii\bootstrap5\Html;
 
 $isNew      = $lead->isNewRecord;
+$categories = $categories ?? \backend\models\ProductCategory::options();
 $cancelUrl  = $cancelUrl ?? ['index'];
 $today      = date('Y-m-d');
 $datePlugin = ['autoclose' => true, 'format' => 'yyyy-mm-dd', 'todayHighlight' => true];
@@ -44,37 +46,90 @@ $dateInput = fn(array $plugin) => [
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'email')->input('email', $in('name@company.com', ['maxlength' => 255])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'contact_no')->textInput($in('e.g. +91 98765 43210', ['maxlength' => 25, 'inputmode' => 'tel'])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'contact_no2')->textInput($in('Alternate number', ['maxlength' => 25, 'inputmode' => 'tel'])) ?></div>
-        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'country')->textInput($in('e.g. Chennai', ['maxlength' => 255])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'contact_person_name')->textInput($in('Point of contact', ['maxlength' => 255])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'contact_person_mobile')->textInput($in('e.g. 98765 43210', ['maxlength' => 25, 'inputmode' => 'tel'])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'contact_person_email')->input('email', $in('contact@company.com', ['maxlength' => 255])) ?></div>
         <div class="col-lg-9 col-md-6"><?= $form->field($lead, 'address')->textarea($in('Street, area, city, PIN', ['rows' => 2])) ?></div>
+        <div class="col-12">
+            <div id="lead-dup-alert" class="alert alert-warning lead-dup-alert mb-0 d-none" role="status" aria-live="polite" data-id="<?= $isNew ? '' : (int)$lead->id ?>"></div>
+        </div>
     </div>
 </div>
 
 <div class="card border-0 shadow-sm mb-3">
-    <div class="card-header ui-section">Lead</div>
+    <div class="card-header ui-section">Enquiry</div>
     <div class="card-body row g-3">
-        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'title')->textInput($in('e.g. E-commerce website', ['maxlength' => 255])) ?></div>
-        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'subject')->textInput($in('e.g. Requirement discussion', ['maxlength' => 255])) ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'lead_source', ['options' => ['class' => 'mb-3' . ($isNew ? ' required' : '')]])->widget(Select2::class, ['data' => Lead::sourceOptions()] + $s2('Where did the lead come from?')) ?></div>
+        <div class="col-lg-3 col-md-6" id="source-detail-wrap">
+            <?= $form->field($lead, 'source_detail')->textInput($in('Referred by / campaign', ['maxlength' => 100]))
+                ->hint('Required for Reference and Other.') ?>
+        </div>
+        <div class="col-lg-6 col-md-12">
+            <?= $form->field($lead, 'interestIds')->widget(Select2::class, [
+                'data'          => $categories,
+                'options'       => ['placeholder' => $categories ? 'Products the client asked about' : 'Add product categories first', 'multiple' => true],
+                'pluginOptions' => ['allowClear' => true, 'width' => '100%', 'closeOnSelect' => false],
+                'size'          => Select2::SMALL,
+            ]) ?>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <label class="form-label" for="lead-site_area"><?= $lead->getAttributeLabel('site_area') ?></label>
+            <div class="input-group input-group-sm">
+                <?= Html::activeTextInput($lead, 'site_area', ['class' => 'form-control form-control-sm num' . ($lead->hasErrors('site_area') ? ' is-invalid' : ''), 'inputmode' => 'decimal', 'placeholder' => 'e.g. 450']) ?>
+                <?= Html::activeDropDownList($lead, 'area_unit', array_combine(Lead::AREA_UNITS, Lead::AREA_UNITS), ['class' => 'form-select form-select-sm', 'style' => 'max-width:90px', 'aria-label' => 'Area unit']) ?>
+            </div>
+            <?php if ($err = $lead->getFirstError('site_area') ?: $lead->getFirstError('area_unit')): ?><div class="invalid-feedback d-block"><?= Html::encode($err) ?></div><?php endif; ?>
+        </div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'expected_install_date')->widget(DatePicker::class, $dateInput(['startDate' => $today])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'priority')->dropDownList(Lead::priorityOptions(), ['class' => 'form-select form-select-sm']) ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'country')->textInput($in('e.g. Bengaluru', ['maxlength' => 255])) ?></div>
+        <div class="col-12"><?= $form->field($lead, 'description')->textarea($in('What the client wants: product, site (balcony, terrace, wall…), size, budget, timeline', ['rows' => 3])) ?></div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header ui-section">Pipeline</div>
+    <div class="card-body row g-3">
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'title')->textInput($in('e.g. Terrace garden — Koramangala', ['maxlength' => 255])) ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'subject')->textInput($in('e.g. Balcony grass enquiry', ['maxlength' => 255])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'current_stage')->widget(Select2::class, ['data' => Lead::stageOptions()] + $s2('Select the stage')) ?></div>
-        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'lead_value')->input('number', $in('0.00', ['min' => 0, 'max' => 99999999.99, 'step' => '0.01'])) ?></div>
-        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'expected_budget')->input('number', $in('0.00', ['min' => 0, 'max' => 99999999.99, 'step' => '0.01'])) ?></div>
         <?php if ($isNew): ?>
         <div class="col-lg-3 col-md-6">
             <label class="form-label" for="lead-status-display">Lead Status</label>
             <input type="text" id="lead-status-display" class="form-control form-control-sm" value="Open" disabled>
         </div>
         <?php endif; ?>
-        <div class="col-md-6"><?= $form->field($lead, 'industry')->textarea($in('e.g. Manufacturing, Healthcare', ['rows' => 2, 'maxlength' => 255])) ?></div>
-        <div class="col-md-6"><?= $form->field($lead, 'offering_service')->textarea($in('e.g. Website, Mobile app, ERP', ['rows' => 2, 'maxlength' => 255])) ?></div>
+        <div class="col-lg-3 col-md-6">
+            <?= $form->field($lead, 'lead_value', ['options' => ['class' => 'mb-1']])->input('number', $in('0.00', ['min' => 0, 'max' => 99999999.99, 'step' => '0.01'])) ?>
+            <button type="button" class="btn btn-link btn-sm p-0 js-lead-estimate"><i class="fas fa-calculator me-1"></i>Estimate from products &amp; area</button>
+            <div id="lead-estimate" class="lead-estimate d-none" aria-live="polite"></div>
+        </div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'expected_budget')->input('number', $in('0.00', ['min' => 0, 'max' => 99999999.99, 'step' => '0.01'])) ?></div>
+        <div class="col-12">
+            <details class="ui-more"<?= ($lead->industry || $lead->offering_service || $lead->hasErrors('industry') || $lead->hasErrors('offering_service')) ? ' open' : '' ?>>
+                <summary class="small text-muted">More details (industry, offering)</summary>
+                <div class="row g-3 mt-1">
+                    <div class="col-md-6"><?= $form->field($lead, 'industry')->textarea($in('e.g. Residential, Hospitality, Office', ['rows' => 2, 'maxlength' => 255])) ?></div>
+                    <div class="col-md-6"><?= $form->field($lead, 'offering_service')->textarea($in('e.g. Supply and installation', ['rows' => 2, 'maxlength' => 255])) ?></div>
+                </div>
+            </details>
+        </div>
     </div>
 </div>
 
 <div class="card border-0 shadow-sm mb-3">
-    <div class="card-header ui-section">Meeting &amp; Follow Up</div>
+    <div class="card-header ui-section">Team &amp; Follow Up</div>
     <div class="card-body row g-3">
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'assigned_to')->widget(Select2::class, ['data' => $users] + $s2('Select employee'))->label('Sales person') ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'site_visit_by')->widget(Select2::class, ['data' => $users] + $s2('Who visits the site')) ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'visit_date')->widget(DatePicker::class, $dateInput([])) ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'visit_time')->input('time', $in('HH:MM')) ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'quotation_by')->widget(Select2::class, ['data' => $users] + $s2('Who prepares the quote')) ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'mode')->widget(Select2::class, ['data' => Lead::modeOptions()] + $s2('Select the mode', ['data-other-mode' => '#other-mode-wrap'])) ?></div>
+        <div class="col-lg-3 col-md-6" id="other-mode-wrap" style="<?= (int)$lead->mode === Lead::MODE_OTHER ? '' : 'display:none' ?>">
+            <?= $form->field($lead, 'other_mode', ['options' => ['class' => 'mb-3 required']])->textInput($in('e.g. Google Meet', ['maxlength' => 255])) ?>
+        </div>
+        <div class="w-100 d-none d-lg-block"></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'attended_date')->widget(DatePicker::class, $dateInput(['endDate' => $today])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'attended_time')->input('time', $in('HH:MM')) ?></div>
         <?php if ($isNew): ?>
@@ -86,14 +141,6 @@ $dateInput = fn(array $plugin) => [
             <input type="text" id="lead-next-display" class="form-control form-control-sm" value="<?= Lead::formatDateTime($lead->meeting_reported_date) ?>" disabled>
             <div class="form-text">Changes when a follow-up is added.</div>
         </div>
-        <?php endif; ?>
-        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'assigned_to')->widget(Select2::class, ['data' => $users] + $s2('Select employee')) ?></div>
-        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'mode')->widget(Select2::class, ['data' => Lead::modeOptions()] + $s2('Select the mode', ['data-other-mode' => '#other-mode-wrap'])) ?></div>
-        <div class="col-lg-3 col-md-6" id="other-mode-wrap" style="<?= (int)$lead->mode === Lead::MODE_OTHER ? '' : 'display:none' ?>">
-            <?= $form->field($lead, 'other_mode', ['options' => ['class' => 'mb-3 required']])->textInput($in('e.g. Google Meet', ['maxlength' => 255])) ?>
-        </div>
-        <?php if ($isNew): ?>
-        <div class="col-12"><?= $form->field($lead, 'description')->textarea($in('Meeting notes, requirements discussed…', ['rows' => 4])) ?></div>
         <?php endif; ?>
     </div>
 </div>

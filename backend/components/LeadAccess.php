@@ -50,6 +50,9 @@ class LeadAccess
         return ['or',
             ["$alias.assigned_to" => $userId],
             ["$alias.created_by" => $userId],
+            // The site-visit and quotation owners work on the lead too.
+            ["$alias.site_visit_by" => $userId],
+            ["$alias.quotation_by" => $userId],
             ['in', "$alias.id", $viaFollowUp],
         ];
     }

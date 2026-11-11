@@ -1,6 +1,6 @@
 # Project Analysis — CRM for Green Divine
 
-Prepared 2026-11-05 as Phase 1 of `new-feature.md`. This is the roadmap for turning the Yii2 application (Project B) into Green Divine's CRM, using their current website admin (Project A) and their business as the functional reference.
+Prepared 2026-11-05 (leads section added 2026-11-06) as Phase 1 of `new-feature.md`. This is the roadmap for turning the Yii2 application (Project B) into Green Divine's CRM, using their current website admin (Project A) and their business as the functional reference.
 
 ---
 
@@ -34,20 +34,90 @@ Source: https://greendivine.in and the live site data in `current-live/greendivi
 
 ---
 
-## 2. Reference admin panel (Project A) — audit
+## 2. Reference admin panels (Project A) — audit
 
-Location: `C:\xampp\htdocs\current-live\greendivine\admin` (44 PHP files, ~3,800 lines, flat-file storage).
+There are two Green Divine admins. The **business admin** is the real reference for CRM features; the website admin only manages the public site.
 
-| Area | What it actually does |
+### 2a. Business admin — `__admin/greendivine/template` (main reference)
+
+A local copy is kept at `__admin/` in this repo (git-ignored — it contains the live database connection). Plain PHP + MySQL (`leads`, `lead_notes`, `lead_attachments`, `project`, `project_notes`, `users`, `payment_history`, `daily_payments`, `expenses`, `office_expenses`, `inventory`, `attendance`, `tasks`, `contact_clicks` …), ~41,000 lines, JSON endpoints called from the pages, a mobile-app API and Firebase push notifications.
+
+| Menu | What it does |
 |---|---|
-| Storage | No database. Every content type is a PHP array file in `data/content/*.php`, saved atomically with 20 rolling backups (`inc/store.php`) |
-| Auth | Config-file users, login throttling, CSRF, activity log |
-| **Products** | List with manual ordering, add/edit: name, slug, category, short + full description, price label, was-price, badge, "Today's Deal" (single), show-price toggle (off = "Get Quote"), images, features (one per line), specs (key/value repeater), installation gallery, SEO meta |
-| **Categories** | slug, name, icon, image, short description; delete blocked while products use it |
-| Website content | Blogs, FAQs, landing pages, page content, hero, services, service details, team, reviews, clients/logos, certifications, stats, process steps, why-us, festival banner, quote popup, nav, settings, backups, users |
-| CRM features | **None** — no leads, clients, quotations, invoices, employees or HR. Enquiries go to WhatsApp/email only |
+| Dashboard | Counts, today's follow-ups and meetings |
+| Follow Ups | Follow-ups due by date and by employee; one page per salesperson (hard-coded files per employee) |
+| Leads | View Leads (cards with tabs All / New / Hot / Warm / Cold), Quoted Leads, per-source pages (Google, Meta, IndiaMART, Just Dial), Dropped, Qualified |
+| Projects | A lead marked **Qualified** automatically becomes a project (lead notes are copied); project list, completed, site visits, site updates, payments per project |
+| Employees | Salary, manage, attendance |
+| Inventory | Stock, add stock, suppliers, reports |
+| Payments / Expenses | Payment history, daily payment tracker, office expenses |
+| Quotation | VG calculator and turf (grass area) calculator that produce a quote |
+| Other | Tasks, Exotel call log, WhatsApp, website click stats (call / WhatsApp clicks), ad-campaign lead capture (vertical garden ads form) |
 
-Conclusion: Project A contributes the **product/category data model** and the client's vocabulary; every CRM workflow has to come from the Yii2 application.
+### 2b. Website admin — `current-live/greendivine/admin`
+
+Flat-file CMS (no database) for the public website: products (name, category, description, price label, was-price, features, specs, images), categories, blogs, FAQs, landing pages and other page content. Used as the reference for **Product Management** (section 5).
+
+---
+
+## 2.1 Leads — reference vs Yii2
+
+### Reference (business admin) lead model
+
+| Field | Notes |
+|---|---|
+| client_name, contact, email, client_city | Contact details (phone is the key field — leads come from calls / WhatsApp / ads) |
+| lead_source | Google, Meta, IndiaMART, Just Dial, Reference, Walk-in, Other (+ website / ads forms) |
+| title | **Products of interest**, multi-select: Artificial Grass, Artificial Vertical Garden, Sports Turf, Artificial Plants, Creepers and Bunches, Wooden Flooring, Vinyl Flooring, Wallpapers |
+| requirement, wall_size, installation_time | What they want, approximate size, when they want it installed |
+| status | New → Cold / Warm / **Hot Prospects** → **Qualified** (creates a project) or **Dropped** |
+| sales_employee_id, meeting_employee_id, quotation_employee_id | Three owners: salesperson, site-visit person, quotation person |
+| next_followup_date, meeting_date | Next call and site-visit date |
+| is_quote_shared | "Quote is shared?" switch → Quoted Leads list |
+| lead_notes (note_type), lead_attachments | Timeline notes and files |
+
+Gaps in the reference: no validation, no permissions per page (hard-coded employee pages), API key in page source, SQL built by string concatenation, duplicated pages per employee.
+
+### Yii2 leads today
+
+Leads list / My / Assigned / Converted / Dropped, follow-ups with date-time and status (lead_followers), attachments, lead master (contacts import), upload from Excel, convert to client, role-based access (LeadAccess), pipeline status Open → Got Requirement → Gave Quotation → Waiting for Payment → Converted / Dropped, priority, single "assigned to".
+
+### Gap and decisions
+
+| Need (from reference) | Yii2 today | Decision |
+|---|---|---|
+| Lead source | Only "mode" of contact (Mail, Call, Skype…) | **Add** `lead_source` (+ detail, e.g. who referred) with Green Divine's sources; filter and counts by source |
+| Hot / Warm / Cold | `priority` Low / Medium / High | **Reuse** `priority`, shown as **Lead temperature: Cold / Warm / Hot** (same column, same values) |
+| Products of interest (multi) | Free-text "Project" | **Add** `lead_product_interest` linked to **product categories** (same list as Product Management) |
+| Size / area, installation timing, requirement | — / — / description | **Add** `site_area` + `area_unit`, `expected_install_date`; description labelled **Requirement** |
+| Site visit (meeting) date + person | Meeting attended date only | **Add** `site_visit_date`, `site_visit_by` |
+| Quotation person | — | **Add** `quotation_by` (sales person stays `assigned_to`) |
+| Quote shared | Status "Gave Quotation" | Keep the status now; link real quotations to leads in the Quotation phase |
+| Qualified → project | Converted → client | Keep **Converted → client** (CRM flow Leads → Clients → Quotations); projects module is hidden |
+| Notes timeline | Follow-ups with description | Keep follow-ups (already richer: date-time, owner, status) |
+| Call / WhatsApp | — | **Add** one-tap Call and WhatsApp links on the lead page |
+| Per-employee pages | My / Assigned lists + "assigned to" filter | Keep (no hard-coded pages) |
+| Exotel, push notifications, website click stats, ad-form intake | — | Later (integrations); listed as future work |
+| IT-company fields (Skype, value in dollars, industry, B2B stages) | Present | Keep the data; value shown in ₹, industry / offering / stage moved to a collapsed "More details" section |
+
+---
+
+## 2.2 Smart leads
+
+All rules live in `backend/components/LeadInsight.php` and are calculated from existing data (nothing extra is stored).
+
+| Feature | Where | How it works |
+|---|---|---|
+| **Lead score 0–100** | Lead page (ring), lead lists (badge), Today board | Hot +25 / Warm +12 · stage: requirement +10, quotation +20, waiting payment +30 · products of interest +5, area +5, requirement +5, value/budget +5 · site visit done +10 / booked +5 · installation wanted ≤ 30 days +10 / ≤ 90 days +5 · activity ≤ 7 days +10, > 30 days −10, > 60 days −20 · follow-up overdue −10, none scheduled −5. Bands: 60+ High, 35–59 Medium, below 35 Low. Converted = 100, dropped = 0 |
+| **Next best actions** | Lead page | Most urgent first: owner deactivated / missing → reassign; follow-up overdue (days) / due today; no follow-up scheduled; installation wanted within 14 days; site visit today / tomorrow; warm/hot lead without a site visit; site visit done but no quotation (and no quotation owner); quotation shared 3+ days ago with no update; no activity for 30+ days; missing products or area for the estimate |
+| **Duplicate detection** | Live on the lead form (as you type) + lead page + warning after save | Same phone (last 10 digits of every number in the field — old records hold several numbers separated by `;`) or same email, across leads and clients. Names and links are hidden for leads the user cannot open. Never blocks saving — repeat enquiries are normal |
+| **Value estimate** | Lead page + "Estimate from products & area" button on the form (fills the estimated value) | Site area × active catalogue unit prices of each product of interest, only for products sold by a compatible unit (area: Sq.ft / Sq.m; length: Rft / Ft / Mtr / Cm, converted). Shows low – high and a typical value per product category |
+| **Today's Follow-ups** (`lead/today`) | Leads menu | Overdue (last 60 days), due today, site visits this week, next 7 days, warm/hot leads with no follow-up, and stale follow-ups (over 60 days) kept separate. One-tap Call / WhatsApp. Managers pick any employee; others see their own leads |
+| **Lead Insights** (`lead/insights`) | Leads menu (needs Manage Leads) | Leads, open, hot, converted, dropped and win rate by **source**, **product of interest** and **temperature** for a date range |
+
+Lead visibility now also includes the **site-visit** and **quotation** owners (`LeadAccess::involvedCondition`).
+
+**Data note:** the catalogue prices imported from the website (e.g. ₹2,625 for a balcony grass mat) look like per-item prices, not per Sq.ft. Estimates are only as good as the unit prices — Green Divine should confirm the real per-unit rates in Products.
 
 ---
 
@@ -63,7 +133,7 @@ Yii2 advanced template, backend app only, MySQL `crm`, Bootstrap 5 + shared kit 
 | Invoice Management | Tax/Proforma/Credit note, free-text items, receipts, GL posting, PDF | **Available** — needs product picker, quotation → invoice conversion, due date / overdue status |
 | Employee Management | `developer` (employees), ex-employees, payslips | **Available** |
 | HR Management | Attendance, leave, holidays, RFID, payroll | **Available** |
-| Leads Management | Leads, follow-ups, followers, lead master, conversion, upload | **Available** — add source "Website/WhatsApp", area and site-visit date |
+| Leads Management | Leads, follow-ups, followers, lead master, conversion, upload | **Available** — needs Green Divine fields: source, temperature, products of interest, area, site visit, quotation owner (section 2.1) |
 
 ---
 
@@ -177,15 +247,16 @@ client ─< invoice ─< invoice_details (+ product_id, unit, gst_rate, discount
 ## 7. Database changes
 
 * `m261105_000001_product_catalogue` — creates `product_category`, adds the columns above to `delivery_product_details` with indexes and the category foreign key. Additive only; guarded so it is safe to re-run.
+* `m261106_000001_lead_crm_fields` — adds to `lead`: `lead_source`, `source_detail`, `site_area`, `area_unit`, `expected_install_date`, `site_visit_date`, `site_visit_by`, `quotation_by` (indexed), and creates `lead_product_interest` (lead ↔ product category, unique pair, FKs with cascade). Additive only; existing leads keep working (source is required for new leads only). `priority` is reused as lead temperature (1 Cold, 2 Warm, 3 Hot).
 * The database was built from a SQL dump, so the `migration` history table was missing and all 20 existing migrations looked pending. They are already reflected in the schema; they were recorded as applied with `php yii migrate/mark m261101_000001_add_lead_converted_dropped_dates` before running the new migration. **Production needs the same one-time `migrate/mark` before `migrate`.**
 
 ---
 
 ## 8. Implementation order
 
-1. **Product Management** (this phase) — catalogue, categories, search API for the quotation picker.
-2. Navigation — sidebar reduced to Dashboard + 7 modules, `HIDDEN_MODULES.md`.
-3. Leads tweaks (source, area, site visit) and client 360° page.
+1. ✅ **Product Management** — catalogue, categories, unit pricing, search API for the quotation picker.
+2. ✅ Navigation — sidebar reduced to Dashboard + 7 modules, `HIDDEN_MODULES.md`.
+3. ✅ **Leads** for Green Divine (section 2.1): source, temperature, products of interest, area, installation date, site visit, quotation owner, Call / WhatsApp, list filters; then smart leads (section 2.2): score, next best actions, duplicate detection, value estimate, Today board, insights. Next for leads: website/ad form intake, client 360° page.
 4. Quotation line items (products, qty in the item unit, discount, per-line GST, totals, statuses, expiry, PDF) and quotation → invoice, following section 6.
 5. Invoice product picker and per-line GST (section 6), due date, overdue / partial status.
 6. Employee / HR review (mostly existing).

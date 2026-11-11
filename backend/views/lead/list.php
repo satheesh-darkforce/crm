@@ -114,6 +114,29 @@ $datePicker = fn(string $name) => DatePicker::widget([
                             'size' => Select2::SMALL,
                         ]) ?>
                     </div>
+                    <div class="col-lg-2 col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" for="lead-filter-lead_source">Source</label>
+                        <?= Select2::widget([
+                            'name' => 'lead_source', 'value' => $filters['lead_source'], 'data' => Lead::sourceOptions(),
+                            'options' => ['placeholder' => 'All', 'id' => 'lead-filter-lead_source'],
+                            'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
+                            'size' => Select2::SMALL,
+                        ]) ?>
+                    </div>
+                    <div class="col-lg-2 col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" for="lead-filter-priority">Temperature</label>
+                        <?= Html::dropDownList('priority', $filters['priority'], Lead::priorityOptions(),
+                            ['class' => 'form-select form-select-sm', 'prompt' => 'All', 'id' => 'lead-filter-priority']) ?>
+                    </div>
+                    <div class="col-lg-2 col-md-3 col-sm-6">
+                        <label class="form-label small mb-1" for="lead-filter-interest">Interested In</label>
+                        <?= Select2::widget([
+                            'name' => 'interest', 'value' => $filters['interest'], 'data' => \backend\models\ProductCategory::options(),
+                            'options' => ['placeholder' => 'All', 'id' => 'lead-filter-interest'],
+                            'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
+                            'size' => Select2::SMALL,
+                        ]) ?>
+                    </div>
                     <div class="col-lg-2 col-md-3 col-sm-6 d-flex gap-2">
                         <button type="submit" class="btn btn-primary btn-sm flex-fill"><i class="fas fa-search me-1"></i>Search</button>
                         <?= Html::a('Reset', [$listType], ['class' => 'btn btn-outline-secondary btn-sm flex-fill']) ?>
@@ -195,7 +218,22 @@ $datePicker = fn(string $name) => DatePicker::widget([
                         <td class="cell-num muted"><?= $offset + $i + 1 ?></td>
                         <td class="cell-title wrap">
                             <?= Html::encode($lead->client_name ?: '-') ?>
+                            <?php if ($isOpenList): $sc = \backend\components\LeadInsight::score($lead); [$scBand, $scTone] = \backend\components\LeadInsight::band($sc); ?>
+                                <span class="ui-pill tone-<?= $scTone ?> ms-1" title="Lead score <?= $sc ?>/100 (<?= $scBand ?>)"><?= $sc ?></span>
+                            <?php endif; ?>
                             <?php if ($lead->company_name): ?><div class="sub"><?= Html::encode($lead->company_name) ?></div><?php endif; ?>
+                            <?php
+                            $meta = [];
+                            if ($lead->lead_source) { $meta[] = Html::encode(Lead::sourceOptions()[(int)$lead->lead_source] ?? ''); }
+                            if ($lead->interests) { $meta[] = Html::encode(implode(', ', array_map(fn($c) => $c->name, $lead->interests))); }
+                            ?>
+                            <?php if ($meta || (int)$lead->priority > Lead::PRIORITY_LOW): ?>
+                                <div class="sub">
+                                    <?php if ((int)$lead->priority === Lead::PRIORITY_HIGH): ?><span class="ui-pill tone-danger">Hot</span>
+                                    <?php elseif ((int)$lead->priority === Lead::PRIORITY_MEDIUM): ?><span class="ui-pill tone-warning">Warm</span><?php endif; ?>
+                                    <?= implode(' · ', $meta) ?>
+                                </div>
+                            <?php endif; ?>
                         </td>
                         <td class="wrap" data-label="Project"><?= Html::encode($lead->title ?: '-') ?></td>
                         <td class="wrap" data-label="Subject"><?= Html::encode($lead->getNextSubject() ?: '-') ?></td>

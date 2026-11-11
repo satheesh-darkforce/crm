@@ -5,12 +5,15 @@ namespace backend\controllers;
 use backend\assets\LeadAsset;
 use backend\components\LeadAccess;
 use backend\components\LeadFiles;
+use backend\components\LeadInsight;
 use backend\components\LeadMailer;
 use backend\models\ClientModel;
 use backend\models\Lead;
+use backend\models\LeadProductInterest;
 use backend\models\LeadAttachments;
 use backend\models\LeadFollowers;
 use backend\models\LeadMaster;
+use backend\models\ProductCategory;
 use backend\models\User;
 use common\components\UserAccess;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -43,11 +46,18 @@ class LeadController extends Controller
         'contact_person_name', 'contact_person_mobile', 'contact_person_email', 'title', 'subject',
         'attended_date', 'attended_time', 'assigned_to', 'mode', 'other_mode', 'expected_budget',
         'current_stage', 'industry', 'offering_service', 'address',
+        // Green Divine fields (PROJECT_ANALYSIS.md §2.1)
+        'lead_source', 'source_detail', 'site_area', 'area_unit', 'expected_install_date',
+        'visit_date', 'visit_time', 'site_visit_by', 'quotation_by', 'description',
     ];
-    /** Only on create: the first follow-up and the description. */
-    private const CREATE_ONLY_FIELDS = ['nextfollowup_date', 'nextfollowup_time', 'description'];
+    /** Only on create: the first follow-up. */
+    private const CREATE_ONLY_FIELDS = ['nextfollowup_date', 'nextfollowup_time'];
 
-    private const LIST_FILTERS = ['client_name', 'contact_no', 'email', 'country', 'contact_person_name', 'title', 'lead_status', 'assigned_to', 'from_date', 'to_date'];
+    /** Follow-ups missed for longer than this are "stale" on the Today board. */
+    private const STALE_DAYS = 60;
+
+    private const LIST_FILTERS = ['client_name', 'contact_no', 'email', 'country', 'contact_person_name', 'title', 'lead_status', 'assigned_to', 'from_date', 'to_date',
+        'lead_source', 'priority', 'interest'];
 
     /** Full pages get the Leads stylesheet/script; renderAjax() partials do not need them. */
     public function render($view, $params = []): string
@@ -147,6 +157,7 @@ class LeadController extends Controller
             $this->loadLeadForm($lead, true);
             if ($this->createWithFollowUp($lead)) {
                 Yii::$app->session->setFlash('success', 'Lead added successfully.');
+                $this->flashDuplicates($lead);
                 return $this->redirectAfterCreate();
             }
         }
@@ -157,6 +168,7 @@ class LeadController extends Controller
     public function actionUpdate(int $id): string|Response
     {
         $lead = LeadAccess::findLead($id);
+        $lead->interestIds = array_map('intval', LeadProductInterest::find()->select('category_id')->where(['lead_id' => $lead->id])->column());
         if (in_array((int)$lead->lead_status, [Lead::LEAD_STATUS_CONVERTED, Lead::LEAD_STATUS_DROPPED], true)) {
             Yii::$app->session->setFlash('error', 'Converted or dropped leads cannot be edited.');
             return $this->redirect(['view', 'id' => $id]);
@@ -488,9 +500,132 @@ class LeadController extends Controller
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    // ── Smart helpers ────────────────────────────────────────────────────────
+
+    /**
+     * Today board: overdue and upcoming follow-ups and site visits, for the
+     * current user (managers can pick any employee or see everyone).
+     */
+    public function actionToday(): string
+    {
+        $isManager = LeadAccess::canSeeAllLeads();
+        $userId    = (int)Yii::$app->user->id;
+        $who       = Yii::$app->request->get('user', $isManager ? '' : (string)$userId);
+        $who       = is_string($who) && ($who === '' || ctype_digit($who)) ? $who : '';
+        if (!$isManager) {
+            $who = (string)$userId;
+        }
+
+        $base = fn() => $this->leadQuery()->with(['interests', 'siteVisitBy'])
+            ->andWhere(['lead.status' => Lead::STATUS_ACTIVE])
+            ->andWhere(['not in', 'lead.lead_status', [Lead::LEAD_STATUS_CONVERTED, Lead::LEAD_STATUS_DROPPED]]);
+        $mine = function ($q) use ($who) {
+            if ($who !== '') {
+                $q->andWhere(LeadAccess::involvedCondition((int)$who));
+            }
+            return $q;
+        };
+        $today = date('Y-m-d');
+        $week  = date('Y-m-d', strtotime('+7 days'));
+        $stale = date('Y-m-d', strtotime('-' . self::STALE_DAYS . ' days'));
+
+        $sections = [
+            'overdue'  => $mine($base()->andWhere(['<', 'lead.meeting_reported_date', $today . ' 00:00:00'])->andWhere(['>=', 'lead.meeting_reported_date', $stale . ' 00:00:00']))
+                            ->orderBy(['lead.meeting_reported_date' => SORT_ASC])->limit(100)->all(),
+            'today'    => $mine($base()->andWhere(['between', 'lead.meeting_reported_date', $today . ' 00:00:00', $today . ' 23:59:59']))
+                            ->orderBy(['lead.meeting_reported_date' => SORT_ASC])->limit(100)->all(),
+            'visits'   => $mine($base()->andWhere(['between', 'lead.site_visit_date', $today . ' 00:00:00', $week . ' 23:59:59']))
+                            ->orderBy(['lead.site_visit_date' => SORT_ASC])->limit(100)->all(),
+            'upcoming' => $mine($base()->andWhere(['between', 'lead.meeting_reported_date', date('Y-m-d', strtotime('+1 day')) . ' 00:00:00', $week . ' 23:59:59']))
+                            ->orderBy(['lead.meeting_reported_date' => SORT_ASC])->limit(100)->all(),
+            // Follow-ups missed for more than STALE_DAYS: kept apart so they do not bury this week's work.
+            'stale'    => $mine($base()->andWhere(['<', 'lead.meeting_reported_date', $stale . ' 00:00:00'])->andWhere(['>', 'lead.meeting_reported_date', '1971-01-01']))
+                            ->orderBy(['lead.meeting_reported_date' => SORT_DESC])->limit(100)->all(),
+            'unplanned'=> $mine($base()->andWhere(['or', ['lead.meeting_reported_date' => null], ['<', 'lead.meeting_reported_date', '1971-01-01']]))
+                            ->andWhere(['lead.priority' => [Lead::PRIORITY_MEDIUM, Lead::PRIORITY_HIGH]])
+                            ->orderBy(['lead.priority' => SORT_DESC, 'lead.id' => SORT_DESC])->limit(50)->all(),
+        ];
+
+        return $this->render('today', [
+            'sections'  => $sections,
+            'who'       => $who,
+            'isManager' => $isManager,
+            'users'     => LeadAccess::assignableUsers(),
+        ]);
+    }
+
+    /** Where leads come from and how they convert — by source, temperature and product. */
+    public function actionInsights(): string
+    {
+        $req  = Yii::$app->request;
+        $from = $this->validDate(is_string($req->get('from')) ? $req->get('from') : '') ?? date('Y-m-d', strtotime('-90 days'));
+        $to   = $this->validDate(is_string($req->get('to')) ? $req->get('to') : '') ?? date('Y-m-d');
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+        $base = fn() => LeadAccess::scopeToUser(Lead::find()->alias('lead')
+            ->where(['!=', 'lead.status', Lead::STATUS_DELETED])
+            ->andWhere(['between', 'lead.created_date', $from . ' 00:00:00', $to . ' 23:59:59']));
+        $agg = [
+            'total'     => 'COUNT(*)',
+            'open'      => 'SUM(lead.lead_status NOT IN (' . Lead::LEAD_STATUS_CONVERTED . ',' . Lead::LEAD_STATUS_DROPPED . '))',
+            'converted' => 'SUM(lead.lead_status = ' . Lead::LEAD_STATUS_CONVERTED . ')',
+            'dropped'   => 'SUM(lead.lead_status = ' . Lead::LEAD_STATUS_DROPPED . ')',
+            'hot'       => 'SUM(lead.priority = ' . Lead::PRIORITY_HIGH . ')',
+        ];
+        $bySource = $base()->select(array_merge(['k' => 'lead.lead_source'], $agg))->groupBy('lead.lead_source')->asArray()->all();
+        $byTemp   = $base()->select(array_merge(['k' => 'lead.priority'], $agg))->groupBy('lead.priority')->asArray()->all();
+        $byProduct = $base()->innerJoin('lead_product_interest i', 'i.lead_id = lead.id')
+            ->select(array_merge(['k' => 'i.category_id'], $agg))->groupBy('i.category_id')->asArray()->all();
+        $totals = $base()->select($agg)->asArray()->one();
+
+        return $this->render('insights', [
+            'from'      => $from,
+            'to'        => $to,
+            'totals'    => array_map('intval', $totals ?: []),
+            'bySource'  => $bySource,
+            'byTemp'    => $byTemp,
+            'byProduct' => $byProduct,
+            'categories'=> ProductCategory::find()->select(['name', 'id'])->indexBy('id')->column(),
+        ]);
+    }
+
+    /** JSON: leads / clients with the same phone or email (live check on the lead form). */
+    public function actionCheckDuplicate(): Response
+    {
+        $req = Yii::$app->request;
+        $str = fn($k) => is_string($req->get($k)) ? mb_substr(trim($req->get($k)), 0, 100) : '';
+        $id  = ctype_digit($str('id')) ? (int)$str('id') : null;
+        return $this->asJson(['matches' => LeadInsight::duplicates([$str('phone'), $str('phone2'), $str('mobile')], $str('email'), $id)]);
+    }
+
+    /** JSON: value estimate for products of interest × site area (form "Estimate" button). */
+    public function actionEstimate(): Response
+    {
+        $req  = Yii::$app->request;
+        $ids  = $req->get('interest', []);
+        $ids  = is_array($ids) ? array_filter($ids, fn($v) => is_scalar($v) && ctype_digit((string)$v)) : [];
+        $area = $req->get('area');
+        $area = is_scalar($area) && is_numeric($area) ? (float)$area : 0;
+        $unit = $req->get('unit');
+        $unit = is_string($unit) && in_array($unit, Lead::AREA_UNITS, true) ? $unit : 'Sq.ft';
+        return $this->asJson(['estimate' => LeadInsight::estimate($ids, $area, $unit)]);
+    }
+
+    /** Non-blocking warning when the new lead's phone / email is already known. */
+    private function flashDuplicates(Lead $lead): void
+    {
+        $dups = LeadInsight::duplicates([$lead->contact_no, $lead->contact_no2, $lead->contact_person_mobile], $lead->email, (int)$lead->id, 3);
+        if ($dups) {
+            $names = array_map(fn($d) => ($d['type'] === 'client' ? 'client ' : '') . $d['name'], $dups);
+            Yii::$app->session->addFlash('warning', 'Possible duplicate: the same ' . $dups[0]['match'] . ' is on ' . implode(', ', $names) . '.');
+        }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
     private function leadQuery(): ActiveQuery
     {
-        return Lead::find()->alias('lead')->with(['assignedTo', 'createdBy', 'latestFollower']);
+        return Lead::find()->alias('lead')->with(['assignedTo', 'createdBy', 'latestFollower', 'interests']);
     }
 
     /** Converted / dropped lists: developers & clients only see leads they are involved in (Yii1). */
@@ -522,6 +657,18 @@ class LeadController extends Controller
             $ignored[] = 'lead status';
             $filters['lead_status'] = '';
         }
+        if ($filters['lead_source'] !== '' && !array_key_exists((int)$filters['lead_source'], Lead::sourceOptions())) {
+            $ignored[] = 'source';
+            $filters['lead_source'] = '';
+        }
+        if ($filters['priority'] !== '' && !array_key_exists((int)$filters['priority'], Lead::priorityOptions())) {
+            $ignored[] = 'temperature';
+            $filters['priority'] = '';
+        }
+        if ($filters['interest'] !== '' && !ctype_digit($filters['interest'])) {
+            $ignored[] = 'interested in';
+            $filters['interest'] = '';
+        }
         if ($filters['assigned_to'] !== '' && !ctype_digit($filters['assigned_to'])) {
             $ignored[] = 'assigned to';
             $filters['assigned_to'] = '';
@@ -543,6 +690,15 @@ class LeadController extends Controller
         }
         if ($filters['lead_status'] !== '') {
             $query->andWhere(['lead.lead_status' => (int)$filters['lead_status']]);
+        }
+        if ($filters['lead_source'] !== '') {
+            $query->andWhere(['lead.lead_source' => (int)$filters['lead_source']]);
+        }
+        if ($filters['priority'] !== '') {
+            $query->andWhere(['lead.priority' => (int)$filters['priority']]);
+        }
+        if ($filters['interest'] !== '') {
+            $query->andWhere(['in', 'lead.id', LeadProductInterest::find()->select('lead_id')->where(['category_id' => (int)$filters['interest']])]);
         }
         if ($filters['assigned_to'] !== '') {
             $uid = (int)$filters['assigned_to'];
@@ -607,7 +763,18 @@ class LeadController extends Controller
             ->all();
         $openFollowUps = count(array_filter($followers, fn($f) => (int)$f->followup_status === LeadFollowers::FOLLOWUP_OPEN));
 
+        $score = LeadInsight::score($lead);
+        $insight = [
+            'score'      => $score,
+            'band'       => LeadInsight::band($score),
+            'actions'    => LeadInsight::actions($lead),
+            'duplicates' => LeadInsight::duplicates([$lead->contact_no, $lead->contact_no2, $lead->contact_person_mobile], $lead->email, (int)$lead->id),
+            'estimate'   => LeadInsight::estimate(array_map(fn($c) => $c->id, $lead->interests), $lead->site_area, $lead->area_unit),
+            'idle'       => LeadInsight::idleDays($lead),
+        ];
+
         return $this->render('view', [
+            'insight'       => $insight,
             'lead'          => $lead,
             'followers'     => $followers,
             'openFollowUps' => $openFollowUps,
@@ -638,6 +805,10 @@ class LeadController extends Controller
         if ((int)$lead->mode !== Lead::MODE_OTHER) {
             $lead->other_mode = null;
         }
+        $posted = Yii::$app->request->post('Lead', []);
+        $ids    = isset($posted['interestIds']) && is_array($posted['interestIds']) ? $posted['interestIds'] : [];
+        $lead->interestIds   = array_values(array_filter($ids, fn($v) => is_scalar($v) && ctype_digit((string)$v)));
+        $lead->syncInterests = true;
     }
 
     /** Save a new lead, its attachments and its first follow-up (Yii1 actionCreate). */

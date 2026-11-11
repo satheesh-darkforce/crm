@@ -111,4 +111,71 @@
         }
     });
 
+    // ── Smart form helpers ───────────────────────────────────────────────
+
+    function esc(s) { return $('<div>').text(s == null ? '' : String(s)).html(); }
+    function money(v) { return '₹' + Math.round(v).toLocaleString('en-IN'); }
+
+    // Live duplicate check: same phone / email on another lead or a client.
+    var dupTimer = null, dupLast = '';
+    function checkDuplicates() {
+        var $box = $('#lead-dup-alert');
+        if (!$box.length || !urls.dup) { return; }
+        var params = {
+            phone: $('#lead-contact_no').val() || '', phone2: $('#lead-contact_no2').val() || '',
+            mobile: $('#lead-contact_person_mobile').val() || '', email: $('#lead-email').val() || '',
+            id: $box.data('id') || ''
+        };
+        var key = JSON.stringify(params);
+        if (key === dupLast) { return; }
+        dupLast = key;
+        if ((params.phone + params.phone2 + params.mobile).replace(/\D/g, '').length < 6 && params.email.indexOf('@') < 0) {
+            $box.addClass('d-none').empty();
+            return;
+        }
+        $.getJSON(urls.dup, params).done(function (r) {
+            var m = (r && r.matches) || [];
+            if (!m.length) { $box.addClass('d-none').empty(); return; }
+            var items = m.map(function (d) {
+                var name = d.url ? '<a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name) + '</a>' : esc(d.name);
+                return '<li>' + name + ' <span class="text-muted">— same ' + esc(d.match) + ' · ' + esc(d.detail) + '</span></li>';
+            });
+            $box.html('<i class="fas fa-user-friends me-1"></i><strong>This contact may already exist.</strong> Check before adding a second lead:<ul>' + items.join('') + '</ul>')
+                .removeClass('d-none');
+        });
+    }
+    $(document).on('input change', '#lead-contact_no, #lead-contact_no2, #lead-contact_person_mobile, #lead-email', function () {
+        clearTimeout(dupTimer);
+        dupTimer = setTimeout(checkDuplicates, 450);
+    });
+    $(function () { if ($('#lead-dup-alert').length) { checkDuplicates(); } });
+
+    // Value estimate from products of interest × site area (catalogue prices).
+    $(document).on('click', '.js-lead-estimate', function () {
+        var $out = $('#lead-estimate');
+        var ids = $('#lead-interestids').val() || [];
+        var area = parseFloat($('#lead-site_area').val());
+        if (!ids.length || !(area > 0)) {
+            $out.html('<i class="fas fa-info-circle me-1"></i>Pick the products of interest and enter the approx. area first.').removeClass('d-none');
+            return;
+        }
+        $out.html('<i class="fas fa-spinner fa-spin me-1"></i>Calculating…').removeClass('d-none');
+        $.getJSON(urls.estimate, {interest: ids, area: area, unit: $('#lead-area_unit').val()}).done(function (r) {
+            var e = r && r.estimate;
+            if (!e || !e.lines.length) { $out.text('No estimate available.'); return; }
+            var rows = e.lines.map(function (l) {
+                if (!l.products) { return '<div class="text-muted">' + esc(l.category) + ': ' + esc(l.note) + '</div>'; }
+                var range = l.low === l.high ? money(l.typical) : money(l.low) + ' – ' + money(l.high);
+                return '<div><strong>' + esc(l.category) + '</strong>: ' + range +
+                    ' <button type="button" class="btn btn-link js-use-estimate" data-value="' + l.typical + '">use ' + money(l.typical) + '</button></div>';
+            });
+            $out.html(rows.join('') + '<div class="text-muted mt-1">' + esc(e.area) + ' ' + esc(e.unit) + ' at catalogue prices, before GST.</div>');
+        }).fail(function () {
+            $out.text('Could not calculate the estimate. Please try again.');
+        });
+    });
+    $(document).on('click', '.js-use-estimate', function () {
+        $('#lead-lead_value').val($(this).data('value')).trigger('change');
+    });
+
 })(jQuery);

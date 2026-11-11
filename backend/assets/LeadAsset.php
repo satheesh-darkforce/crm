@@ -35,6 +35,8 @@ class LeadAsset extends AssetBundle
             'followup' => Url::to(['/lead/change-followup-status']),
             'deleteAt' => Url::to(['/lead/delete-attachment']),
             'create'   => Url::to(['/lead-followers/create']),
+            'dup'      => Url::to(['/lead/check-duplicate']),
+            'estimate' => Url::to(['/lead/estimate']),
         ]);
     }
 }

@@ -779,8 +779,14 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
         <span class="arrow"><i class="fas fa-caret-right"></i></span>
     </a>
     <div class="collapse nav-sublist <?= $navOpen('nav-leads') ?>" id="nav-leads">
+        <?php if ($nav('lead/today')): ?>
+        <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/today']) ?>">Today's Follow-ups</a>
+        <?php endif; ?>
         <?php if ($nav('lead/index')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/index']) ?>">Manage Leads</a>
+        <?php endif; ?>
+        <?php if ($nav('lead/insights')): ?>
+        <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/insights']) ?>">Lead Insights</a>
         <?php endif; ?>
         <?php if ($nav('lead/my-leads')): ?>
         <a class="nav-link" href="<?= \yii\helpers\Url::to(['/lead/my-leads']) ?>">My Leads</a>

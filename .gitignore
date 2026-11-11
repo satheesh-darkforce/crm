@@ -92,3 +92,6 @@ desktop.ini
 
 # ─── Legacy Yii1 ERP (local reference copy only) ──────────────
 /old_erp/
+
+# Reference admin panel (local copy for comparison only — never commit)
+/__admin/

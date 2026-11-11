@@ -41,3 +41,40 @@
     .ui-page .fu-due { align-items: flex-end; }
     .ui-page .fu-chip { align-self: flex-end; }
 }
+
+/* ── Smart view: score ring, next actions, duplicates, estimate ───────── */
+.ui-page .li-score {
+    --c: var(--ui-neutral-fg);
+    width: 76px; height: 76px; border-radius: 50%; margin: 0 auto;
+    background: conic-gradient(var(--c) calc(var(--p) * 1%), var(--app-border-soft, #eef2f6) 0);
+    display: flex; align-items: center; justify-content: center;
+}
+.ui-page .li-score .num {
+    width: 60px; height: 60px; border-radius: 50%; background: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.35rem; font-weight: 700; color: var(--app-text-strong);
+}
+.ui-page .li-score.tone-success { --c: var(--app-accent); }
+.ui-page .li-score.tone-warning { --c: #f59e0b; }
+.ui-page .li-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--app-text-muted); margin-bottom: .35rem; }
+.ui-page .li-actions, .ui-page .li-dups { list-style: none; margin: 0; padding: 0; }
+.ui-page .li-actions li {
+    display: flex; gap: .5rem; align-items: flex-start; font-size: .84rem;
+    padding: .4rem .6rem; border-radius: var(--app-radius-sm, 6px); margin-bottom: .3rem;
+    background: var(--ui-neutral-bg); color: var(--ui-neutral-fg);
+}
+.ui-page .li-actions li i { margin-top: .15rem; }
+.ui-page .li-actions li.tone-danger  { background: var(--ui-danger-bg);  color: var(--ui-danger-fg); }
+.ui-page .li-actions li.tone-warning { background: var(--ui-warning-bg); color: var(--ui-warning-fg); }
+.ui-page .li-actions li.tone-info    { background: var(--ui-accent-bg);  color: var(--ui-accent-fg); }
+.ui-page .li-dups li { font-size: .84rem; padding: .15rem 0; }
+.ui-page .li-est th { font-weight: 600; font-size: .82rem; }
+.ui-page .li-est td, .ui-page .li-est th { padding: .3rem .4rem; border-color: var(--app-border-soft, #eef2f6); }
+.ui-page .li-bar { height: 8px; border-radius: 4px; background: var(--app-border-soft, #eef2f6); overflow: hidden; min-width: 80px; }
+.ui-page .li-bar span { display: block; height: 100%; background: var(--app-accent); }
+
+/* ── Lead form: live duplicate warning + estimate panel ─────────────── */
+.ui-page .lead-dup-alert { font-size: .84rem; }
+.ui-page .lead-dup-alert ul { margin: .25rem 0 0; padding-left: 1.1rem; }
+.ui-page .lead-estimate { font-size: .82rem; background: var(--ui-neutral-bg); border-radius: var(--app-radius-sm, 6px); padding: .5rem .7rem; margin-top: .4rem; }
+.ui-page .lead-estimate .btn-link { padding: 0 .25rem; font-size: .82rem; }

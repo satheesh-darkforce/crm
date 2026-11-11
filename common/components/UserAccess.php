@@ -661,10 +661,18 @@ class UserAccess
             ],
             'lead/assigned' => [
                 'lead/view-assigned',
+                'lead/today',
             ],
             'lead/update' => [
                 'lead/delete-attachment',
+                'lead/check-duplicate',
+                'lead/estimate',
             ],
+            // Smart lead helpers: duplicate check + value estimate on the form,
+            // the Today board for anyone who works leads, insights with the full list.
+            'lead/create' => ['lead/check-duplicate', 'lead/estimate'],
+            'lead/index' => ['lead/today', 'lead/insights'],
+            'lead/my-leads' => ['lead/today'],
             // Product catalogue: the list includes the detail page and the
             // picker search; editing includes removing the product image.
             'product/index' => [

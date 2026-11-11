@@ -57,6 +57,14 @@ use yii\helpers\HtmlPurifier;
  * @property string $converted_date_time
  * @property string $dropped_date_time
  * @property int    $status
+ * @property int    $lead_source           See sourceOptions()
+ * @property string $source_detail         Who referred / which campaign
+ * @property float  $site_area             Approximate area / size of the site
+ * @property string $area_unit
+ * @property string $expected_install_date When the client wants the installation
+ * @property string $site_visit_date
+ * @property int    $site_visit_by         Employee doing the site visit / meeting
+ * @property int    $quotation_by          Employee preparing the quotation
  */
 class Lead extends ActiveRecord
 {
@@ -77,6 +85,21 @@ class Lead extends ActiveRecord
 
     const MODE_OTHER = 5;
 
+    /** Where the lead came from (Green Divine's channels). */
+    const SOURCE_WEBSITE   = 1;
+    const SOURCE_GOOGLE    = 2;
+    const SOURCE_META      = 3;
+    const SOURCE_INDIAMART = 4;
+    const SOURCE_JUSTDIAL  = 5;
+    const SOURCE_REFERENCE = 6;
+    const SOURCE_WALKIN    = 7;
+    const SOURCE_WHATSAPP  = 8;
+    const SOURCE_PHONE     = 9;
+    const SOURCE_EXISTING  = 10;
+    const SOURCE_OTHER     = 99;
+
+    const AREA_UNITS = ['Sq.ft', 'Sq.m', 'Rft', 'Mtr'];
+
     const SCENARIO_CREATE = 'create';
 
     /** Phone format: digits with optional leading +, spaces, dashes, brackets (legacy data uses all of these). */
@@ -85,6 +108,14 @@ class Lead extends ActiveRecord
     /** Next follow-up date (Y-m-d) and time (H:i) — create form only; combined into meeting_reported_date. */
     public $nextfollowup_date;
     public $nextfollowup_time;
+
+    /** Product categories the lead is interested in (ids). Saved only when $syncInterests is true. */
+    public $interestIds = [];
+    public bool $syncInterests = false;
+
+    /** Site visit — split into date + time inputs in the form. */
+    public $visit_date;
+    public $visit_time;
 
     /** Meeting attended — split into date + time inputs in the form. */
     public $attended_date;
@@ -100,7 +131,24 @@ class Lead extends ActiveRecord
         return [
             [['client_name', 'company_name', 'email', 'contact_no', 'contact_no2', 'country', 'address',
               'contact_person_name', 'contact_person_mobile', 'contact_person_email', 'title', 'subject',
-              'other_mode', 'industry', 'offering_service', 'reason', 'description'], 'trim'],
+              'other_mode', 'industry', 'offering_service', 'reason', 'description', 'source_detail'], 'trim'],
+            // Green Divine fields. Source is required for new leads only (old leads have none).
+            [['lead_source'], 'required', 'when' => fn($m) => $m->isNewRecord, 'whenClient' => 'function(){ return ' . ($this->isNewRecord ? 'true' : 'false') . '; }'],
+            [['lead_source'], 'in', 'range' => array_keys(self::sourceOptions())],
+            [['source_detail'], 'string', 'max' => 100],
+            [['source_detail'], 'required', 'when' => fn($m) => in_array((int)$m->lead_source, [self::SOURCE_REFERENCE, self::SOURCE_OTHER], true),
+                'whenClient' => "function(){ var v = $('#lead-lead_source').val(); return v === '" . self::SOURCE_REFERENCE . "' || v === '" . self::SOURCE_OTHER . "'; }",
+                'message' => 'Enter who referred the client, or where the lead came from.'],
+            [['site_area'], 'number', 'min' => 0, 'max' => 9999999.99, 'tooSmall' => 'Area cannot be negative.'],
+            [['site_area', 'area_unit', 'expected_install_date', 'site_visit_by', 'quotation_by', 'lead_source'], 'default', 'value' => null],
+            [['area_unit'], 'in', 'range' => self::AREA_UNITS],
+            [['area_unit'], 'default', 'value' => 'Sq.ft', 'when' => fn($m) => $m->site_area !== null && $m->site_area !== ''],
+            [['expected_install_date', 'visit_date'], 'date', 'format' => 'php:Y-m-d', 'message' => 'Enter a valid date (YYYY-MM-DD).'],
+            [['visit_time'], 'match', 'pattern' => '/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', 'message' => 'Enter a valid time.'],
+            [['visit_date'], 'required', 'when' => fn($m) => (string)$m->visit_time !== '',
+                'whenClient' => "function(){ return $('#lead-visit_time').val() !== ''; }", 'message' => 'Enter the site visit date for this time.'],
+            [['site_visit_by', 'quotation_by'], 'validateAssignee'],
+            [['interestIds'], 'validateInterests'],
             [['client_name', 'subject', 'assigned_to', 'mode', 'current_stage'], 'required'],
             [['nextfollowup_date', 'nextfollowup_time'], 'required', 'on' => self::SCENARIO_CREATE],
             [['nextfollowup_date', 'attended_date'], 'date', 'format' => 'php:Y-m-d', 'message' => 'Enter a valid date (YYYY-MM-DD).'],
@@ -209,7 +257,7 @@ class Lead extends ActiveRecord
             'contact_person_email'  => 'Contact Person Email',
             'title'                 => 'Project',
             'subject'               => 'Subject',
-            'description'           => 'Description',
+            'description'           => 'Requirement',
             'reason'                => 'Reason',
             'meeting_attended_date' => 'Meeting Attended Date & Time',
             'meeting_reported_date' => 'Next Follow Up Date & Time',
@@ -217,19 +265,30 @@ class Lead extends ActiveRecord
             'attended_time'         => 'Meeting Attended Time',
             'nextfollowup_date'     => 'Next Followup Date',
             'nextfollowup_time'     => 'Next Followup Time',
-            'priority'              => 'Priority',
+            'priority'              => 'Lead temperature',
             'assigned_to'           => 'Assigned To',
             'mode'                  => 'Mode',
             'other_mode'            => 'If Other Mode',
             'lead_status'           => 'Lead Status',
             'status'                => 'Status',
-            'lead_value'            => 'Lead Value (in dollars)',
+            'lead_value'            => 'Estimated value (₹)',
             'expected_budget'       => 'Expected Budget',
             'current_stage'         => 'Current Stage',
             'industry'              => 'Industry',
             'offering_service'      => 'Offering Service',
             'created_by'            => 'Created By',
             'created_date'          => 'Created Date',
+            'lead_source'           => 'Lead source',
+            'source_detail'         => 'Source detail',
+            'site_area'             => 'Approx. area',
+            'area_unit'             => 'Area unit',
+            'expected_install_date' => 'Installation wanted by',
+            'site_visit_date'       => 'Site visit',
+            'visit_date'            => 'Site visit date',
+            'visit_time'            => 'Site visit time',
+            'site_visit_by'         => 'Site visit by',
+            'quotation_by'          => 'Quotation by',
+            'interestIds'           => 'Interested in',
         ];
     }
 
@@ -241,6 +300,11 @@ class Lead extends ActiveRecord
             $this->attended_date = date('Y-m-d', $ts);
             $this->attended_time = date('H:i', $ts);
         }
+        if ($this->site_visit_date) {
+            $ts = strtotime($this->site_visit_date);
+            $this->visit_date = date('Y-m-d', $ts);
+            $this->visit_time = date('H:i', $ts) === '00:00' ? '' : date('H:i', $ts);
+        }
     }
 
     public function beforeValidate(): bool
@@ -249,13 +313,65 @@ class Lead extends ActiveRecord
         $this->meeting_attended_date = $this->attended_date
             ? $this->attended_date . ' ' . ($this->attended_time ?: '00:00') . ':00'
             : null;
+        $this->site_visit_date = $this->visit_date
+            ? $this->visit_date . ' ' . ($this->visit_time ? substr($this->visit_time, 0, 5) : '00:00') . ':00'
+            : null;
         if ($this->scenario === self::SCENARIO_CREATE && $this->nextfollowup_date && $this->nextfollowup_time) {
             $this->meeting_reported_date = $this->nextfollowup_date . ' ' . substr($this->nextfollowup_time, 0, 5) . ':00';
         }
         return parent::beforeValidate();
     }
 
+    /** Product categories must exist and be active (old picks that were since removed may stay). */
+    public function validateInterests(string $attribute): void
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array)$this->interestIds))));
+        if (count($ids) > 20) {
+            $this->addError($attribute, 'Pick at most 20 products.');
+            return;
+        }
+        $keep = $this->isNewRecord ? [] : array_map('intval', LeadProductInterest::find()->select('category_id')->where(['lead_id' => $this->id])->column());
+        $new  = array_diff($ids, $keep);
+        if ($new && (int)ProductCategory::find()->where(['id' => $new, 'status' => 1])->count() !== count($new)) {
+            $this->addError($attribute, 'Select products from the list.');
+            return;
+        }
+        $this->interestIds = $ids;
+    }
+
+    public function afterSave($insert, $changedAttributes): void
+    {
+        parent::afterSave($insert, $changedAttributes);
+        if (!$this->syncInterests) {
+            return;
+        }
+        $ids  = array_map('intval', (array)$this->interestIds);
+        $have = array_map('intval', LeadProductInterest::find()->select('category_id')->where(['lead_id' => $this->id])->column());
+        if ($gone = array_diff($have, $ids)) {
+            LeadProductInterest::deleteAll(['lead_id' => $this->id, 'category_id' => $gone]);
+        }
+        foreach (array_diff($ids, $have) as $cid) {
+            (new LeadProductInterest(['lead_id' => $this->id, 'category_id' => $cid, 'created_at' => date('Y-m-d H:i:s')]))->save(false);
+        }
+    }
+
     // ── Relations ────────────────────────────────────────────────────────────
+
+    public function getInterests(): ActiveQuery
+    {
+        return $this->hasMany(ProductCategory::class, ['id' => 'category_id'])->viaTable('lead_product_interest', ['lead_id' => 'id'])
+            ->orderBy(['sort_order' => SORT_ASC, 'name' => SORT_ASC]);
+    }
+
+    public function getSiteVisitBy(): ActiveQuery
+    {
+        return $this->hasOne(User::class, ['user_id' => 'site_visit_by']);
+    }
+
+    public function getQuotationBy(): ActiveQuery
+    {
+        return $this->hasOne(User::class, ['user_id' => 'quotation_by']);
+    }
 
     public function getAssignedTo(): ActiveQuery
     {
@@ -304,9 +420,49 @@ class Lead extends ActiveRecord
         return array_slice(self::leadStatusOptions(), 0, 4, true);
     }
 
+    /** Lead temperature (stored in `priority`: Low = Cold, Medium = Warm, High = Hot). */
     public static function priorityOptions(): array
     {
-        return [self::PRIORITY_LOW => 'Low', self::PRIORITY_MEDIUM => 'Medium', self::PRIORITY_HIGH => 'High'];
+        return [self::PRIORITY_LOW => 'Cold', self::PRIORITY_MEDIUM => 'Warm', self::PRIORITY_HIGH => 'Hot'];
+    }
+
+    public static function sourceOptions(): array
+    {
+        return [
+            self::SOURCE_WEBSITE   => 'Website',
+            self::SOURCE_GOOGLE    => 'Google',
+            self::SOURCE_META      => 'Meta (Facebook / Instagram)',
+            self::SOURCE_INDIAMART => 'IndiaMART',
+            self::SOURCE_JUSTDIAL  => 'Just Dial',
+            self::SOURCE_REFERENCE => 'Reference',
+            self::SOURCE_WALKIN    => 'Walk-in',
+            self::SOURCE_WHATSAPP  => 'WhatsApp',
+            self::SOURCE_PHONE     => 'Phone call',
+            self::SOURCE_EXISTING  => 'Existing client',
+            self::SOURCE_OTHER     => 'Other',
+        ];
+    }
+
+    public function getSourceLabel(): string
+    {
+        $label = self::sourceOptions()[(int)$this->lead_source] ?? '';
+        return $label !== '' && $this->source_detail ? $label . ' — ' . $this->source_detail : $label;
+    }
+
+    /** "1,200 Sq.ft" or ''. */
+    public function getAreaLabel(): string
+    {
+        if ($this->site_area === null || $this->site_area === '') {
+            return '';
+        }
+        return rtrim(rtrim(number_format((float)$this->site_area, 2), '0'), '.') . ' ' . ($this->area_unit ?: 'Sq.ft');
+    }
+
+    /** Phone number usable in tel: / wa.me links (digits only, India +91 assumed for 10 digits). */
+    public function getDialNumber(): string
+    {
+        $d = preg_replace('/\D/', '', (string)$this->contact_no);
+        return strlen($d) === 10 ? '91' . $d : $d;
     }
 
     public static function modeOptions(): array
