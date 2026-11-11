@@ -28,7 +28,7 @@ body{margin:0;padding:0;background:#f1f3f7;font-family:-apple-system,BlinkMacSys
 .preview-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:4px;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;line-height:1}
 .preview-btn-secondary{background:#fff;color:#475569;border-color:#cbd5e1}
 .preview-btn-secondary:hover{background:#f1f5f9}
-.preview-btn-primary{background:#0d9488;color:#fff;border-color:#0d9488}
+.preview-btn-primary{background:#7366ff;color:#fff;border-color:#7366ff}
 .preview-btn-primary:hover{background:#0b7c72}
 .preview-doc-wrap{padding:18px 0}
 </style>

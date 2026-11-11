@@ -41,7 +41,7 @@ $allErrors  = array_merge($client->getErrors(), $userErrors);
 <?php endif; ?>
 <p class="ui-req-note">Fields marked <b>*</b> are required.</p>
 
-<?php if (!$isUpdate): ?>
+<?php if (!$isUpdate && ClientModel::portalEnabled()): /* portal logins can be switched off in params */ ?>
 <div class="card border-0 shadow-sm mb-3">
     <div class="card-header ui-section">Portal login</div>
     <div class="card-body row g-3">

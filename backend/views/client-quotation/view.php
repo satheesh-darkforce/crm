@@ -27,13 +27,14 @@ $isCompleted = $rootCompleted === 1;
 $statusTxt   = $isCancelled ? 'Cancelled' : ($isCompleted ? 'Completed' : 'Active');
 $statusCls   = $isCancelled ? 'bg-danger' : ($isCompleted ? 'bg-primary' : 'bg-success');
 $quoteForTxt = $quoteForLabels[(int) $model->quote_for] ?? '—';
+$simple = \backend\components\Crm::simple(); // Green Divine mode: revisions, PO and IT fields hidden
 
 $fmtDate  = static fn($d) => !empty($d) ? date('d M Y', strtotime((string) $d)) : '—';
 $fmtStamp = static fn($d) => !empty($d) ? date('d M Y, h:i A', strtotime((string) $d)) : '—';
 ?>
 <style>
 .cq-wrap           { padding: 0; }
-.cq-hero           { background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%); color:#fff; padding: 24px 28px; border-radius: 14px; box-shadow: none; margin-bottom: 22px; }
+.cq-hero           { background: linear-gradient(135deg, #5d4ff0 0%, #7366ff 100%); color:#fff; padding: 24px 28px; border-radius: 14px; box-shadow: none; margin-bottom: 22px; }
 .cq-hero h2        { margin: 0 0 4px; font-weight: 700; letter-spacing: .3px; }
 .cq-hero .hero-sub { opacity: .9; font-size: .78rem; text-transform: uppercase; letter-spacing: .6px; font-weight: 600; }
 .cq-hero .hero-meta{ font-size: .85rem; opacity: .95; margin-top: 12px; }
@@ -77,8 +78,11 @@ $fmtStamp = static fn($d) => !empty($d) ? date('d M Y, h:i A', strtotime((string
             <h2><?= Html::encode($model->quote_no) ?></h2>
             <div class="hero-meta">
                 <span class="me-3"><i class="fas fa-calendar-alt me-1"></i> <?= $fmtDate($model->quote_date) ?></span>
-                <span class="me-3"><i class="fas fa-tag me-1"></i> <?= Html::encode($quoteForTxt) ?></span>
+                <?php if (!$simple): ?><span class="me-3"><i class="fas fa-tag me-1"></i> <?= Html::encode($quoteForTxt) ?></span><?php endif; ?>
                 <span class="badge <?= $statusCls ?>"><?= Html::encode($statusTxt) ?></span>
+                <?php [$qsLabel, $qsTone] = $model->getQuoteStatusPill(); ?>
+                <span class="ui-pill tone-<?= $qsTone ?> ms-1" title="Sales status"><?= Html::encode($qsLabel) ?></span>
+                <?php if ($model->valid_until): ?><span class="ms-2"><i class="fas fa-hourglass-half me-1"></i>Valid until <?= $fmtDate($model->valid_until) ?></span><?php endif; ?>
             </div>
         </div>
         <div class="d-flex flex-wrap gap-2 mt-2 mt-md-0">
@@ -93,21 +97,52 @@ $fmtStamp = static fn($d) => !empty($d) ? date('d M Y, h:i A', strtotime((string
                     <i class="fas fa-file-pdf me-1"></i> Download PDF
                 </a>
             <?php endif; ?>
-            <?php if (UserAccess::checkAccess('client-quotation/add-child') && !$isCancelled && !$isCompleted): ?>
+            <?php if (!$simple && UserAccess::checkAccess('client-quotation/add-child') && !$isCancelled && !$isCompleted): ?>
                 <button type="button" class="btn btn-sm btn-warning text-dark" data-bs-toggle="modal" data-bs-target="#addChildModal">
                     <i class="fas fa-plus me-1"></i> Add Revision
                 </button>
             <?php endif; ?>
-            <?php if (UserAccess::checkAccess('client-quotation/add-po') && !$isCancelled && !$isCompleted): ?>
+            <?php if (!$simple && UserAccess::checkAccess('client-quotation/add-po') && !$isCancelled && !$isCompleted): ?>
                 <a class="btn btn-sm btn-success" href="<?= Url::to(['add-po', 'id' => $model->id]) ?>"
                    onclick="event.preventDefault(); window.location.replace(this.href); return false;">
                     <i class="fas fa-file-invoice-dollar me-1"></i> Add PO
                 </a>
             <?php endif; ?>
-            <?php if (UserAccess::checkAccess('client-quotation/complete-quote') && !$isCancelled && !$isCompleted && !empty($poList)): ?>
+            <?php if (!$simple && UserAccess::checkAccess('client-quotation/complete-quote') && !$isCancelled && !$isCompleted && !empty($poList)): ?>
                 <button type="button" class="btn btn-sm btn-primary" id="btn-complete-quote">
                     <i class="fas fa-check-circle me-1"></i> Complete Quote
                 </button>
+            <?php endif; ?>
+            <?php
+            $qs       = (int)$model->quote_status;
+            $canEdit  = UserAccess::checkAccess('client-quotation/update') && !$isCancelled && $qs !== \backend\models\ClientQuotation::QS_INVOICED;
+            $hasItems = $model->hasItems();
+            ?>
+            <?php if ($canEdit): ?>
+                <a class="btn btn-sm btn-light" href="<?= Url::to(['update', 'id' => $model->id]) ?>"><i class="fas fa-pen me-1"></i> Edit</a>
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="fas fa-flag me-1"></i> Status</button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                        <?php foreach ([\backend\models\ClientQuotation::QS_SENT => ['paper-plane', 'Mark as sent'], \backend\models\ClientQuotation::QS_ACCEPTED => ['check', 'Mark as accepted'],
+                                        \backend\models\ClientQuotation::QS_REJECTED => ['times', 'Mark as rejected'], \backend\models\ClientQuotation::QS_DRAFT => ['undo', 'Back to draft']] as $st => [$icon, $label]): ?>
+                            <?php if ($st !== $qs): ?>
+                                <li><?= Html::a('<i class="fas fa-' . $icon . ' fa-fw me-1"></i>' . $label, ['set-status', 'id' => $model->id], ['class' => 'dropdown-item', 'encode' => false,
+                                    'data' => ['method' => 'post', 'params' => ['quote_status' => $st]]]) ?></li>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            <?php endif; ?>
+            <?php if ($hasItems && UserAccess::checkAccess('invoice/create')): ?>
+                <?php if ($qs === \backend\models\ClientQuotation::QS_INVOICED && $model->invoice_id): ?>
+                    <a class="btn btn-sm btn-light" href="<?= Url::to(['/invoice/view', 'id' => $model->invoice_id]) ?>"><i class="fas fa-file-invoice me-1"></i> View invoice</a>
+                <?php elseif ($qs === \backend\models\ClientQuotation::QS_ACCEPTED): ?>
+                    <a class="btn btn-sm btn-success" href="<?= Url::to(['create-invoice', 'id' => $model->id]) ?>"><i class="fas fa-file-invoice me-1"></i> Create invoice</a>
+                <?php endif; ?>
+            <?php endif; ?>
+            <?php if (UserAccess::checkAccess('client-quotation/duplicate')): ?>
+                <?= Html::a('<i class="fas fa-copy me-1"></i> Duplicate', ['duplicate', 'id' => $model->id], ['class' => 'btn btn-sm btn-light', 'encode' => false,
+                    'data' => ['method' => 'post', 'confirm' => 'Make a new draft quotation with the same client, items and terms?']]) ?>
             <?php endif; ?>
             <a class="btn btn-sm btn-outline-light" href="<?= Url::to(['index']) ?>"
                onclick="event.preventDefault(); window.location.replace(this.href); return false;">
@@ -139,19 +174,19 @@ $fmtStamp = static fn($d) => !empty($d) ? date('d M Y, h:i A', strtotime((string
                 <span class="lbl">Quote Date</span>
                 <span class="val"><?= $fmtDate($model->quote_date) ?></span>
             </div>
-            <div class="col-md-4 cq-field">
+            <div class="col-md-4 cq-field<?= $simple ? ' d-none' : '' ?>">
                 <span class="lbl">Deployment Type</span>
                 <span class="val"><?= Html::encode(backend\models\ClientQuotation::deploymentTypeOptions()[(int) $model->deployment_type] ?? 'Deployment') ?></span>
             </div>
             <div class="col-md-4 cq-field">
-                <span class="lbl">Estimation Cost</span>
-                <span class="val <?= empty($model->estimation_cost) ? 'muted' : '' ?>"><?= Html::encode($model->estimation_cost ?: '—') ?></span>
+                <span class="lbl"><?= $model->grand_total !== null ? 'Quote Total' : 'Estimation Cost' ?></span>
+                <span class="val <?= empty($model->estimation_cost) ? 'muted' : '' ?>"><?= $model->grand_total !== null ? '₹' . Yii::$app->formatter->asDecimal((float)$model->grand_total, 0) : Html::encode($model->estimation_cost ?: '—') ?></span>
             </div>
             <div class="col-md-4 cq-field">
                 <span class="lbl">Quoted By</span>
                 <span class="val <?= empty($user->username) ? 'muted' : '' ?>"><?= Html::encode($user->username ?? '—') ?></span>
             </div>
-            <div class="col-md-4 cq-field">
+            <div class="col-md-4 cq-field<?= $simple ? ' d-none' : '' ?>">
                 <span class="lbl">Additional Quote By</span>
                 <span class="val <?= empty($additionalUser->username) ? 'muted' : '' ?>"><?= Html::encode($additionalUser->username ?? '—') ?></span>
             </div>
@@ -174,6 +209,8 @@ $fmtStamp = static fn($d) => !empty($d) ? date('d M Y, h:i A', strtotime((string
             </div>
         <?php endif; ?>
     </div>
+
+    <?= $this->render('_items', ['model' => $model]) ?>
 
     <!-- Attached Files (revision history + per-revision downloads) ───── -->
     <?php if (!empty($relatedQuotes)): ?>
@@ -246,6 +283,7 @@ $fmtStamp = static fn($d) => !empty($d) ? date('d M Y, h:i A', strtotime((string
     <?php endif; ?>
 
     <!-- Purchase Orders ───────────────────────────────────────────────── -->
+    <?php if (!$simple): ?>
     <?php
     // Given Cost = the latest quotation's estimation_cost in this tree.
     $latestQuoteForView = end($relatedQuotes) ?: $rootQuote;
@@ -324,6 +362,7 @@ $fmtStamp = static fn($d) => !empty($d) ? date('d M Y, h:i A', strtotime((string
             </div>
         <?php endif; ?>
     </div>
+    <?php endif; /* purchase orders */ ?>
 
 </div>
 

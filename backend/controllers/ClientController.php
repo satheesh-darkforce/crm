@@ -139,6 +139,9 @@ class ClientController extends Controller
     public function actionAccessPermissions(int $id): string|Response
     {
         $client  = $this->findModel($id);
+        if ($blocked = $this->portalBlocked($client, ['view', 'id' => $id])) {
+            return $blocked;
+        }
         $granted = array_filter(explode(',', (string)$client->access_permissions));
 
         if (Yii::$app->request->isPost) {
@@ -165,19 +168,23 @@ class ClientController extends Controller
         if (Yii::$app->request->isPost) {
             $post = Yii::$app->request->post();
 
-            $user->username = is_string($post['username'] ?? null) ? trim($post['username']) : '';
-            $user->usertype = User::TYPE_CLIENT;
-            $user->status   = 1;
-            $rawPassword    = is_string($post['password'] ?? null) ? $post['password'] : '';
-
             $client->load($post, 'ClientModel');
             $client->status = 1;
 
-            $loginValid  = ClientModel::validateLogin($user, $rawPassword);
+            // Portal logins off: no username / password asked, no login account created.
+            $portal = ClientModel::portalEnabled();
+            if ($portal) {
+                $user->username = is_string($post['username'] ?? null) ? trim($post['username']) : '';
+                $user->usertype = User::TYPE_CLIENT;
+                $user->status   = 1;
+                $rawPassword    = is_string($post['password'] ?? null) ? $post['password'] : '';
+            }
+
+            $loginValid  = !$portal || ClientModel::validateLogin($user, $rawPassword);
             $clientValid = $client->validate();
 
             if ($loginValid && $clientValid) {
-                if ($client->saveWithLogin($user)) {
+                if ($client->saveWithLogin($portal ? $user : null)) {
                     Yii::$app->session->setFlash('success', 'Client created successfully.');
                     return $this->redirect(['view', 'id' => $client->id]);
                 }
@@ -214,6 +221,22 @@ class ClientController extends Controller
     /**
      * Reset the client's login password (POST, modal form on the list and view pages).
      */
+    /**
+     * Redirect with a message when a portal action is not possible: portal logins
+     * are switched off (params 'client.portalLogin') or the client has no login.
+     */
+    private function portalBlocked(ClientModel $client, array $back): ?Response
+    {
+        if (!ClientModel::portalEnabled()) {
+            Yii::$app->session->setFlash('error', 'Client portal logins are switched off.');
+            return $this->redirect($back);
+        }
+        if (!$client->hasLogin()) {
+            Yii::$app->session->setFlash('error', 'This client has no portal login.');
+            return $this->redirect($back);
+        }
+        return null;
+    }
     public function actionResetPassword(int $id): Response
     {
         if (!Yii::$app->request->isPost) {
@@ -221,6 +244,9 @@ class ClientController extends Controller
         }
         $client   = $this->findModel($id);
         $back     = Yii::$app->request->post('return') === 'view' ? ['view', 'id' => $id] : ['index'];
+        if ($blocked = $this->portalBlocked($client, $back)) {
+            return $blocked;
+        }
         $password = Yii::$app->request->post('new_password', '');
         $password = is_string($password) ? $password : '';
 

@@ -1,0 +1,60 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Line-item editor (quotations, invoices) — views/_ui/_line_items.php.
+   A grid that becomes stacked cards on phones. Loaded by LineItemsAsset.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.li-editor { --li-cols: 26px minmax(190px, 3fr) 88px 168px 118px 62px 78px 112px 32px; }
+.li-editor .li-head,
+.li-editor .li-row { display: grid; grid-template-columns: var(--li-cols); gap: .45rem; align-items: start; }
+.li-editor .li-head {
+    font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--app-text-muted);
+    padding: 0 .5rem .35rem; border-bottom: 1px solid var(--app-border);
+}
+.li-editor .li-head > div:nth-child(8) { text-align: right; }
+.li-editor .li-row { padding: .55rem .5rem; border-bottom: 1px solid var(--app-border-soft, #eef2f6); }
+.li-editor .li-row:hover { background: #fafbfc; }
+.li-editor .li-label { display: none; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--app-text-muted); margin-bottom: .15rem; }
+.li-editor .li-item .li-label.mt-1 { display: none; }
+.li-editor .li-item .js-li-desc { margin-top: .3rem; }
+.li-editor .li-num { padding-top: .35rem; color: var(--app-text-muted); font-size: .8rem; }
+.li-editor .li-amount { text-align: right; padding-top: .3rem; }
+.li-editor .li-qty .js-li-unit { flex: 0 0 88px; max-width: 88px; padding-right: 1.6rem; }
+.li-editor .li-qty .js-li-qty { min-width: 0; }
+.li-editor .li-price .input-group-text { padding-left: .45rem; padding-right: .45rem; }
+.li-editor .li-footer { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; padding: .75rem .5rem 0; }
+.li-editor .li-totals { min-width: 280px; font-size: .86rem; }
+.li-editor .li-totals th { font-weight: 500; color: var(--app-text-muted); padding: .15rem 1rem .15rem 0; }
+.li-editor .li-totals td { text-align: right; padding: .15rem 0; }
+.li-editor .li-totals .li-grand th, .li-editor .li-totals .li-grand td {
+    font-size: 1.05rem; font-weight: 700; color: var(--app-text-strong); border-top: 1px solid var(--app-border); padding-top: .4rem;
+}
+input.li-auto { background: var(--ui-neutral-bg, #f1f5f9); }
+
+/* Product picker options */
+.li-opt-name { font-weight: 600; }
+.li-opt-meta { font-size: .76rem; color: #64748b; }
+
+@media (max-width: 1199.98px) {
+    .li-editor .li-head { display: none; }
+    .li-editor .li-row {
+        grid-template-columns: repeat(6, 1fr); row-gap: .5rem;
+        border: 1px solid var(--app-border); border-radius: var(--app-radius, 10px); margin-bottom: .6rem; background: #fff;
+    }
+    .li-editor .li-label { display: block; }
+    .li-editor .li-item .li-label.mt-1 { display: block; }
+    .li-editor .li-num { grid-column: 1 / 6; padding: 0; font-weight: 700; color: var(--app-text-strong); }
+    .li-editor .li-num::before { content: "Item "; }
+    .li-editor .li-remove { grid-column: 6; grid-row: 1; text-align: right; }
+    .li-editor .li-item { grid-column: 1 / -1; }
+    .li-editor .li-hsn { grid-column: 1 / 3; }
+    .li-editor .li-qty { grid-column: 3 / 7; }
+    .li-editor .li-price { grid-column: 1 / 4; }
+    .li-editor .li-disc { grid-column: 4 / 5; }
+    .li-editor .li-gst { grid-column: 5 / 7; }
+    .li-editor .li-amount { grid-column: 1 / -1; text-align: left; display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; padding-top: 0; }
+    .li-editor .li-amount .li-label { margin: 0; }
+    .li-editor .li-qty .js-li-unit { max-width: none; }
+}
+@media (max-width: 575.98px) {
+    .li-editor .li-totals { min-width: 100%; }
+}

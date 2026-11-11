@@ -316,17 +316,20 @@ class LeadController extends Controller
         $user = new User();
 
         if (Yii::$app->request->isPost) {
-            $post = Yii::$app->request->post();
-            $user->username = is_string($post['username'] ?? null) ? trim($post['username']) : '';
-            $user->usertype = User::TYPE_CLIENT;
-            $user->status   = 1;
+            $post   = Yii::$app->request->post();
+            $portal = ClientModel::portalEnabled(); // off: no login account for the client
+            if ($portal) {
+                $user->username = is_string($post['username'] ?? null) ? trim($post['username']) : '';
+                $user->usertype = User::TYPE_CLIENT;
+                $user->status   = 1;
+            }
             $client->load($post, 'ClientModel');
             $client->status = 1;
 
-            $userValid   = ClientModel::validateLogin($user, is_string($post['password'] ?? null) ? $post['password'] : '');
+            $userValid   = !$portal || ClientModel::validateLogin($user, is_string($post['password'] ?? null) ? $post['password'] : '');
             $clientValid = $client->validate();
 
-            if ($userValid && $clientValid && $client->saveWithLogin($user)) {
+            if ($userValid && $clientValid && $client->saveWithLogin($portal ? $user : null)) {
                 $lead->updateAttributes(['is_client' => 1]);
                 Yii::$app->session->setFlash('success', 'Client created successfully.');
                 return $this->redirect(['converted']);

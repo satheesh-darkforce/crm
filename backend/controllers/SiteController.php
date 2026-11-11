@@ -87,6 +87,13 @@ class SiteController extends BaseController
         $user = Yii::$app->user->identity;
         $db   = Yii::$app->db;
 
+        // Green Divine mode: a sales dashboard (leads, quotations, invoices) instead of
+        // the IT one (domains, AMC, developer tasks). See HIDDEN_MODULES.md.
+        if (\backend\components\Crm::simple()) {
+            $period = \backend\components\GdDashboard::period(Yii::$app->request->get('period'));
+            return $this->render('index-gd', \backend\components\GdDashboard::data($period) + ['user' => $user]);
+        }
+
         // ── Domain expiry count (30 days) ───────────────────────────────────
         $domainExpiryCount = (int) $db->createCommand(
             "SELECT COUNT(*) FROM domains WHERE status=1 AND expiry_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 DAY)"

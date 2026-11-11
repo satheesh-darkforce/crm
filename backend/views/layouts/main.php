@@ -11,6 +11,7 @@ use yii\bootstrap5\Html;
 AppAsset::register($this);
 
 $user     = Yii::$app->user->identity;
+$appName  = Yii::$app->params['app.name'] ?? 'CRM';
 $username = $user ? $user->username : '';
 
 // Role flags — used throughout sidebar for conditional rendering
@@ -130,7 +131,7 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
     <meta charset="<?= Yii::$app->charset ?>">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <?php $this->registerCsrfMetaTags() ?>
-    <title><?= Html::encode($this->title) ?> — Maestro ERP</title>
+    <title><?= Html::encode($this->title) ?> — <?= Html::encode($appName) ?></title>
     <link rel="icon" type="image/png" href="<?= Yii::$app->request->baseUrl ?>/images/favicon.png">
     <link rel="apple-touch-icon" href="<?= Yii::$app->request->baseUrl ?>/images/favicon.png">
     <link rel="shortcut icon" href="<?= Yii::$app->request->baseUrl ?>/images/favicon.png">
@@ -164,394 +165,12 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
         };
     })();
     </script>
-    <style>
-        /* ── Sidebar layout (light theme, redesigned) ────────── */
-        :root {
-            --sb-width: 252px;
-            --sb-bg: #eef2f7;
-            --sb-text: #475569;
-            --sb-text-muted: #94a3b8;
-            --sb-text-strong: #0f172a;
-            --sb-accent: #0d9488;
-            --sb-accent-bg: #ffffff;
-            --sb-border: #dde3ec;
-            --sb-hover: #e2e8f0;
-            --sb-sub-text: #64748b;
-            --sb-body-bg: #ffffff;
-            --sb-topbar-bg: #ffffff;
-        }
-
-        body {
-            display: flex;
-            min-height: 100vh;
-            background: var(--sb-body-bg);
-            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        }
-
-        #sidebar {
-            width: var(--sb-width);
-            min-width: var(--sb-width);
-            background: var(--sb-bg);
-            color: var(--sb-text);
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            top: 0; left: 0; bottom: 0;
-            overflow-y: auto;
-            overflow-x: hidden;
-            z-index: 1040;
-            transition: width .25s ease;
-            border-right: 1px solid var(--sb-border);
-        }
-
-        /* slim scrollbar */
-        #sidebar::-webkit-scrollbar { width: 6px; }
-        #sidebar::-webkit-scrollbar-track { background: transparent; }
-        #sidebar::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 3px;
-        }
-        #sidebar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-        /* ── Brand ── */
-        #sidebar .brand {
-            padding: 1.15rem 1.35rem 1rem;
-            font-size: 1rem;
-            font-weight: 700;
-            color: var(--sb-text-strong);
-            letter-spacing: .2px;
-            border-bottom: 1px solid var(--sb-border);
-            white-space: nowrap;
-            display: flex;
-            align-items: center;
-            gap: .65rem;
-            position: sticky;
-            top: 0;
-            background: var(--sb-bg);
-            z-index: 2;
-            text-transform: none;
-        }
-        #sidebar .brand::before {
-            content: "M";
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 28px;
-            height: 28px;
-            border-radius: 8px;
-            background: #1d4ed8;
-            color: #fff;
-            font-size: .85rem;
-            font-weight: 700;
-            letter-spacing: 0;
-        }
-        #sidebar .brand span { color: #1d4ed8; font-weight: 700; }
-
-        /* ── Section heading ── */
-        #sidebar .nav-section {
-            padding: 1.05rem 1.35rem .35rem;
-            font-size: .67rem;
-            text-transform: uppercase;
-            letter-spacing: .14em;
-            color: var(--sb-text-muted);
-            font-weight: 600;
-        }
-
-        /* ── Nav link (leaf) ── */
-        #sidebar .nav-link {
-            color: var(--sb-text);
-            padding: .55rem .9rem;
-            margin: 1px .75rem;
-            font-size: .85rem;
-            font-weight: 500;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            gap: .7rem;
-            transition: background .15s ease, color .15s ease;
-            position: relative;
-        }
-        #sidebar .nav-link:hover {
-            background: var(--sb-hover);
-            color: var(--sb-text-strong);
-        }
-        #sidebar .nav-link.active {
-            background: var(--sb-accent-bg);
-            color: var(--sb-accent);
-            font-weight: 600;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
-        }
-        #sidebar .nav-link .badge {
-            margin-left: auto;
-            font-size: .65rem;
-            font-weight: 600;
-            padding: .22em .55em;
-            border-radius: 999px;
-        }
-        /* Yii1 parity: Add Work Report grayed + non-clickable while a task
-           timer is running. pointer-events:none stops navigation. */
-        #sidebar .nav-link.wr-disabled,
-        #sidebar .nav-link.wr-disabled:hover,
-        #sidebar .nav-link.wr-disabled:focus,
-        #sidebar .nav-link.wr-disabled.active {
-            color: #A8A8A8 !important;
-            background: transparent !important;
-            pointer-events: none;
-            box-shadow: none;
-        }
-
-        /* ── Group toggle (parent) ── */
-        #sidebar .nav-group-toggle {
-            color: var(--sb-text);
-            padding: .6rem .9rem;
-            margin: 1px .75rem;
-            font-size: .87rem;
-            font-weight: 500;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            gap: .7rem;
-            cursor: pointer;
-            user-select: none;
-            transition: background .15s ease, color .15s ease;
-            text-decoration: none;
-        }
-        #sidebar .nav-group-toggle:hover {
-            background: var(--sb-hover);
-            color: var(--sb-text-strong);
-        }
-        #sidebar .nav-group-toggle[aria-expanded="true"] {
-            color: var(--sb-text-strong);
-            font-weight: 600;
-        }
-        #sidebar .nav-group-toggle .arrow {
-            margin-left: auto;
-            font-size: .55rem;
-            color: var(--sb-text-muted);
-            transition: transform .25s ease;
-        }
-        #sidebar .nav-group-toggle[aria-expanded="true"] .arrow {
-            transform: rotate(90deg);
-            color: var(--sb-text-strong);
-        }
-        #sidebar .nav-group-toggle .badge {
-            margin-left: auto;
-            margin-right: .45rem;
-            font-size: .65rem;
-            font-weight: 600;
-            padding: .22em .55em;
-            border-radius: 999px;
-        }
-        #sidebar .nav-group-toggle .badge + .arrow { margin-left: 0; }
-
-        /* ── Sublist (children) ── */
-        #sidebar .nav-sublist {
-            padding: .1rem 0 .35rem;
-            margin: 0 .75rem .2rem 1.65rem;
-            position: relative;
-            border-left: 1px solid var(--sb-border);
-        }
-        #sidebar .nav-sublist .nav-link {
-            padding: .42rem .85rem .42rem 1rem;
-            margin: 1px .3rem 1px .55rem;
-            font-size: .82rem;
-            font-weight: 500;
-            color: var(--sb-sub-text);
-            border-radius: 6px;
-        }
-        #sidebar .nav-sublist .nav-link:hover {
-            background: var(--sb-hover);
-            color: var(--sb-text-strong);
-        }
-        #sidebar .nav-sublist .nav-link.active {
-            background: transparent;
-            color: var(--sb-accent);
-            font-weight: 600;
-        }
-        #sidebar .nav-sublist .nav-link.active::before {
-            content: "";
-            position: absolute;
-            left: -1px;
-            top: .4rem;
-            bottom: .4rem;
-            width: 2px;
-            background: var(--sb-accent);
-            border-radius: 2px;
-        }
-
-        /* icon glyph */
-        .sidebar-icon {
-            width: 20px;
-            text-align: center;
-            flex-shrink: 0;
-            font-size: 1rem;
-            color: var(--sb-text-muted);
-            transition: color .15s ease;
-        }
-        #sidebar .nav-link:hover .sidebar-icon,
-        #sidebar .nav-group-toggle:hover .sidebar-icon,
-        #sidebar .nav-group-toggle[aria-expanded="true"] .sidebar-icon {
-            color: var(--sb-text-strong);
-        }
-        #sidebar .nav-link.active .sidebar-icon { color: var(--sb-accent); }
-
-        /* ── Top bar ── */
-        #topbar {
-            height: 56px;
-            background: var(--sb-topbar-bg);
-            border-bottom: 1px solid var(--sb-border);
-            position: fixed;
-            top: 0;
-            left: var(--sb-width);
-            right: 0;
-            z-index: 1030;
-            display: flex;
-            align-items: center;
-            padding: 0 1.75rem;
-            gap: .75rem;
-        }
-        #topbar .topbar-title {
-            font-size: .98rem;
-            font-weight: 600;
-            color: var(--sb-text-strong);
-            letter-spacing: .15px;
-            flex: 1 1 auto;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        #topbar .ms-auto { display: flex; align-items: center; gap: .6rem; min-width: 0; }
-        #topbar .ms-auto > * { flex-shrink: 0; }
-        /* Phones: header buttons collapse to icon + count so the bar never
-           pushes the page wider than the screen. */
-        #topbar .tb-icon { display: none; }
-        #topbar .tb-user { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        @media (max-width: 575.98px) {
-            #topbar { gap: .5rem; }
-            #topbar .ms-auto { gap: .35rem; }
-            #topbar .tb-label { display: none; }
-            #topbar .tb-icon { display: inline-block; margin-right: .2rem; }
-            #topbar .tb-user { max-width: 92px; }
-        }
-        .live-hdr-dot { width: .55rem; height: .55rem; border-radius: 50%; background: #e74c3c; display: inline-block; animation: live-hdr-pulse 1.3s infinite; }
-        @keyframes live-hdr-pulse { 0% { box-shadow: 0 0 0 0 rgba(231,76,60,.6); } 70% { box-shadow: 0 0 0 6px rgba(231,76,60,0); } 100% { box-shadow: 0 0 0 0 rgba(231,76,60,0); } }
-
-        /* ── Main content ── */
-        #main-content {
-            margin-left: var(--sb-width);
-            margin-top: 56px;
-            flex: 1;
-            padding: 1.5rem 1.75rem;
-            min-width: 0;
-        }
-
-        /* Fix dropdown menus clipped inside .table-responsive */
-        .table-responsive { overflow: visible !important; }
-        @media (max-width: 767.98px) {
-            .table-responsive { overflow-x: auto !important; }
-        }
-
-        /* ── Mobile sidebar close button + backdrop ── */
-        .sidebar-close {
-            display: none;
-            position: absolute;
-            top: .75rem;
-            right: .75rem;
-            width: 34px;
-            height: 34px;
-            align-items: center;
-            justify-content: center;
-            background: #fff;
-            color: var(--sb-text-strong);
-            font-size: 1.25rem;
-            line-height: 1;
-            border: 1px solid var(--sb-border);
-            border-radius: 6px;
-            cursor: pointer;
-            z-index: 2;
-        }
-        .sidebar-close:hover { background: #f1f5f9; }
-        #sidebar-backdrop {
-            position: fixed;
-            inset: 0;
-            background: rgba(15, 23, 42, .45);
-            z-index: 1039;
-            display: none;
-        }
-        #sidebar-backdrop.show { display: block; }
-        /* Lock background scroll while the mobile drawer is open */
-        body.sidebar-locked { overflow: hidden; }
-
-        /* ── Responsive ── */
-        @media (max-width: 767.98px) {
-            #sidebar {
-                width: 0;
-                min-width: 0;
-                overflow: hidden;
-                height: 100vh;
-                height: 100dvh;
-                max-height: 100dvh;
-            }
-            #sidebar.open {
-                width: var(--sb-width);
-                min-width: var(--sb-width);
-                overflow-y: auto;
-                box-shadow: 4px 0 18px rgba(15, 23, 42, .15);
-            }
-            #sidebar.open .sidebar-close { display: flex; }
-            #topbar { left: 0; padding: 0 1rem; }
-            #main-content { margin-left: 0; padding-left: 1rem; padding-right: 1rem; }
-        }
-        @media (min-width: 768px) {
-            #sidebar-backdrop,
-            #sidebar-backdrop.show { display: none !important; }
-            .sidebar-close { display: none !important; }
-        }
-
-        /* ── Site-wide mobile responsive guard ── */
-        @media (max-width: 767.98px) {
-            html, body { overflow-x: hidden; max-width: 100vw; }
-            #main-content { max-width: 100vw; }
-
-            /* Page header rows stack/wrap nicely on mobile */
-            #main-content .d-flex.justify-content-between { flex-wrap: wrap; gap: .5rem; }
-            /* Action button groups in headers wrap and stretch */
-            #main-content .d-flex.justify-content-between > .d-flex { flex-wrap: wrap; }
-
-            /* Tables always scroll horizontally inside their container */
-            .table-responsive { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
-
-            /* Card padding tighter on mobile */
-            .card-body { padding: .85rem; }
-
-            /* GridView footer/summary wraps */
-            .summary, .grid-view .summary { font-size: .8rem; }
-
-            /* Long unbreakable strings (URLs, emails) can break within table cells.
-               break-word wraps only when a word has nowhere else to break — keeps
-               normal words like dates and codes intact, unlike `anywhere`. */
-            td, th { overflow-wrap: break-word; word-break: normal; }
-
-            /* Pagination wraps if too wide */
-            .pagination { flex-wrap: wrap; }
-
-            /* Bootstrap modals fit viewport */
-            .modal-dialog { margin: .5rem; }
-        }
-
-        /* ── Mobile search-filter toggle ── */
-        .search-toggle-btn {
-            display: none;
-            align-items: center;
-            gap: .35rem;
-            margin-bottom: .65rem;
-        }
-        .search-toggle-btn .badge { font-size: .65rem; }
-        @media (max-width: 767.98px) {
-            .search-toggle-btn { display: inline-flex; }
-        }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
+    <?php $gdTheme = Yii::getAlias('@webroot/css/gd-theme.css'); ?>
+    <!-- Green Divine theme: every colour / input / picker style lives here (reusable, loaded last) -->
+    <link rel="stylesheet" href="<?= Yii::$app->request->baseUrl ?>/css/gd-theme.css?v=<?= is_file($gdTheme) ? filemtime($gdTheme) : 1 ?>">
 </head>
 <body>
 <?php $this->beginBody() ?>
@@ -559,9 +178,13 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
 <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
 <nav id="sidebar">
     <div class="brand">
-        <span>Maestro</span> ERP
+        <a href="<?= \yii\helpers\Url::to(['/site/index']) ?>" class="d-flex align-items-center gap-2 text-decoration-none">
+            <span class="brand-mark"><i class="fas fa-leaf"></i></span>
+            <span class="brand-name"><?= Html::encode($appName) ?></span>
+        </a>
         <button type="button" class="sidebar-close" id="sidebar-close" aria-label="Close menu">&times;</button>
     </div>
+    <div class="nav-body">
 
 <?php if (!Yii::$app->user->isGuest): ?>
 
@@ -1138,8 +761,21 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
     <?php $navBlocks['po'] = ob_get_clean(); ?>
 
     <?php
-    foreach (Yii::$app->params['sidebar.groups'] ?? array_keys($navBlocks) as $navKey) {
-        echo $navBlocks[$navKey] ?? '';
+    // Printed by section (params['sidebar.sections']: label => group keys, '' = no label);
+    // falls back to the flat params['sidebar.groups'] order. Empty groups are skipped.
+    $navSections = Yii::$app->params['sidebar.sections'] ?? ['' => Yii::$app->params['sidebar.groups'] ?? array_keys($navBlocks)];
+    foreach ($navSections as $navLabel => $navKeys) {
+        $navHtml = '';
+        foreach ($navKeys as $navKey) {
+            $navHtml .= $navBlocks[$navKey] ?? '';
+        }
+        if (strpos($navHtml, 'class="nav-') === false) {
+            continue;
+        }
+        if ($navLabel !== '') {
+            echo '<div class="nav-section">' . Html::encode($navLabel) . '</div>';
+        }
+        echo $navHtml;
     }
     ?>
     <?php /* 15. PM Tool — hidden for now, use later
@@ -1214,8 +850,7 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
     */ ?>
 
 <?php endif; /* end !isGuest */ ?>
-
-    <div style="height: 2rem"></div>
+    </div><!-- /.nav-body -->
 </nav>
 
 <!-- ── Mobile sidebar backdrop ─────────────────────────────────────────── -->
@@ -1223,61 +858,55 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
 
 <!-- ── Top bar ─────────────────────────────────────────────────────────── -->
 <div id="topbar">
-    <button class="btn btn-sm btn-outline-secondary d-md-none" id="sidebar-toggle"><i class="fas fa-bars"></i></button>
-    <span class="topbar-title"><?= Html::encode($this->title ?? 'Maestro ERP') ?></span>
+    <button type="button" id="sidebar-toggle" aria-label="Open menu"><i class="fas fa-bars"></i></button>
+
+    <?php if (!Yii::$app->user->isGuest && $ca('lead/index')): ?>
+    <!-- Quick search: a phone number searches by contact, anything else by client name -->
+    <form class="gd-search" method="get" action="<?= \yii\helpers\Url::to(['/lead/index']) ?>" role="search" id="gd-search-form">
+        <i class="fas fa-search"></i>
+        <input type="search" name="client_name" id="gd-search-input" placeholder="Search leads by name or phone…" aria-label="Search leads" autocomplete="off"
+               value="<?= Html::encode((string) (Yii::$app->request->get('client_name') ?: Yii::$app->request->get('contact_no'))) ?>">
+    </form>
+    <?php endif; ?>
 
     <div class="ms-auto">
         <?php if (!Yii::$app->user->isGuest): ?>
-        <!-- Check-in / Check-out button removed from header — no need there. -->
-
-        <!-- Live attendance dashboard (admins / those with the permission) -->
         <?php if ($ca('attendance/live')): ?>
-        <a href="<?= \yii\helpers\Url::to(['/attendance/live']) ?>" class="btn btn-sm btn-outline-danger position-relative d-flex align-items-center gap-1" title="Live attendance" aria-label="Live attendance">
+        <a href="<?= \yii\helpers\Url::to(['/attendance/live']) ?>" class="gd-icon-btn" title="Live attendance" aria-label="Live attendance">
             <span class="live-hdr-dot"></span> <span class="tb-label">Live</span>
         </a>
         <?php endif; ?>
-
-        <!-- Badges -->
         <?php if ($pendingLeaves > 0): ?>
-        <a href="<?= \yii\helpers\Url::to(['/leave/index']) ?>" class="btn btn-sm btn-outline-warning position-relative" title="Pending leave requests" aria-label="Pending leave requests">
-            <i class="fas fa-plane-departure tb-icon"></i><span class="tb-label">Leaves</span> <span class="badge bg-danger"><?= $pendingLeaves ?></span>
+        <a href="<?= \yii\helpers\Url::to(['/leave/index']) ?>" class="gd-icon-btn" title="Pending leave requests" aria-label="Pending leave requests">
+            <i class="fas fa-plane-departure"></i><span class="tb-label">Leaves</span> <span class="badge bg-danger"><?= $pendingLeaves ?></span>
         </a>
         <?php endif; ?>
         <?php if ($openLeads > 0): ?>
-        <a href="<?= \yii\helpers\Url::to(['/lead/assigned']) ?>" class="btn btn-sm btn-outline-primary position-relative" title="Unread lead follow-ups assigned to you" aria-label="Unread lead follow-ups assigned to you">
-            <i class="fas fa-bullseye tb-icon"></i><span class="tb-label">Leads</span> <span class="badge bg-danger"><?= $openLeads ?></span>
+        <a href="<?= \yii\helpers\Url::to(['/lead/assigned']) ?>" class="gd-icon-btn" title="Unread lead follow-ups assigned to you" aria-label="Unread lead follow-ups assigned to you">
+            <i class="fas fa-bell"></i><span class="tb-label">Follow-ups</span> <span class="badge bg-danger"><?= $openLeads ?></span>
         </a>
         <?php endif; ?>
 
-        <!-- User dropdown -->
+        <?php
+        // My Profile — Yii1 parity: developers open their developer record, others their user.
+        $profileDevId = $user ? $user->getDeveloperId() : null;
+        $profileUrl   = $profileDevId ? ['/developer/view', 'id' => $profileDevId] : ['/user/view', 'id' => Yii::$app->user->id];
+        ?>
         <div class="dropdown">
-            <button class="btn btn-sm btn-outline-secondary dropdown-toggle tb-user" type="button"
-                    data-bs-toggle="dropdown" aria-expanded="false" title="<?= Html::encode($username) ?>">
-                <?= Html::encode($username) ?>
+            <button class="gd-user" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="<?= Html::encode($username) ?>">
+                <span class="gd-avatar"><?= Html::encode(mb_substr($username, 0, 1)) ?></span>
+                <span class="tb-user"><?= Html::encode($username) ?></span>
+                <i class="fas fa-chevron-down small text-muted d-none d-md-inline"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
                 <li><span class="dropdown-header"><?= Html::encode($username) ?></span></li>
-                <?php
-                // My Profile — Yii1 parity. developer_header.php links to
-                // developer/{user->developer_id}; clients/admins without a
-                // developer record fall back to their User record.
-                $profileDevId = $user ? $user->getDeveloperId() : null;
-                if ($profileDevId) {
-                    $profileUrl = ['/developer/view', 'id' => $profileDevId];
-                } else {
-                    $profileUrl = ['/user/view', 'id' => Yii::$app->user->id];
-                }
-                ?>
-                <li><?= Html::a('My Profile', $profileUrl, ['class' => 'dropdown-item']) ?></li>
-                <li><?= Html::a('Change Password', ['/site/change-password'], ['class' => 'dropdown-item']) ?></li>
-                <li><hr class="dropdown-divider"></li>
-                <li>
-                    <?= Html::beginForm(['/site/logout'], 'post', ['id' => 'logout-form']) ?>
-                    <?= Html::submitButton('Logout', ['class' => 'dropdown-item text-danger', 'id' => 'logout-btn']) ?>
-                    <?= Html::endForm() ?>
-                </li>
+                <li><?= Html::a('<i class="fas fa-user me-2"></i>My Profile', $profileUrl, ['class' => 'dropdown-item', 'encode' => false]) ?></li>
+                <li><?= Html::a('<i class="fas fa-key me-2"></i>Change Password', ['/site/change-password'], ['class' => 'dropdown-item', 'encode' => false]) ?></li>
             </ul>
         </div>
+        <?= Html::beginForm(['/site/logout'], 'post', ['id' => 'logout-form', 'class' => 'm-0']) ?>
+        <button type="submit" class="gd-logout" id="logout-btn" title="Logout"><i class="fas fa-sign-out-alt"></i><span class="gd-logout-label">Logout</span></button>
+        <?= Html::endForm() ?>
         <?php else: ?>
         <?= Html::a('Login', ['/site/login'], ['class' => 'btn btn-sm btn-primary']) ?>
         <?php endif; ?>
@@ -1286,6 +915,45 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
 
 <!-- ── Main content ────────────────────────────────────────────────────── -->
 <div id="main-content">
+    <?php
+    // Title strip. Breadcrumbs: $this->params['breadcrumbs'] when a view sets them,
+    // otherwise Home / <module> / <page title>.
+    $gdModules = [
+        'lead' => ['Leads', '/lead/index'], 'lead-followers' => ['Leads', '/lead/index'],
+        'client' => ['Clients', '/client/index'], 'client-quotation' => ['Quotations', '/client-quotation/index'],
+        'invoice' => ['Invoices', '/invoice/index'], 'product' => ['Products', '/product/index'],
+        'developer' => ['Employees', '/developer/index'], 'employee' => ['Employees', '/developer/index'], 'user' => ['Users', '/user/index'],
+        'attendance' => ['HR', '/attendance/index'], 'leave' => ['HR', '/leave/index'], 'holiday' => ['HR', '/holiday/index'],
+        'permission' => ['HR', '/permission/index'], 'rfid-card' => ['HR', '/rfid-card/index'],
+    ];
+    $gdTitle  = (string) ($this->title ?? '');
+    $gdCrumbs = $this->params['breadcrumbs'] ?? null;
+    if ($gdCrumbs === null) {
+        $gdCrumbs = [];
+        if (isset($gdModules[$currentCtrl]) && $gdModules[$currentCtrl][0] !== $gdTitle) {
+            $gdCrumbs[] = ['label' => $gdModules[$currentCtrl][0], 'url' => [$gdModules[$currentCtrl][1]]];
+        }
+        if ($gdTitle !== '') {
+            $gdCrumbs[] = $gdTitle;
+        }
+    }
+    // The page's own <h1> with the same text moves into the strip (kept for screen readers).
+    if ($gdTitle !== '') {
+        $gdH1    = preg_quote(Html::encode($gdTitle), '/');
+        $content = preg_replace('/(<div class="ui-head">\s*<div>\s*)<h1>(' . $gdH1 . ')<\/h1>/iu', '$1<h1 class="gd-dup">$2</h1>', $content, 1) ?? $content;
+    }
+    ?>
+    <?php if (!Yii::$app->user->isGuest && $gdTitle !== ''): ?>
+    <div class="gd-titlebar">
+        <h1><?= Html::encode($gdTitle) ?></h1>
+        <ol class="gd-crumbs" aria-label="Breadcrumb">
+            <li><a href="<?= \yii\helpers\Url::to(['/site/index']) ?>" aria-label="Home"><i class="fas fa-house"></i></a></li>
+            <?php foreach ($gdCrumbs as $gdCrumb): ?>
+            <li><?= is_array($gdCrumb) && isset($gdCrumb['url']) ? Html::a(Html::encode($gdCrumb['label']), $gdCrumb['url']) : Html::encode(is_array($gdCrumb) ? $gdCrumb['label'] : $gdCrumb) ?></li>
+            <?php endforeach; ?>
+        </ol>
+    </div>
+    <?php endif; ?>
     <?= Alert::widget() ?>
     <?= $content ?>
 </div>
@@ -1310,7 +978,8 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
             </div>
             <div class="modal-body">
                 <input type="hidden" id="modal_invoice_role_type" value="">
-                <div class="mb-3">
+                <?php $_gdSimple = \backend\components\Crm::simple(); /* Green Divine mode: just pick the client */ ?>
+                <div class="mb-3<?= $_gdSimple ? ' d-none' : '' ?>">
                     <label class="form-label">Invoice Category <span class="text-danger">*</span></label>
                     <?= \kartik\select2\Select2::widget([
                         'name'          => 'modal_invoice_category',
@@ -1318,11 +987,12 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
                             \backend\models\Invoice::CATEGORY_SERVICE => 'Service Invoice',
                             \backend\models\Invoice::CATEGORY_PRODUCT => 'Sales Invoice',
                         ],
+                        'value'         => $_gdSimple ? \backend\models\Invoice::CATEGORY_SERVICE : null,
                         'options'       => ['id' => 'modal_invoice_category', 'placeholder' => 'Select Invoice Category'],
                         'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
                     ]) ?>
                 </div>
-                <div class="mb-3">
+                <div class="mb-3<?= $_gdSimple ? ' d-none' : '' ?>">
                     <label class="form-label">Select Company <span class="text-danger">*</span></label>
                     <?= \kartik\select2\Select2::widget([
                         'name'          => 'modal_company_id',
@@ -1332,7 +1002,7 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
                     ]) ?>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Select Client <span class="text-danger">*</span></label>
+                    <label class="form-label"><?= $_gdSimple ? 'Client' : 'Select Client' ?> <span class="text-danger">*</span></label>
                     <?= \kartik\select2\Select2::widget([
                         'name'          => 'modal_client_id',
                         'data'          => $_modalClientData,
@@ -1341,6 +1011,7 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
                     ]) ?>
                     <span class="text-danger small" id="modal_invoice_error"></span>
                 </div>
+                <div class="<?= $_gdSimple ? 'd-none' : '' ?>">
                 <div class="mb-3">
                     <label class="form-label">Select Project <span class="text-danger">*</span></label>
                     <select id="modal_project_id" class="form-select form-select-sm">
@@ -1359,6 +1030,8 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
                         <option value="">Select Milestone</option>
                     </select>
                 </div>
+                </div><!-- /project fields -->
+                <?php if ($_gdSimple): ?><p class="small text-muted mb-0">Next you pick the products; price, unit and GST fill in from the catalogue.</p><?php endif; ?>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -1371,12 +1044,25 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
     'var _invoiceCreateUrl = ' . \yii\helpers\Json::encode(\yii\helpers\Url::to(['/invoice/create'])) . ';'
     . 'var _ajaxProjectsByClient = ' . \yii\helpers\Json::encode(\yii\helpers\Url::to(['/project/get-projects-by-client'])) . ';'
     . 'var _ajaxPhaseValue = ' . \yii\helpers\Json::encode(\yii\helpers\Url::to(['/project/get-phase-value'])) . ';'
-    . 'var _ajaxMilestoneValue = ' . \yii\helpers\Json::encode(\yii\helpers\Url::to(['/project/get-milestone-value'])) . ';',
+    . 'var _ajaxMilestoneValue = ' . \yii\helpers\Json::encode(\yii\helpers\Url::to(['/project/get-milestone-value'])) . ';'
+    . 'var _invoiceModalSimple = ' . (\backend\components\Crm::simple() ? 'true' : 'false') . ';',
     \yii\web\View::POS_END
 ); ?>
 <?php endif; ?>
 
 <script>
+// Top-bar quick search: a phone number searches the contact field.
+(function () {
+    var form = document.getElementById('gd-search-form');
+    if (!form) return;
+    form.addEventListener('submit', function () {
+        var input = document.getElementById('gd-search-input');
+        var v = input.value.trim();
+        input.value = v;
+        input.name = /^[+\d][\d\s-]{3,}$/.test(v) ? 'contact_no' : 'client_name';
+    });
+})();
+
 // Mobile sidebar toggle / close / outside-click
 (function () {
     var sidebar  = document.getElementById('sidebar');
@@ -1709,7 +1395,7 @@ window.openInvoiceModal = function(title, roleType) {
     document.querySelector('#addInvoiceModal .modal-title').textContent = title;
     document.getElementById('modal_invoice_role_type').value = roleType;
     _modalSyncing = true;
-    jQuery('#modal_invoice_category').val(null).trigger('change');
+    jQuery('#modal_invoice_category').val(window._invoiceModalSimple ? '1' : null).trigger('change');
     jQuery('#modal_company_id').val(null).trigger('change');
     jQuery('#modal_client_id').val(null).trigger('change');
     _modalSyncing = false;
@@ -1802,7 +1488,7 @@ jQuery('#modal-invoice-submit').on('click', function() {
 
     if (!category) { Swal.fire({icon:'warning', title:'Required', text:'Please Select Invoice Category!'}); return; }
     if (!client)   { Swal.fire({icon:'warning', title:'Required', text:'Please Select Client!'}); return; }
-    if (!project)  { Swal.fire({icon:'warning', title:'Required', text:'Please Select Project!'}); return; }
+    if (!project && !window._invoiceModalSimple) { Swal.fire({icon:'warning', title:'Required', text:'Please Select Project!'}); return; }
 
     var url = _invoiceCreateUrl
         + '?invoice_category=' + encodeURIComponent(category)

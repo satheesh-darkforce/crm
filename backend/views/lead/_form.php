@@ -9,12 +9,15 @@ use backend\components\LeadFiles;
 use backend\controllers\Controller;
 use backend\models\Lead;
 use common\components\UserAccess;
+use backend\components\FormPickers;
 use kartik\date\DatePicker;
+use kartik\time\TimePicker;
 use kartik\select2\Select2;
 use yii\bootstrap5\ActiveForm;
 use yii\bootstrap5\Html;
 
 $isNew      = $lead->isNewRecord;
+$simple     = \backend\components\Crm::simple(); // Green Divine mode: IT-sales fields hidden
 $categories = $categories ?? \backend\models\ProductCategory::options();
 $cancelUrl  = $cancelUrl ?? ['index'];
 $today      = date('Y-m-d');
@@ -44,11 +47,13 @@ $dateInput = fn(array $plugin) => [
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'client_name')->textInput($in('e.g. John Mathew', ['maxlength' => 255])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'company_name')->textInput($in('e.g. Acme Pvt Ltd', ['maxlength' => 255])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'email')->input('email', $in('name@company.com', ['maxlength' => 255])) ?></div>
-        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'contact_no')->textInput($in('e.g. +91 98765 43210', ['maxlength' => 25, 'inputmode' => 'tel'])) ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'contact_no', ['options' => ['class' => 'mb-3' . ($simple && $isNew ? ' required' : '')]])->textInput($in('e.g. +91 98765 43210', ['maxlength' => 25, 'inputmode' => 'tel'])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'contact_no2')->textInput($in('Alternate number', ['maxlength' => 25, 'inputmode' => 'tel'])) ?></div>
+        <?php if (!$simple): ?>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'contact_person_name')->textInput($in('Point of contact', ['maxlength' => 255])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'contact_person_mobile')->textInput($in('e.g. 98765 43210', ['maxlength' => 25, 'inputmode' => 'tel'])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'contact_person_email')->input('email', $in('contact@company.com', ['maxlength' => 255])) ?></div>
+        <?php endif; ?>
         <div class="col-lg-9 col-md-6"><?= $form->field($lead, 'address')->textarea($in('Street, area, city, PIN', ['rows' => 2])) ?></div>
         <div class="col-12">
             <div id="lead-dup-alert" class="alert alert-warning lead-dup-alert mb-0 d-none" role="status" aria-live="polite" data-id="<?= $isNew ? '' : (int)$lead->id ?>"></div>
@@ -91,8 +96,12 @@ $dateInput = fn(array $plugin) => [
     <div class="card-header ui-section">Pipeline</div>
     <div class="card-body row g-3">
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'title')->textInput($in('e.g. Terrace garden — Koramangala', ['maxlength' => 255])) ?></div>
+        <?php if ($simple): ?>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'subject')->textInput($in('Filled in from the products if left blank', ['maxlength' => 255])) ?></div>
+        <?php else: ?>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'subject')->textInput($in('e.g. Balcony grass enquiry', ['maxlength' => 255])) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'current_stage')->widget(Select2::class, ['data' => Lead::stageOptions()] + $s2('Select the stage')) ?></div>
+        <?php endif; ?>
         <?php if ($isNew): ?>
         <div class="col-lg-3 col-md-6">
             <label class="form-label" for="lead-status-display">Lead Status</label>
@@ -105,6 +114,7 @@ $dateInput = fn(array $plugin) => [
             <div id="lead-estimate" class="lead-estimate d-none" aria-live="polite"></div>
         </div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'expected_budget')->input('number', $in('0.00', ['min' => 0, 'max' => 99999999.99, 'step' => '0.01'])) ?></div>
+        <?php if (!$simple): ?>
         <div class="col-12">
             <details class="ui-more"<?= ($lead->industry || $lead->offering_service || $lead->hasErrors('industry') || $lead->hasErrors('offering_service')) ? ' open' : '' ?>>
                 <summary class="small text-muted">More details (industry, offering)</summary>
@@ -114,6 +124,7 @@ $dateInput = fn(array $plugin) => [
                 </div>
             </details>
         </div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -123,18 +134,20 @@ $dateInput = fn(array $plugin) => [
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'assigned_to')->widget(Select2::class, ['data' => $users] + $s2('Select employee'))->label('Sales person') ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'site_visit_by')->widget(Select2::class, ['data' => $users] + $s2('Who visits the site')) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'visit_date')->widget(DatePicker::class, $dateInput([])) ?></div>
-        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'visit_time')->input('time', $in('HH:MM')) ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'visit_time')->widget(TimePicker::class, FormPickers::time()) ?></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'quotation_by')->widget(Select2::class, ['data' => $users] + $s2('Who prepares the quote')) ?></div>
+        <?php if (!$simple): ?>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'mode')->widget(Select2::class, ['data' => Lead::modeOptions()] + $s2('Select the mode', ['data-other-mode' => '#other-mode-wrap'])) ?></div>
         <div class="col-lg-3 col-md-6" id="other-mode-wrap" style="<?= (int)$lead->mode === Lead::MODE_OTHER ? '' : 'display:none' ?>">
             <?= $form->field($lead, 'other_mode', ['options' => ['class' => 'mb-3 required']])->textInput($in('e.g. Google Meet', ['maxlength' => 255])) ?>
         </div>
         <div class="w-100 d-none d-lg-block"></div>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'attended_date')->widget(DatePicker::class, $dateInput(['endDate' => $today])) ?></div>
-        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'attended_time')->input('time', $in('HH:MM')) ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'attended_time')->widget(TimePicker::class, FormPickers::time()) ?></div>
+        <?php endif; /* mode + meeting attended */ ?>
         <?php if ($isNew): ?>
         <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'nextfollowup_date')->widget(DatePicker::class, $dateInput(['startDate' => $today])) ?></div>
-        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'nextfollowup_time')->input('time', $in('HH:MM')) ?></div>
+        <div class="col-lg-3 col-md-6"><?= $form->field($lead, 'nextfollowup_time')->widget(TimePicker::class, FormPickers::time()) ?></div>
         <?php else: ?>
         <div class="col-lg-6 col-md-12">
             <label class="form-label" for="lead-next-display">Next Follow Up Date &amp; Time</label>

@@ -287,19 +287,32 @@ class ClientModel extends ActiveRecord
         return null;
     }
 
+    /** Whether clients get a portal login (params 'client.portalLogin'). */
+    public static function portalEnabled(): bool
+    {
+        return (bool)(\Yii::$app->params['client.portalLogin'] ?? true);
+    }
+
+    /** Whether this client has a portal login account. */
+    public function hasLogin(): bool
+    {
+        return (int)$this->user_id > 0;
+    }
+
     /**
-     * Save a new (already validated) client together with its login user and,
-     * when it has a company name, its Sundry Debtor ledger — mirrors Yii1.
+     * Save a new (already validated) client together with its login user (when
+     * given — none while portal logins are off) and, when it has a company name,
+     * its Sundry Debtor ledger — mirrors Yii1.
      * All-or-nothing: rolls back and returns false if any step fails.
      */
-    public function saveWithLogin(User $user): bool
+    public function saveWithLogin(?User $user): bool
     {
         $tx = static::getDb()->beginTransaction();
         try {
-            if (!$user->save(false)) {
+            if ($user !== null && !$user->save(false)) {
                 throw new \RuntimeException('user');
             }
-            $this->user_id = $user->user_id;
+            $this->user_id = $user?->user_id;
             if (!$this->save(false)) {
                 throw new \RuntimeException('client');
             }

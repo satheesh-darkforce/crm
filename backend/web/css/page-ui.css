@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════
    Shared page UI kit — loaded by PageUiAsset for redesigned modules.
-   Built on the --app-* tokens from site.css, whose accent (#0d9488) is
+   Built on the --app-* tokens from site.css, whose accent (#7366ff, see gd-theme.css) is
    the login page's accent colour. Every rule is scoped to .ui-page (the
    page wrapper) so pages that have not been redesigned are unaffected.
 
@@ -150,7 +150,7 @@
 .ui-page .ui-detail tr:last-child > * { border-bottom: 0; }
 
 /* ── Pagination (Bootstrap's default active state is blue) ─────────── */
-.ui-page .pagination { --bs-pagination-font-size: .825rem; --bs-pagination-color: var(--app-text); --bs-pagination-hover-color: var(--ui-accent-fg); --bs-pagination-focus-color: var(--ui-accent-fg); --bs-pagination-focus-box-shadow: 0 0 0 .2rem rgba(13, 148, 136, .2); --bs-pagination-active-bg: var(--app-accent); --bs-pagination-active-border-color: var(--app-accent); flex-wrap: wrap; gap: 2px; }
+.ui-page .pagination { --bs-pagination-font-size: .825rem; --bs-pagination-color: var(--app-text); --bs-pagination-hover-color: var(--ui-accent-fg); --bs-pagination-focus-color: var(--ui-accent-fg); --bs-pagination-focus-box-shadow: 0 0 0 .2rem rgba(115, 102, 255, .2); --bs-pagination-active-bg: var(--app-accent); --bs-pagination-active-border-color: var(--app-accent); flex-wrap: wrap; gap: 2px; }
 .ui-page .pagination .page-link { border-radius: 6px !important; }
 .ui-page .ui-pager .pagination { margin: 0 !important; } /* site.css gives every .pagination a 1rem margin */
 .ui-page .ui-pager { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .5rem; }
@@ -202,7 +202,7 @@
 .ui-page .ui-form .form-control:focus,
 .ui-page .ui-form .form-select:focus {
     border-color: var(--app-accent);
-    box-shadow: 0 0 0 3px rgba(13, 148, 136, .18);
+    box-shadow: 0 0 0 3px rgba(115, 102, 255, .18);
 }
 .ui-page .ui-req-note { font-size: .8rem; color: var(--app-text-muted); margin-bottom: .9rem; }
 .ui-page .ui-req-note b { color: var(--app-danger); }
@@ -295,9 +295,9 @@
 
 /* ── SweetAlert popups on redesigned pages use the green accent ──── */
 body:has(.ui-page) .swal2-styled.swal2-confirm { background-color: var(--app-accent) !important; }
-body:has(.ui-page) .swal2-styled.swal2-confirm:focus { box-shadow: 0 0 0 3px rgba(13, 148, 136, .35) !important; }
+body:has(.ui-page) .swal2-styled.swal2-confirm:focus { box-shadow: 0 0 0 3px rgba(115, 102, 255, .35) !important; }
 body:has(.ui-page) .swal2-styled.swal2-confirm.is-danger { background-color: var(--app-danger) !important; }
-body:has(.ui-page) .swal2-icon.swal2-question { border-color: #99f6e4; color: var(--app-accent); }
+body:has(.ui-page) .swal2-icon.swal2-question { border-color: #c9c3ff; color: var(--app-accent); }
 body:has(.ui-page) .swal2-loader { border-color: var(--app-accent) transparent var(--app-accent) transparent; }
 
 /* Summary tiles (detail pages) */

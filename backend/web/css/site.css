@@ -109,9 +109,9 @@ a.desc:after {
    ═══════════════════════════════════════════════════════════════════════ */
 
 :root {
-    --app-accent:        #0d9488;
-    --app-accent-hover:  #0f766e;
-    --app-accent-soft:   #ccfbf1;
+    --app-accent:        #7366ff;
+    --app-accent-hover:  #5d4ff0;
+    --app-accent-soft:   #efedff;
     --app-text:          #334155;
     --app-text-strong:   #0f172a;
     --app-text-muted:    #64748b;
@@ -287,7 +287,7 @@ body {
     --bs-pagination-hover-color: var(--app-accent-hover);
     --bs-pagination-active-bg: var(--app-accent);
     --bs-pagination-active-border-color: var(--app-accent);
-    --bs-pagination-focus-box-shadow: 0 0 0 .2rem rgba(13, 148, 136, .15);
+    --bs-pagination-focus-box-shadow: 0 0 0 .2rem rgba(115, 102, 255, .15);
     margin: 1rem 1.15rem;
     gap: 2px;
 }
@@ -344,7 +344,7 @@ body {
 .form-control:focus,
 .form-select:focus {
     border-color: var(--app-accent) !important;
-    box-shadow: 0 0 0 .18rem rgba(13, 148, 136, .14) !important;
+    box-shadow: 0 0 0 .18rem rgba(115, 102, 255, .14) !important;
     outline: none;
 }
 .form-control::placeholder { color: #94a3b8; opacity: 1; }
@@ -373,7 +373,7 @@ textarea.form-control { min-height: 72px; }
 .select2-container--default.select2-container--focus .select2-selection,
 .select2-container--default.select2-container--open .select2-selection {
     border-color: var(--app-accent) !important;
-    box-shadow: 0 0 0 .18rem rgba(13, 148, 136, .14) !important;
+    box-shadow: 0 0 0 .18rem rgba(115, 102, 255, .14) !important;
 }
 .select2-container--krajee-bs5 .select2-selection__rendered,
 .select2-container--default .select2-selection__rendered {
@@ -480,7 +480,7 @@ div.error-block {
     --bs-btn-hover-border-color: var(--app-accent-hover);
     --bs-btn-active-bg: var(--app-accent-hover);
     --bs-btn-active-border-color: var(--app-accent-hover);
-    --bs-btn-focus-shadow-rgb: 13, 148, 136;
+    --bs-btn-focus-shadow-rgb: 115, 102, 255;
 }
 .btn-outline-primary {
     --bs-btn-color: var(--app-accent);

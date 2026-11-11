@@ -41,10 +41,23 @@ class ClientQuotation extends ActiveRecord
     /** Set by the controller, never by the form. */
     protected static function guardedAttributes(): array
     {
-        return ['status', 'completed_status', 'parent_id', 'quote_no', 'quoted_by', 'created_at', 'modified_at', 'cancel_reason'];
+        return ['status', 'completed_status', 'parent_id', 'quote_no', 'quoted_by', 'created_at', 'modified_at', 'cancel_reason',
+            // set by the server from the line items / status actions
+            'quote_status', 'sub_total', 'discount_total', 'taxable_total', 'gst_total', 'grand_total', 'invoice_id'];
     }
 
     /** Deployment type values for `deployment_type`. */
+    /** Sales status of the quote (quote_status). "Expired" is shown when a Draft/Sent quote is past valid_until. */
+    public const QS_DRAFT    = 1;
+    public const QS_SENT     = 2;
+    public const QS_ACCEPTED = 3;
+    public const QS_REJECTED = 4;
+    public const QS_INVOICED = 5;
+
+    /** Default terms and notes for new quotes (Green Divine's own wording). */
+    public const DEFAULT_TERMS = "70% advance payment for dispatch of the material.\n30% payment on the day the work is completed (against the invoice).\nPrices are valid until the date shown on this quotation.";
+    public const DEFAULT_NOTES = "Includes cutting and laying.\nIncludes fixing labour.";
+
     public const DEPLOYMENT = 1;
     public const TRIAL      = 2;
 
@@ -80,8 +93,8 @@ class ClientQuotation extends ActiveRecord
             // Estimation cost is mandatory for a Deployment, optional for a Trial.
             [
                 ['estimation_cost'], 'required',
-                'when' => fn($m) => (int) $m->deployment_type !== self::TRIAL,
-                'whenClient' => "function(attribute, value){
+                'when' => fn($m) => (int) $m->deployment_type !== self::TRIAL && !\backend\components\Crm::simple(),
+                'whenClient' => \backend\components\Crm::simple() ? 'function(){ return false; }' : "function(attribute, value){
                     return $('#clientquotation-deployment_type').val() != '" . self::TRIAL . "';
                 }",
             ],
@@ -94,6 +107,13 @@ class ClientQuotation extends ActiveRecord
                 }",
             ],
             [['quote_date', 'created_at', 'modified_at'], 'safe'],
+            [['valid_until'], 'date', 'format' => 'php:Y-m-d', 'message' => 'Enter a valid date (YYYY-MM-DD).'],
+            [['valid_until'], 'default', 'value' => null],
+            [['valid_until'], 'compare', 'compareAttribute' => 'quote_date', 'operator' => '>=', 'type' => 'string', 'skipOnEmpty' => true,
+                'message' => 'Valid until cannot be before the quote date.', 'when' => fn($m) => (string)$m->quote_date !== ''],
+            [['tax_mode'], 'in', 'range' => [1, 2, 3]],
+            [['terms', 'notes'], 'trim'],
+            [['terms', 'notes'], 'string', 'max' => 5000],
             [['quote_no'], 'string', 'max' => 50],
             [['cancel_reason', 'version', 'alter_reason'], 'string', 'max' => 500],
             [['quote_no'], 'unique', 'message' => 'Quotation number must be unique.'],
@@ -126,7 +146,53 @@ class ClientQuotation extends ActiveRecord
             'version' => 'Version',
             'alter_reason' => 'Alter Reason',
             'alternate_quote_by' => 'Additional Quote By',
+            'quote_status' => 'Quote Status',
+            'valid_until' => 'Valid Until',
+            'tax_mode' => 'GST Type',
+            'terms' => 'Terms & Conditions',
+            'notes' => 'Notes',
         ];
+    }
+
+    public static function quoteStatusOptions(): array
+    {
+        return [self::QS_DRAFT => 'Draft', self::QS_SENT => 'Sent', self::QS_ACCEPTED => 'Accepted', self::QS_REJECTED => 'Rejected', self::QS_INVOICED => 'Invoiced'];
+    }
+
+    /** Draft / Sent quote past its validity date. */
+    public function isExpired(): bool
+    {
+        return in_array((int)$this->quote_status, [self::QS_DRAFT, self::QS_SENT], true) && $this->valid_until && $this->valid_until < date('Y-m-d');
+    }
+
+    /** [label, tone] for the status pill. */
+    public function getQuoteStatusPill(): array
+    {
+        if ($this->isExpired()) {
+            return ['Expired', 'neutral'];
+        }
+        return match ((int)$this->quote_status) {
+            self::QS_SENT     => ['Sent', 'accent'],
+            self::QS_ACCEPTED => ['Accepted', 'success'],
+            self::QS_REJECTED => ['Rejected', 'danger'],
+            self::QS_INVOICED => ['Invoiced', 'success'],
+            default           => ['Draft', 'warning'],
+        };
+    }
+
+    public function hasItems(): bool
+    {
+        return $this->getItems()->exists();
+    }
+
+    public function getItems(): \yii\db\ActiveQuery
+    {
+        return $this->hasMany(ClientQuotationItem::class, ['quote_id' => 'id'])->orderBy(['sort_order' => SORT_ASC, 'id' => SORT_ASC]);
+    }
+
+    public function getInvoice(): \yii\db\ActiveQuery
+    {
+        return $this->hasOne(Invoice::class, ['id' => 'invoice_id']);
     }
 
     public function getClient(): \yii\db\ActiveQuery

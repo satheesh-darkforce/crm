@@ -117,6 +117,14 @@ $displayInvoiceNo = trim((string)($model->invoice_no ?? '')) !== ''
                 .inv-items .tot-final .tot-label, .inv-items .tot-final .tot-value{ font-weight:700; }
                 .inv-items .ghost{ background:transparent; }
             </style>
+            <?php
+            // Invoices with GST per line (product line items) use their own table.
+            $perLineGst = false;
+            foreach (($model->details ?? []) as $d0) { if ($d0->hasAttribute('gst_rate') && $d0->gst_rate !== null) { $perLineGst = true; break; } }
+            ?>
+            <?php if ($perLineGst): ?>
+                <?= $this->render('@backend/views/invoice/_invoice_items_gst', ['model' => $model, 'headerCurrency' => $headerCurrency]) ?>
+            <?php else: ?>
             <table align="center" class="inv-items">
 
             <tr>
@@ -200,6 +208,7 @@ $displayInvoiceNo = trim((string)($model->invoice_no ?? '')) !== ''
             </tr>
 
         </table>
+            <?php endif; /* per-line GST */ ?>
 
         <br>
         <p style="text-align:center;">Total in words: <b><?= htmlspecialchars($headerCurrency) ?>. <?= $model->net_total ?>/-(<?= ucfirst(Utility::convertNumberToWords(round($model->net_total))) ?>  <?= htmlspecialchars($model->currency_in_words ?? '') ?> only)</b></p>

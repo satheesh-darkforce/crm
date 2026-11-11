@@ -2,6 +2,8 @@
 /** @var \yii\web\View $this */
 /** @var \backend\models\Holiday $model */
 
+use backend\components\FormPickers;
+use kartik\date\DatePicker;
 use yii\bootstrap5\ActiveForm;
 use yii\bootstrap5\Html;
 
@@ -18,7 +20,7 @@ $this->title = $isNew ? 'Add Holiday' : 'Edit Holiday';
             <?php $form = ActiveForm::begin(); ?>
             <div class="row g-3">
                 <div class="col-12">
-                    <?= $form->field($model, 'date')->input('date', ['class' => 'form-control form-control-sm']) ?>
+                    <?= $form->field($model, 'date')->widget(DatePicker::class, FormPickers::date()) ?>
                 </div>
                 <div class="col-12">
                     <?= $form->field($model, 'reason')->textInput(['class' => 'form-control form-control-sm', 'maxlength' => 255, 'placeholder' => 'e.g. Republic Day']) ?>

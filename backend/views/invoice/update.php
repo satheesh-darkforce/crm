@@ -26,5 +26,5 @@ $nextNo = $invoice->invoice_no;
     <?= $this->render('_form', compact(
         'invoice', 'clients', 'projects', 'banks', 'nextNo', 'clientTypes',
         'preClient', 'currencies', 'hsnCodes', 'lutArn', 'invoiceCategoryParam'
-    )) ?>
+    ) + ['useLines' => $useLines ?? false, 'lines' => $lines ?? [], 'lineErrors' => $lineErrors ?? []]) ?>
 </div>

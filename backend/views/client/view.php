@@ -6,6 +6,7 @@
 /** @var \backend\models\Domain[] $domains */
 /** @var \backend\models\Invoice[] $invoices */
 
+use backend\models\ClientModel;
 use common\components\UserAccess;
 use yii\bootstrap5\Html;
 use yii\helpers\Url;
@@ -23,8 +24,9 @@ $invTypes  = [1 => ['Tax Invoice', 'accent'], 2 => ['Proforma', 'neutral'], 3 =>
 
 $can = [
     'update'      => UserAccess::checkAccess('client/update'),
-    'reset'       => UserAccess::checkAccess('client/reset-password'),
-    'permissions' => UserAccess::checkAccess('client/access-permissions'),
+    // Portal actions only while portal logins are on (params 'client.portalLogin').
+    'reset'       => ClientModel::portalEnabled() && $model->hasLogin() && UserAccess::checkAccess('client/reset-password'),
+    'permissions' => ClientModel::portalEnabled() && $model->hasLogin() && UserAccess::checkAccess('client/access-permissions'),
     'delete'      => UserAccess::checkAccess('client/delete'),
     'invoice'     => UserAccess::checkAccess('invoice/create'),
 ];
@@ -103,6 +105,7 @@ $lastLabel = date('M Y', strtotime(date('Y-m-01') . ' -1 month'));
                             <div class="small text-muted"><?= Html::encode($model->tax_exemption_reason) ?></div>
                         <?php endif; ?>
                     </td></tr>
+                    <?php if (ClientModel::portalEnabled()): ?>
                     <tr><th scope="row">Portal Username</th><td><?= $val($model->user->username ?? '') ?></td></tr>
                     <tr><th scope="row">Portal Access</th><td>
                         <?php if ($granted): ?>
@@ -114,6 +117,7 @@ $lastLabel = date('M Y', strtotime(date('Y-m-01') . ' -1 month'));
                             <?= Html::a('Manage', ['access-permissions', 'id' => $model->id], ['class' => 'small ms-2']) ?>
                         <?php endif; ?>
                     </td></tr>
+                    <?php endif; ?>
                 </table>
             </div>
         </div>

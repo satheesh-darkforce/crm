@@ -3,9 +3,12 @@
 namespace backend\controllers;
 
 use backend\assets\InvoiceAsset;
+use backend\components\LineItems;
 use backend\components\SafeUpload;
 use backend\models\BankDetail;
 use backend\models\ClientModel;
+use backend\models\ClientQuotation;
+use backend\models\ClientQuotationItem;
 use backend\models\Currency;
 use backend\models\Invoice;
 use backend\models\InvoiceDetails;
@@ -622,6 +625,21 @@ class InvoiceController extends Controller
                 $invoice->igst_percent = 0;
             }
         }
+        // From an accepted quotation: same client, items copied (InvoiceController::editorState()).
+        if (!Yii::$app->request->isPost && ($qid = (int)Yii::$app->request->get('quotation_id'))) {
+            $quote = $this->acceptedQuotation($qid, $clientIdParam);
+            if (!$quote) {
+                Yii::$app->session->setFlash('error', 'That quotation cannot be invoiced (it must be accepted, have items and belong to the client).');
+                return $this->redirect(['/client-quotation/view', 'id' => $qid]);
+            }
+            $invoice->quotation_id = $quote->id;
+            $invoice->title        = $invoice->title ?: (string)$quote->project_name;
+        }
+        // Green Divine mode: rupee invoice, rate 1, no transaction charge (fields hidden for domestic clients).
+        if (\backend\components\Crm::simple() && !Yii::$app->request->isPost) {
+            $invoice->currency_exchange_rate     = $invoice->currency_exchange_rate ?: 1;
+            $invoice->transaction_charge_percent = $invoice->transaction_charge_percent ?: 0;
+        }
         // Pre-populate from modal GET params (matches Yii1 addInvoiceModal redirect)
         if (!Yii::$app->request->isPost) {
             if ($projectIdParam) {
@@ -700,19 +718,26 @@ class InvoiceController extends Controller
             }
 
             // Line items, currency and referenced records — all checked on the server.
-            [$validItems, $grandTotal, $formErrors] = $this->readItems($post, (float)$invoice->transaction_charge_percent);
+            [$validItems, $grandTotal, $formErrors, $lineTotals] = $this->readInvoiceLines($post, $invoice, $c);
             $this->resolveCurrency($invoice);
             $formErrors = array_merge($this->checkReferences($invoice), $formErrors);
             if ($formErrors) {
                 foreach ($formErrors as $msg) {
                     Yii::$app->session->addFlash('error', $msg);
                 }
-                return $this->render('create', compact('invoice', 'clients', 'projects', 'banks', 'nextNo', 'clientTypes', 'preClient', 'currencies', 'hsnCodes', 'lutArn', 'invoiceCategoryParam'));
+                return $this->render('create', compact('invoice', 'clients', 'projects', 'banks', 'nextNo', 'clientTypes', 'preClient', 'currencies', 'hsnCodes', 'lutArn', 'invoiceCategoryParam')
+                    + $this->editorState($invoice, $c ?? $preClient, $post, $formErrors));
             }
 
-            $sgstAmt = round($grandTotal * (float)($invoice->sgst_percent ?? 0) / 100, 2);
-            $cgstAmt = round($grandTotal * (float)($invoice->cgst_percent ?? 0) / 100, 2);
-            $igstAmt = round($grandTotal * (float)($invoice->igst_percent ?? 0) / 100, 2);
+            if ($lineTotals !== null) {
+                // GST per line: header amounts are the sums of the lines (ledger posting uses these).
+                [$sgstAmt, $cgstAmt, $igstAmt] = [$lineTotals['sgst'], $lineTotals['cgst'], $lineTotals['igst']];
+                $this->applyLineRates($invoice, $lineTotals);
+            } else {
+                $sgstAmt = round($grandTotal * (float)($invoice->sgst_percent ?? 0) / 100, 2);
+                $cgstAmt = round($grandTotal * (float)($invoice->cgst_percent ?? 0) / 100, 2);
+                $igstAmt = round($grandTotal * (float)($invoice->igst_percent ?? 0) / 100, 2);
+            }
 
             // grand_total = items sum; sub_total = grand_total + taxes (before rounding)
             $invoice->grand_total = $grandTotal;
@@ -749,6 +774,9 @@ class InvoiceController extends Controller
                 }
                 if ($invoice->save()) {
                     $this->saveItems($invoice, $validItems);
+                    if ($invoice->quotation_id) {
+                        ClientQuotation::updateAll(['quote_status' => ClientQuotation::QS_INVOICED, 'invoice_id' => $invoice->id], ['id' => $invoice->quotation_id]);
+                    }
                     $transaction->commit();
                     // Both proforma and tax-invoice drafts go to a preview page
                     // with Save & Download / Back & Edit buttons.
@@ -764,7 +792,8 @@ class InvoiceController extends Controller
             }
         }
 
-        return $this->render('create', compact('invoice', 'clients', 'projects', 'banks', 'nextNo', 'clientTypes', 'preClient', 'currencies', 'hsnCodes', 'lutArn', 'invoiceCategoryParam'));
+        return $this->render('create', compact('invoice', 'clients', 'projects', 'banks', 'nextNo', 'clientTypes', 'preClient', 'currencies', 'hsnCodes', 'lutArn', 'invoiceCategoryParam')
+            + $this->editorState($invoice, $preClient));
     }
 
     public function actionUpdate(int $id): string|Response
@@ -839,18 +868,25 @@ class InvoiceController extends Controller
             }
 
             // Line items, currency and referenced records — all checked on the server.
-            [$validItems, $grandTotal, $formErrors] = $this->readItems($post, (float)$invoice->transaction_charge_percent);
+            [$validItems, $grandTotal, $formErrors, $lineTotals] = $this->readInvoiceLines($post, $invoice, $c);
             $this->resolveCurrency($invoice);
             $formErrors = array_merge($this->checkReferences($invoice), $formErrors);
             if ($formErrors) {
                 foreach ($formErrors as $msg) {
                     Yii::$app->session->addFlash('error', $msg);
                 }
-                return $this->render('update', compact('invoice', 'clients', 'projects', 'banks', 'clientTypes', 'preClient', 'currencies', 'hsnCodes', 'lutArn', 'invoiceCategoryParam'));
+                return $this->render('update', compact('invoice', 'clients', 'projects', 'banks', 'clientTypes', 'preClient', 'currencies', 'hsnCodes', 'lutArn', 'invoiceCategoryParam')
+                    + $this->editorState($invoice, $c ?? $preClient, $post, $formErrors));
             }
-            $sgstAmt = round($grandTotal * (float)($invoice->sgst_percent ?? 0) / 100, 2);
-            $cgstAmt = round($grandTotal * (float)($invoice->cgst_percent ?? 0) / 100, 2);
-            $igstAmt = round($grandTotal * (float)($invoice->igst_percent ?? 0) / 100, 2);
+            if ($lineTotals !== null) {
+                // GST per line: header amounts are the sums of the lines (ledger posting uses these).
+                [$sgstAmt, $cgstAmt, $igstAmt] = [$lineTotals['sgst'], $lineTotals['cgst'], $lineTotals['igst']];
+                $this->applyLineRates($invoice, $lineTotals);
+            } else {
+                $sgstAmt = round($grandTotal * (float)($invoice->sgst_percent ?? 0) / 100, 2);
+                $cgstAmt = round($grandTotal * (float)($invoice->cgst_percent ?? 0) / 100, 2);
+                $igstAmt = round($grandTotal * (float)($invoice->igst_percent ?? 0) / 100, 2);
+            }
 
             $invoice->grand_total = $grandTotal;
             $invoice->sgst_amount = $sgstAmt;
@@ -891,7 +927,8 @@ class InvoiceController extends Controller
             }
         }
 
-        return $this->render('update', compact('invoice', 'clients', 'projects', 'banks', 'clientTypes', 'preClient', 'currencies', 'hsnCodes', 'lutArn', 'invoiceCategoryParam'));
+        return $this->render('update', compact('invoice', 'clients', 'projects', 'banks', 'clientTypes', 'preClient', 'currencies', 'hsnCodes', 'lutArn', 'invoiceCategoryParam')
+            + $this->editorState($invoice, $preClient));
     }
 
     /**
@@ -998,6 +1035,7 @@ class InvoiceController extends Controller
             return $this->redirect(['proforma']);
         }
         if ((int)$invoice->status === -1) {
+            $this->releaseQuotation($invoice);
             InvoiceDetails::deleteAll(['invoice_id' => $invoice->id]);
             $invoice->delete();
         }
@@ -1367,6 +1405,7 @@ class InvoiceController extends Controller
         $isProforma              = (int)$invoice->invoice_role === Invoice::ROLE_PROFORMA;
         $invoice->invoice_status = 0;
         $invoice->save(false);
+        $this->releaseQuotation($invoice);
 
         Yii::$app->session->setFlash('success', 'Invoice cancelled.');
         return $this->redirect([$isProforma ? 'proforma' : 'index']);
@@ -1718,6 +1757,101 @@ class InvoiceController extends Controller
     }
 
     /** Insert the line rows of an invoice (caller holds the transaction). */
+    // ── Product line items (GST per line) ────────────────────────────────────
+
+    /**
+     * Which line editor the form uses: product line items with GST per line for
+     * domestic invoices, invoices from a quotation and invoices already saved that
+     * way; the classic editor for international / foreign-currency invoices and
+     * invoices created with it.
+     */
+    private function usesLineItems(Invoice $invoice, ?ClientModel $client): bool
+    {
+        if ($invoice->quotation_id) {
+            return true;
+        }
+        if (!$invoice->isNewRecord) {
+            return InvoiceDetails::find()->where(['invoice_id' => $invoice->id, 'status' => 1])->andWhere(['not', ['gst_rate' => null]])->exists();
+        }
+        return $client !== null && in_array((int)$client->client_type, [ClientModel::TYPE_INTRASTATE, ClientModel::TYPE_INTERSTATE], true);
+    }
+
+    /** View params for the line editor: useLines, lines, lineErrors. */
+    private function editorState(Invoice $invoice, ?ClientModel $client, ?array $post = null, array $errors = []): array
+    {
+        $useLines = $this->usesLineItems($invoice, $client) || ($post !== null && isset($post['InvoiceItems']));
+        $lines = [];
+        if ($useLines) {
+            if ($post !== null && is_array($post['InvoiceItems'] ?? null)) {
+                $lines = array_values(array_filter($post['InvoiceItems'], 'is_array'));   // redisplay what was typed
+            } elseif (!$invoice->isNewRecord) {
+                $lines = array_map(fn(InvoiceDetails $d) => [
+                    'product_id' => $d->product_id, 'description' => $d->particulars, 'hsn_sac' => $d->sac, 'unit' => $d->unit,
+                    'quantity' => $d->quantity, 'unit_price' => $d->unit_rate, 'discount_percent' => $d->discount_percent, 'gst_rate' => $d->gst_rate,
+                ], InvoiceDetails::find()->where(['invoice_id' => $invoice->id, 'status' => 1])->orderBy(['id' => SORT_ASC])->all());
+            } elseif ($invoice->quotation_id && ($q = ClientQuotation::findOne($invoice->quotation_id))) {
+                $lines = array_map(fn(ClientQuotationItem $i) => $i->toLine(), $q->items);
+            }
+        }
+        return ['useLines' => $useLines, 'lines' => $lines, 'lineErrors' => $useLines ? $errors : []];
+    }
+
+    /**
+     * Posted lines → [items for saveItems(), item total (taxable), errors, line totals or null].
+     * Product line items when the form posts InvoiceItems; the classic rows otherwise.
+     */
+    private function readInvoiceLines(array $post, Invoice $invoice, ?ClientModel $client): array
+    {
+        // Quotation link: only an accepted (or this invoice's) quotation of the same client.
+        $qid = is_scalar($post['Invoice']['quotation_id'] ?? null) ? (int)$post['Invoice']['quotation_id'] : 0;
+        $invoice->quotation_id = $qid && $this->acceptedQuotation($qid, (int)$invoice->client_id, $invoice->isNewRecord ? null : (int)$invoice->id) ? $qid : ($invoice->isNewRecord ? null : $invoice->quotation_id);
+
+        if (!isset($post['InvoiceItems']) || !is_array($post['InvoiceItems'])) {
+            [$items, $total, $errors] = $this->readItems($post, (float)$invoice->transaction_charge_percent);
+            return [$items, $total, $errors, null];
+        }
+        $mode = $client ? LineItems::taxModeFor($client) : LineItems::TAX_INTRA;
+        [$lines, $totals, $errors] = LineItems::read($post['InvoiceItems'], $mode);
+        $items = array_map(fn(array $l) => [
+            'particulars' => $l['description'], 'hsn_sac' => (string)$l['hsn_sac'], 'model' => '',
+            'qty' => (string)$l['quantity'], 'rate' => (string)$l['unit_price'], 'amount' => $l['taxable_amount'],
+            'product_id' => $l['product_id'], 'unit' => $l['unit'], 'discount_percent' => $l['discount_percent'],
+            'gst_rate' => $mode === LineItems::TAX_NONE ? 0.0 : $l['gst_rate'], 'gst_amount' => $l['gst_amount'],
+        ], $lines);
+        return [$items, $totals['taxable_total'], $errors, $totals];
+    }
+
+    /** Header GST % fields: the rate when all lines share one; 0 when rates are mixed (shown per rate on the document). */
+    private function applyLineRates(Invoice $invoice, array $totals): void
+    {
+        $rates = array_keys($totals['by_rate']);
+        $one   = count($rates) === 1 ? (float)$rates[0] : 0.0;
+        $mode  = (int)$totals['tax_mode'];
+        $invoice->sgst_percent = $mode === LineItems::TAX_INTRA ? $one / 2 : 0;
+        $invoice->cgst_percent = $mode === LineItems::TAX_INTRA ? $one / 2 : 0;
+        $invoice->igst_percent = $mode === LineItems::TAX_INTER ? $one : 0;
+    }
+
+    /** Accepted quotation with items for this client (or already linked to $invoiceId), else null. */
+    private function acceptedQuotation(int $id, int $clientId, ?int $invoiceId = null): ?ClientQuotation
+    {
+        $q = ClientQuotation::findOne(['id' => $id, 'status' => 1]);
+        if (!$q || !$q->hasItems() || ($clientId && (int)$q->client_id !== $clientId)) {
+            return null;
+        }
+        $ok = (int)$q->quote_status === ClientQuotation::QS_ACCEPTED
+            || ($invoiceId && (int)$q->quote_status === ClientQuotation::QS_INVOICED && (int)$q->invoice_id === $invoiceId);
+        return $ok ? $q : null;
+    }
+
+    /** A discarded draft or cancelled invoice frees its quotation (back to Accepted). */
+    private function releaseQuotation(Invoice $invoice): void
+    {
+        if ($invoice->quotation_id) {
+            ClientQuotation::updateAll(['quote_status' => ClientQuotation::QS_ACCEPTED, 'invoice_id' => null],
+                ['id' => $invoice->quotation_id, 'invoice_id' => $invoice->id]);
+        }
+    }
     private function saveItems(Invoice $invoice, array $items): void
     {
         foreach ($items as $item) {
@@ -1737,6 +1871,12 @@ class InvoiceController extends Controller
             }
             if ($detail->hasAttribute('unit_rate')) {
                 $detail->unit_rate = $item['rate'] !== '' ? (float)$item['rate'] : null;
+            }
+            // Product line items: product link, unit, discount and GST per line.
+            foreach (['product_id', 'unit', 'discount_percent', 'gst_rate', 'gst_amount'] as $k) {
+                if (array_key_exists($k, $item) && $detail->hasAttribute($k)) {
+                    $detail->$k = $item[$k];
+                }
             }
             $detail->save(false);
         }

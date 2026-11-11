@@ -24,6 +24,7 @@ $canAttachments   = UserAccess::checkAccess('lead-followers/view-attachments');
 $canAddFollowUp   = !$isClosed && UserAccess::checkAccess('lead-followers/create');
 $backUrl          = $assignedView ? ['assigned'] : (Yii::$app->request->referrer ?: ['index']);
 
+$simple = \backend\components\Crm::simple();
 $row = function (string $label, $value, bool $raw = false) {
     $value = ($value === null || $value === '') ? '-' : $value;
     return '<tr><th scope="row">' . $label . '</th><td>' . ($raw ? $value : Html::encode($value)) . '</td></tr>';
@@ -75,9 +76,9 @@ $row = function (string $label, $value, bool $raw = false) {
                     <?= $row('Contact No 2', $lead->contact_no2) ?>
                     <?= $row('City', $lead->country) ?>
                     <?= $row('Address', $lead->address) ?>
-                    <?= $row('Contact Person Name', $lead->contact_person_name) ?>
-                    <?= $row('Contact Person Email', $lead->contact_person_email) ?>
-                    <?= $row('Contact Person Mobile', $lead->contact_person_mobile) ?>
+                    <?= $simple ? '' : $row('Contact Person Name', $lead->contact_person_name) ?>
+                    <?= $simple ? '' : $row('Contact Person Email', $lead->contact_person_email) ?>
+                    <?= $simple ? '' : $row('Contact Person Mobile', $lead->contact_person_mobile) ?>
                 </table>
             </div>
         </div>
@@ -88,13 +89,13 @@ $row = function (string $label, $value, bool $raw = false) {
                     <?= $row('Project', $lead->title) ?>
                     <?= $row('Subject', $lead->subject) ?>
                     <?= $row('Temperature', $lead->getPriorityLabel()) ?>
-                    <?= $row('Mode', $lead->getModeLabel() . ((int)$lead->mode === Lead::MODE_OTHER && $lead->other_mode ? ' — ' . $lead->other_mode : '')) ?>
-                    <?= $row('Current Stage', $lead->getStageLabel()) ?>
+                    <?= $simple ? '' : $row('Mode', $lead->getModeLabel() . ((int)$lead->mode === Lead::MODE_OTHER && $lead->other_mode ? ' — ' . $lead->other_mode : '')) ?>
+                    <?= $simple ? '' : $row('Current Stage', $lead->getStageLabel()) ?>
                     <?= $row('Estimated value (₹)', $lead->lead_value) ?>
                     <?= $row('Expected Budget', $lead->expected_budget) ?>
-                    <?= $row('Industry', $lead->industry) ?>
-                    <?= $row('Offering Service', $lead->offering_service) ?>
-                    <?= $row('Attended Date & Time', Lead::formatDateTime($lead->meeting_attended_date)) ?>
+                    <?= $simple ? '' : $row('Industry', $lead->industry) ?>
+                    <?= $simple ? '' : $row('Offering Service', $lead->offering_service) ?>
+                    <?= $simple ? '' : $row('Attended Date & Time', Lead::formatDateTime($lead->meeting_attended_date)) ?>
                     <?= $row('Next Follow Up', $this->render('_due', [
                         'label' => Lead::formatDateTime($lead->meeting_reported_date),
                         'state' => $isClosed ? '' : Lead::followUpState($lead->meeting_reported_date),

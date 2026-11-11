@@ -236,11 +236,18 @@ client ─< invoice ─< invoice_details (+ product_id, unit, gst_rate, discount
 5. **Totals are calculated on the server** from the lines on every save (never trusted from the browser) and rounded per line to 2 decimals.
 6. **Delivery challans** keep using the same product rows, so supplied goods, quotes and invoices all point at one item list.
 
-### Database changes needed for the mapping (later phases)
+### Implemented (2026-11-11)
 
-* New `client_quotation_items` (quotation lines, fields as above) and quotation columns `valid_until`, `quote_status` (draft / sent / accepted / rejected / expired / invoiced), `sub_total`, `discount_total`, `gst_total`, `grand_total`.
-* `invoice_details`: add `product_id` (FK, nullable), `unit`, `discount_percent`, `gst_rate`, `gst_amount`.
-* `invoice`: add `quotation_id` (FK, nullable), `due_date`.
+* **Shared line engine** `backend/components/LineItems.php` (validation, per-line maths, CGST/SGST/IGST split, totals by rate, amount in words) and the **line-item editor** `views/_ui/_line_items.php` + `js/line-items.js` (product search, fills description / HSN / unit / price / GST, live totals, whole-number quantities for count units, phone layout).
+* **Quotations:** Items section on Add / Edit quotation (GST type, valid until, items, terms, notes — Green Divine's 70 % / 30 % terms by default). With items the estimation cost is the computed total. Status Draft / Sent / Accepted / Rejected / Invoiced (+ Expired when past validity), Duplicate, items table on the quotation page, and an items page in the quotation PDF (lines, GST summary, total in words, bank, terms, notes, signatory). Quotes without items work as before (estimate by hand + PDF).
+* **Invoices:** domestic invoices (intra / inter-state) use the same editor with GST per line; header SGST / CGST / IGST amounts are the line sums, so lists, reports and ledger posting keep working. International / foreign-currency invoices and invoices saved with the classic editor keep the classic editor. Preview / print / PDF show a GST column and CGST/SGST or IGST per rate.
+* **Quotation → invoice:** an Accepted quote with items has **Create invoice**; the invoice form opens with the client, title and items copied. Saving marks the quote Invoiced (locked); discarding the draft or cancelling the invoice puts it back to Accepted.
+
+Invoice GST type always follows the client (state); a quote may be set to another GST type for a site in another state.
+
+### Database changes for the mapping
+
+Done in `m261111_000001_quotation_items_line_gst`: new `client_quotation_items`; `client_quotation` + `quote_status`, `valid_until`, `tax_mode`, `sub_total`, `discount_total`, `taxable_total`, `gst_total`, `grand_total`, `terms`, `notes`, `invoice_id`; `invoice_details` + `product_id`, `unit`, `discount_percent`, `gst_rate`, `gst_amount`; `invoice` + `quotation_id`. Still to add: `invoice.due_date` (overdue status).
 
 ---
 
@@ -248,6 +255,7 @@ client ─< invoice ─< invoice_details (+ product_id, unit, gst_rate, discount
 
 * `m261105_000001_product_catalogue` — creates `product_category`, adds the columns above to `delivery_product_details` with indexes and the category foreign key. Additive only; guarded so it is safe to re-run.
 * `m261106_000001_lead_crm_fields` — adds to `lead`: `lead_source`, `source_detail`, `site_area`, `area_unit`, `expected_install_date`, `site_visit_date`, `site_visit_by`, `quotation_by` (indexed), and creates `lead_product_interest` (lead ↔ product category, unique pair, FKs with cascade). Additive only; existing leads keep working (source is required for new leads only). `priority` is reused as lead temperature (1 Cold, 2 Warm, 3 Hot).
+* `m261111_000001_quotation_items_line_gst` — quotation line items, quotation status / totals, per-line GST on invoice lines, quotation link on invoices (section 6). Additive only.
 * The database was built from a SQL dump, so the `migration` history table was missing and all 20 existing migrations looked pending. They are already reflected in the schema; they were recorded as applied with `php yii migrate/mark m261101_000001_add_lead_converted_dropped_dates` before running the new migration. **Production needs the same one-time `migrate/mark` before `migrate`.**
 
 ---
@@ -257,7 +265,19 @@ client ─< invoice ─< invoice_details (+ product_id, unit, gst_rate, discount
 1. ✅ **Product Management** — catalogue, categories, unit pricing, search API for the quotation picker.
 2. ✅ Navigation — sidebar reduced to Dashboard + 7 modules, `HIDDEN_MODULES.md`.
 3. ✅ **Leads** for Green Divine (section 2.1): source, temperature, products of interest, area, installation date, site visit, quotation owner, Call / WhatsApp, list filters; then smart leads (section 2.2): score, next best actions, duplicate detection, value estimate, Today board, insights. Next for leads: website/ad form intake, client 360° page.
-4. Quotation line items (products, qty in the item unit, discount, per-line GST, totals, statuses, expiry, PDF) and quotation → invoice, following section 6.
-5. Invoice product picker and per-line GST (section 6), due date, overdue / partial status.
+4. ✅ Quotation line items (products, qty in the item unit, discount, per-line GST, totals, statuses, expiry, PDF) and quotation → invoice (section 6).
+5. ✅ Invoice product picker and per-line GST (section 6). Next: due date, overdue / partial status.
 6. Employee / HR review (mostly existing).
-7. CRM dashboard with real figures; integration and full regression testing.
+7. ✅ **UI redesign** (section 9) and a Green Divine sales dashboard. Next: integration and full regression testing.
+
+---
+
+## 9. UI theme (2026-11-11)
+
+The look follows the old Green Divine admin (`__admin/greendivine/template`): white sidebar with the green **Green Divine** wordmark, section labels (Sales / Catalogue / Team) and coloured icons; white top bar with lead search (a phone number searches by contact), user menu and a red **Logout** button; a title strip with breadcrumbs on every page; light grey canvas, white rounded cards, violet (#7366FF) actions, Rubik font, 40 px inputs.
+
+* **One reusable file:** `backend/web/css/gd-theme.css`, loaded last by `views/layouts/main.php` (replaces the layout's inline styles). All colours are tokens at the top (`--gd-*`); they also feed the older `--app-*` (site.css / page-ui.css) and Bootstrap `--bs-*` variables, so every module follows. Covers sidebar, top bar, title strip, cards, buttons, inputs, tables, tabs, pills, dropdowns, modals, SweetAlert2, **Select2**, **DatePicker**, **TimePicker**, plus reusable dashboard pieces (`.gd-stats`, `.gd-list`, `.gd-bar`, `.gd-periods`) and a chip selector (`.gd-chips`).
+* **Pickers:** `backend\components\FormPickers::date()`, `::time()`, `::select()` give the standard kartik DatePicker / TimePicker (`kartik-v/yii2-widget-timepicker`, 24 h, 5-minute steps, empty until picked) / Select2 settings. Lead and follow-up time fields now use the TimePicker.
+* **Layout:** brand from `params['app.name']`; sidebar sections from `params['sidebar.sections']`; breadcrumbs from `$this->params['breadcrumbs']` or Home / module / page title. A page `<h1>` in `.ui-head` with the same text as the page title moves into the title strip.
+* **Dashboard:** in Green Divine mode `site/index` shows sales figures (`backend\components\GdDashboard`, `views/site/index-gd.php`) for Today / 1 Week / 1 Month / 3 Months / 6 Months / All Time: new leads, follow-ups due (+ overdue), hot leads, conversions, open and won quotation value, invoiced, money to collect; follow-ups due with call buttons, leads by source, recent quotations, newest leads. Lead figures follow lead access; quotation / invoice blocks show only with access. The IT dashboard (domains, AMC, tasks) returns when `crm.simple` is off.
+* Login page: `login.companyName` Green Divine, accent #7366FF.

@@ -28,7 +28,7 @@ $isExEmployee = (int)$model->status === 0;
 /* Employee profile card — gradient banner + grouped info tiles */
 .emp-detail-card{border:0;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(15,23,42,.06);background:#fff}
 .emp-detail-banner{
-    background:linear-gradient(120deg,#0d9488 0%,#3b82f6 100%);
+    background:linear-gradient(120deg,#7366ff 0%,#3b82f6 100%);
     color:#fff;padding:22px 24px;position:relative;
 }
 .emp-detail-banner::after{content:"";position:absolute;right:-40px;top:-40px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.07)}
@@ -63,7 +63,7 @@ $isExEmployee = (int)$model->status === 0;
     flex-shrink:0;font-size:.95rem;
 }
 .emp-tile-ic.ic-blue{background:#e0f2fe;color:#0369a1}
-.emp-tile-ic.ic-teal{background:#ccfbf1;color:#0f766e}
+.emp-tile-ic.ic-teal{background:#efedff;color:#5d4ff0}
 .emp-tile-ic.ic-violet{background:#ede9fe;color:#6d28d9}
 .emp-tile-ic.ic-amber{background:#fef3c7;color:#b45309}
 .emp-tile-ic.ic-rose{background:#ffe4e6;color:#be123c}
@@ -72,7 +72,7 @@ $isExEmployee = (int)$model->status === 0;
 .emp-tile-body{flex:1;min-width:0}
 .emp-tile-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:600;margin-bottom:2px}
 .emp-tile-value{font-size:.92rem;color:#0f172a;font-weight:500;word-break:break-word}
-.emp-tile-value a{color:#0d9488;text-decoration:none}
+.emp-tile-value a{color:#7366ff;text-decoration:none}
 .emp-tile-value a:hover{text-decoration:underline}
 .emp-tile.tile-wide{grid-column:1/-1}
 </style>

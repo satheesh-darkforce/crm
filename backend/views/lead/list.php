@@ -83,7 +83,8 @@ $datePicker = fn(string $name) => DatePicker::widget([
                 <form method="get" action="<?= Url::to([$listType]) ?>" class="row g-2 align-items-end">
                     <?php foreach (['client_name' => ['Client Name', 'Name'], 'contact_no' => ['Contact No', 'Phone number'],
                                     'email' => ['Email', 'name@company.com'], 'country' => ['City', 'City'],
-                                    'contact_person_name' => ['Contact Person', 'Name'], 'title' => ['Project', 'Project title']] as $field => [$label, $ph]): ?>
+                                    'contact_person_name' => ['Contact Person', 'Name'], 'title' => ['Project', 'Project title']] as $field => [$label, $ph]):
+                        if ($field === 'contact_person_name' && \backend\components\Crm::simple()) { continue; } ?>
                     <div class="col-lg-2 col-md-3 col-sm-6">
                         <label class="form-label small mb-1" for="lead-filter-<?= $field ?>"><?= $label ?></label>
                         <input type="text" id="lead-filter-<?= $field ?>" name="<?= $field ?>" value="<?= Html::encode($filters[$field]) ?>"

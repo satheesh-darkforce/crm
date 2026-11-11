@@ -647,7 +647,11 @@ class UserAccess
             'client-quotation/index' => [
                 'client-quotation/view',
                 'client-quotation/download-latest',
+                'client-quotation/create-invoice', // also needs invoice/create (checked in the action)
             ],
+            // Item-based quotes: status changes with edit rights, copies with create rights.
+            'client-quotation/update' => ['client-quotation/set-status'],
+            'client-quotation/create' => ['client-quotation/duplicate'],
             // "Show all live data" implies access to the Live board itself, so
             // granting only the all-data permission still shows the menu/page.
             'attendance/live-all-data' => [

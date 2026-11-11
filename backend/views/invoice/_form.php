@@ -38,6 +38,15 @@ $cgstPct = (float)($invoice->cgst_percent ?? 0);
 $igstPct = (float)($invoice->igst_percent ?? 0);
 
 $transactionChargePct = $invoice->transaction_charge_percent ?? 0;
+
+/** @var bool|null $useLines  product line items with GST per line (InvoiceController::usesLineItems()) */
+/** @var array $lines */
+/** @var string[] $lineErrors */
+$useLines   = (bool)($useLines ?? false);
+// Green Divine mode: a domestic invoice is always INR, rate 1, no transaction charge — those fields are hidden.
+$hideMoney  = \backend\components\Crm::simple() && $client && in_array((int)$client->client_type, [1, 2], true) && count($currencies ?? []) <= 1;
+$lines      = $lines ?? [];
+$lineErrors = $lineErrors ?? [];
 // New invoices start on the default bank account.
 if ($isNew && !$invoice->bank_id) {
     $invoice->bank_id = BankDetail::defaultId();
@@ -89,7 +98,7 @@ if ($isNew && !$invoice->bank_id) {
                         'class' => 'form-control form-control-sm', 'placeholder' => 'e.g. Website maintenance — November', 'required' => true, 'maxlength' => 500,
                     ]) ?>
                 </div>
-                <div class="col-sm-6 required">
+                <div class="col-sm-6 required<?= $hideMoney ? ' d-none' : '' ?>">
                     <label class="form-label" for="invoice-currency-sel">Currency</label>
                     <select id="invoice-currency-sel" name="Invoice[currency]" class="form-select form-select-sm" required>
                         <?php foreach ($currencies ?? [] as $cur): ?>
@@ -103,14 +112,14 @@ if ($isNew && !$invoice->bank_id) {
                         <?php endif; ?>
                     </select>
                 </div>
-                <div class="col-sm-6 required">
+                <div class="col-sm-6 required<?= $hideMoney ? ' d-none' : '' ?>">
                     <label class="form-label" for="currency_exchange_rate">Exchange rate (to ₹)</label>
                     <?= Html::activeInput('number', $invoice, 'currency_exchange_rate', [
                         'id' => 'currency_exchange_rate', 'class' => 'form-control form-control-sm text-end',
-                        'min' => '1', 'max' => '10000', 'step' => '0.01', 'required' => true, 'placeholder' => '1.00',
+                        'min' => '1', 'max' => '10000', 'step' => '0.01', 'required' => !$hideMoney, 'placeholder' => '1.00',
                     ]) ?>
                 </div>
-                <div class="col-sm-6">
+                <div class="col-sm-6<?= $hideMoney ? ' d-none' : '' ?>">
                     <label class="form-label" for="transaction_charge_percent">Transaction charge %</label>
                     <?= Html::activeInput('number', $invoice, 'transaction_charge_percent', [
                         'id' => 'transaction_charge_percent', 'class' => 'form-control form-control-sm text-end',
@@ -144,6 +153,20 @@ if ($isNew && !$invoice->bank_id) {
 
 <!-- ─── Line items ─── -->
 <div class="card border-0 shadow-sm mb-3">
+    <?php if ($useLines): ?>
+    <div class="card-header ui-section">Line items <span class="ui-section-meta">Pick products — price, unit and GST fill in; GST is worked out per item</span></div>
+    <div class="card-body">
+        <?= Html::activeHiddenInput($invoice, 'quotation_id') ?>
+        <?php if ($invoice->quotation_id && ($q = \backend\models\ClientQuotation::findOne($invoice->quotation_id))): ?>
+            <div class="alert alert-info py-2 small"><i class="fas fa-file-signature me-1"></i>Items copied from quotation <strong><?= Html::encode($q->quote_no) ?></strong>. You can still change them.</div>
+        <?php endif; ?>
+        <?= $this->render('@backend/views/_ui/_line_items', [
+            'name'    => 'InvoiceItems',
+            'lines'   => $lines,
+            'taxMode' => \backend\components\LineItems::taxModeFor($client),
+            'errors'  => $lineErrors,
+        ]) ?>
+    <?php else: ?>
     <div class="card-header ui-section">Line items <span class="ui-section-meta">Fill the first row, then press + to add it</span></div>
     <div class="card-body">
         <div class="table-responsive">
@@ -288,6 +311,7 @@ if ($isNew && !$invoice->bank_id) {
             </table>
             <input type="hidden" id="nor" value="<?= $nor ?>" />
         </div>
+    <?php endif; /* classic editor */ ?>
 
         <!-- Terms & Conditions (optional — shown on preview/PDF only when filled) -->
         <div class="row mt-3">
@@ -340,10 +364,13 @@ $isNewJs = $isNew ? 'true' : 'false';
 $isSaleJs = $isSale ? 'true' : 'false';
 $submitTitle = $isProforma ? 'Submit Proforma Invoice' : 'Submit Invoice';
 $submitText  = $isProforma ? 'Are you sure to submit this proforma invoice?' : 'Are you sure to submit?';
+$useLinesJs = $useLines ? 'true' : 'false';
 $this->registerJs(<<<JS
 var IS_SALE = $isSaleJs;
+var USE_LINES = $useLinesJs;
 
 
+if (!USE_LINES) { // classic editor only
 // ── Auto-calc amount from qty × rate (sale only) ──
 function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 if (IS_SALE) {
@@ -502,6 +529,8 @@ window.updategrandtotal = function() {
     if (tcEl) tcEl.readOnly = (net_total > 0);
 };
 
+} // end classic editor
+
 // Prevent ActiveForm's jQuery submit handler from double-firing validate()
 $('#invoice-form').off('submit');
 
@@ -509,6 +538,7 @@ $('#invoice-form').off('submit');
 var _validating = false;
 window.validate = function() {
     if (_validating) return false;
+    if (USE_LINES) { return validateLines(); }
     _validating = true;
     var particular = document.getElementById('particular1').value;
     var particularamount = document.getElementById('particularamount1').value;
@@ -583,6 +613,29 @@ window.validate = function() {
     return false; // Always prevent default; SweetAlert handles submit
 };
 
+// ── Product line items: at least one item with a description, quantity and price ──
+window.validateLines = function() {
+    var filled = 0, problem = '';
+    $('[data-line-items] [data-line]').each(function (i) {
+        var desc = $.trim($(this).find('.js-li-desc').val()), qty = parseFloat($(this).find('.js-li-qty').val()), price = $(this).find('.js-li-price').val();
+        var prod = $(this).find('.js-li-product').val();
+        if (!desc && !prod && !$(this).find('.js-li-qty').val() && price === '') { return; }
+        filled++;
+        if (!problem && !desc && !prod) { problem = 'Item ' + (i + 1) + ': pick a product or enter a description.'; }
+        if (!problem && !(qty > 0)) { problem = 'Item ' + (i + 1) + ': enter a quantity.'; }
+        if (!problem && price === '') { problem = 'Item ' + (i + 1) + ': enter the unit price.'; }
+    });
+    if (!filled) { problem = 'Add at least one item.'; }
+    if (problem) { Swal.fire({icon: 'error', title: 'Check the items', text: problem}); return false; }
+    _validating = true;
+    Swal.fire({icon: 'question', title: '$submitTitle', text: '$submitText', showCancelButton: true, confirmButtonText: 'Yes, submit', cancelButtonText: 'Cancel'})
+        .then(function (r) {
+            _validating = false;
+            if (r.isConfirmed) { var form = document.getElementById('invoice-form'); form.removeAttribute('onsubmit'); form.submit(); }
+        });
+    return false;
+};
+
 // ── Currency exchange rate via API (matches Yii1) ──
 window.set_currency_exchange_rate = function() {
     var rateEl = document.getElementById('currency_exchange_rate');
@@ -630,8 +683,8 @@ if (isNew) {
 
 JS, \yii\web\View::POS_READY);
 
-// Run updategrandtotal for edit mode
-if (!$isNew) {
+// Run updategrandtotal for edit mode (classic editor)
+if (!$isNew && !$useLines) {
     $this->registerJs(<<<JS2
     updateserialnumber();
     updategrandtotal();

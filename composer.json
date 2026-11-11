@@ -18,7 +18,8 @@
         "kartik-v/yii2-widget-datepicker": "@dev",
         "twbs/bootstrap-icons": "^1.13",
         "mpdf/mpdf": "^8.3",
-        "setasign/fpdf": "^1.8"
+        "setasign/fpdf": "^1.8",
+        "kartik-v/yii2-widget-timepicker": "^1.0"
     },
     "require-dev": {
         "yiisoft/yii2-debug": "~2.1.0",

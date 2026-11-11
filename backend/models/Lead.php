@@ -149,7 +149,13 @@ class Lead extends ActiveRecord
                 'whenClient' => "function(){ return $('#lead-visit_time').val() !== ''; }", 'message' => 'Enter the site visit date for this time.'],
             [['site_visit_by', 'quotation_by'], 'validateAssignee'],
             [['interestIds'], 'validateInterests'],
-            [['client_name', 'subject', 'assigned_to', 'mode', 'current_stage'], 'required'],
+            [['client_name', 'assigned_to'], 'required'],
+            // Green Divine mode (crm.simple): subject, mode and stage are filled in by beforeValidate(); the phone is the key field.
+            [['subject', 'mode', 'current_stage'], 'required', 'when' => fn() => !\backend\components\Crm::simple(),
+                'whenClient' => \backend\components\Crm::simple() ? 'function(){ return false; }' : null],
+            [['contact_no'], 'required', 'when' => fn($m) => \backend\components\Crm::simple() && $m->isNewRecord,
+                'whenClient' => \backend\components\Crm::simple() && $this->isNewRecord ? null : 'function(){ return false; }',
+                'message' => 'Enter the phone number.'],
             [['nextfollowup_date', 'nextfollowup_time'], 'required', 'on' => self::SCENARIO_CREATE],
             [['nextfollowup_date', 'attended_date'], 'date', 'format' => 'php:Y-m-d', 'message' => 'Enter a valid date (YYYY-MM-DD).'],
             [['nextfollowup_time', 'attended_time'], 'match', 'pattern' => '/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', 'message' => 'Enter a valid time.'],
@@ -242,6 +248,34 @@ class Lead extends ActiveRecord
         return $ts === false ? null : $ts;
     }
 
+    /**
+     * Green Divine mode: the IT-sales fields are hidden, so give them sensible values —
+     * contact by phone, first stage, and a subject built from what was asked for.
+     */
+    private function applySimpleDefaults(): void
+    {
+        if ($this->mode === null || $this->mode === '') {
+            $this->mode = 2; // Call
+        }
+        if ($this->current_stage === null || $this->current_stage === '') {
+            $this->current_stage = 1; // Lead
+        }
+        if (trim((string)$this->subject) === '') {
+            $names = [];
+            $ids = array_filter(array_map('intval', (array)$this->interestIds));
+            if ($ids) {
+                $names = ProductCategory::find()->select('name')->where(['id' => $ids])->orderBy(['sort_order' => SORT_ASC])->column();
+            }
+            $source = self::sourceOptions()[(int)$this->lead_source] ?? '';
+            $this->subject = mb_substr($names ? implode(', ', $names) . ' enquiry' : ($source !== '' ? 'Enquiry from ' . $source : 'New enquiry'), 0, 255);
+        }
+        // "Meeting attended" is not used in this mode — the lead is logged when it comes in.
+        if ($this->isNewRecord && !$this->attended_date) {
+            $this->attended_date = date('Y-m-d');
+            $this->attended_time = date('H:i');
+        }
+    }
+
     public function attributeLabels(): array
     {
         return [
@@ -309,6 +343,9 @@ class Lead extends ActiveRecord
 
     public function beforeValidate(): bool
     {
+        if (\backend\components\Crm::simple()) {
+            $this->applySimpleDefaults();
+        }
         // Combine the split date/time inputs into the stored datetime columns.
         $this->meeting_attended_date = $this->attended_date
             ? $this->attended_date . ' ' . ($this->attended_time ?: '00:00') . ':00'

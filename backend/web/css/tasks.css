@@ -11,7 +11,7 @@
     background: var(--app-accent); margin-right: .35rem; vertical-align: middle;
     animation: timer-pulse 1.4s infinite;
 }
-@keyframes timer-pulse { 0% { box-shadow: 0 0 0 0 rgba(13,148,136,.55); } 70% { box-shadow: 0 0 0 6px rgba(13,148,136,0); } 100% { box-shadow: 0 0 0 0 rgba(13,148,136,0); } }
+@keyframes timer-pulse { 0% { box-shadow: 0 0 0 0 rgba(115, 102, 255,.55); } 70% { box-shadow: 0 0 0 6px rgba(115, 102, 255,0); } 100% { box-shadow: 0 0 0 0 rgba(115, 102, 255,0); } }
 
 /* Deadline past and not done */
 .ui-page .is-late { color: var(--app-danger); font-weight: 600; }
@@ -34,7 +34,7 @@
 
 /* Share-of-total bar (reports) */
 .ui-bar { height: 6px; min-width: 80px; border-radius: 3px; background: var(--app-border, #e5e7eb); overflow: hidden; }
-.ui-bar > span { display: block; height: 100%; border-radius: 3px; background: var(--app-accent, #0d9488); }
+.ui-bar > span { display: block; height: 100%; border-radius: 3px; background: var(--app-accent, #7366ff); }
 .ui-bar.tone-warning > span { background: var(--app-warning, #d97706); }
 .ui-bar.tone-danger > span { background: var(--app-danger, #dc2626); }
 
@@ -46,5 +46,5 @@
 .ui-page .ui-matrix .is-weekend { background: var(--app-surface-alt, #f8fafc); }
 .ui-page .ui-matrix .is-off { color: #cbd5e1; }
 .ui-page .ui-matrix .col-name { position: sticky; left: 0; z-index: 2; text-align: left; min-width: 150px; background: #fff; box-shadow: 2px 0 4px rgba(0,0,0,.05); }
-.ui-page .ui-matrix .col-total { position: sticky; right: 0; z-index: 2; font-weight: 700; background: #f0fdfa; box-shadow: -2px 0 4px rgba(0,0,0,.05); }
+.ui-page .ui-matrix .col-total { position: sticky; right: 0; z-index: 2; font-weight: 700; background: #f6f5ff; box-shadow: -2px 0 4px rgba(0,0,0,.05); }
 .ui-page .ui-matrix thead .col-name, .ui-page .ui-matrix tfoot .col-name { background: var(--bs-table-bg, #f8f9fa); }

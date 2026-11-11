@@ -8,6 +8,8 @@
 /** @var int   $quotenum */
 /** @var bool  $showFile */
 /** @var bool  $requireOfficialContactBeforeCreate */
+/** @var array $lines       quotation line items (LineItems rows) */
+/** @var string[] $lineErrors */
 
 use kartik\date\DatePicker;
 use kartik\select2\Select2;
@@ -23,6 +25,12 @@ $showFile                           ??= true;
 $quotenum                           ??= 0;
 $isChildQuotation                   = !empty($model->parent_id);
 $requireOfficialContactBeforeCreate ??= false;
+$simple = \backend\components\Crm::simple(); // Green Divine mode: IT fields hidden, items required
+if ($simple) {
+    $requireOfficialContactBeforeCreate = false;
+    $model->quote_for = $model->quote_for ?: 1;
+    $model->deployment_type = $model->deployment_type ?: \backend\models\ClientQuotation::DEPLOYMENT;
+}
 
 $indexUrl = Url::to(['index']);
 ?>
@@ -54,7 +62,7 @@ $indexUrl = Url::to(['index']);
             </div>
             <div class="row g-3">
                 <div class="col-12 col-md-4">
-                    <?= $form->field($model, 'client_id')->label('Company Name')->widget(Select2::class, [
+                    <?= $form->field($model, 'client_id')->label($simple ? 'Client' : 'Company Name')->widget(Select2::class, [
                         'data' => $clientOptions,
                         'options' => ['placeholder' => 'Select Company Name...'],
                         'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
@@ -84,6 +92,10 @@ $indexUrl = Url::to(['index']);
                 <h4>Quotation Details</h4>
             </div>
             <div class="row g-3">
+                <?php if ($simple): ?>
+                    <?= Html::activeHiddenInput($model, 'quote_for') ?>
+                    <?= Html::activeHiddenInput($model, 'deployment_type', ['id' => 'clientquotation-deployment_type']) ?>
+                <?php else: ?>
                 <div class="col-12 col-md-4">
                     <?= $form->field($model, 'quote_for')->dropDownList($quoteForOptions, ['prompt' => 'Select Quote For']) ?>
                 </div>
@@ -91,10 +103,11 @@ $indexUrl = Url::to(['index']);
                     <?= $form->field($model, 'deployment_type', ['options' => ['class' => 'form-group mb-3 custom-form required']])
                         ->dropDownList(\backend\models\ClientQuotation::deploymentTypeOptions()) ?>
                 </div>
+                <?php endif; ?>
                 <div class="col-12 col-md-4">
                     <?= $form->field($model, 'quote_no')->textInput(['maxlength' => true, 'placeholder' => 'Quotation Number', 'readonly' => true]) ?>
                 </div>
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-6<?= $simple ? ' d-none' : '' ?>">
                     <div class="quote-by-field-wrap">
                         <?= $form->field($model, 'alternate_quote_by')->label('Additional Quote By')->widget(Select2::class, [
                             'data' => $userOptions,
@@ -135,11 +148,48 @@ $indexUrl = Url::to(['index']);
 
         <div class="section-block">
             <div class="section-header">
+                <div class="header-icon" style="background:#7366ff;"><i class="fas fa-list-ul"></i></div>
+                <h4>Items</h4>
+            </div>
+            <div class="row g-3 mb-2">
+                <div class="col-12 col-md-4">
+                    <?= $form->field($model, 'tax_mode')->dropDownList(\backend\components\LineItems::taxModeOptions(), ['id' => 'quote-tax-mode', 'class' => 'form-select form-select-sm'])
+                        ->hint('Set from the client; change it if the site is in another state.') ?>
+                </div>
+                <div class="col-12 col-md-4">
+                    <?= $form->field($model, 'valid_until')->widget(DatePicker::class, [
+                        'type' => DatePicker::TYPE_INPUT,
+                        'options' => ['class' => 'form-control form-control-sm', 'placeholder' => 'YYYY-MM-DD', 'autocomplete' => 'off'],
+                        'pluginOptions' => ['format' => 'yyyy-mm-dd', 'autoclose' => true, 'todayHighlight' => true, 'startDate' => date('Y-m-d')],
+                    ])->hint('Usually 15–30 days.') ?>
+                </div>
+            </div>
+            <?= $this->render('@backend/views/_ui/_line_items', [
+                'name'         => 'QuoteItems',
+                'lines'        => $lines ?? [],
+                'taxMode'      => (int)($model->tax_mode ?: \backend\components\LineItems::TAX_INTRA),
+                'taxModeInput' => '#quote-tax-mode',
+                'totalTarget'  => '#clientquotation-estimation_cost',
+                'errors'       => $lineErrors ?? [],
+            ]) ?>
+            <div class="row g-3 mt-1">
+                <div class="col-12 col-md-6">
+                    <?= $form->field($model, 'terms')->textarea(['rows' => 3, 'class' => 'form-control form-control-sm', 'placeholder' => 'One term per line'])->label('Terms & Conditions (one per line)') ?>
+                </div>
+                <div class="col-12 col-md-6">
+                    <?= $form->field($model, 'notes')->textarea(['rows' => 3, 'class' => 'form-control form-control-sm', 'placeholder' => 'One note per line'])->label('Notes (one per line)') ?>
+                </div>
+            </div>
+            <?php if (!$simple): ?><p class="small text-muted mb-0"><i class="fas fa-info-circle me-1"></i>With items added, the estimation cost below is the quote total and fills in automatically. Without items, enter it by hand and attach the quotation PDF as before.</p><?php endif; ?>
+        </div>
+
+        <div class="section-block">
+            <div class="section-header">
                 <div class="header-icon" style="background:#10b981;"><i class="fas fa-coins"></i></div>
                 <h4>Financials &amp; Attachment</h4>
             </div>
             <div class="row g-3 align-items-center">
-                <div class="col-12 col-md-4">
+                <div class="col-12 col-md-4<?= $simple ? ' d-none' : '' ?>">
                     <?= $form->field($model, 'estimation_cost', [
                             'options' => ['class' => 'form-group mb-3 custom-form required', 'id' => 'estimation-cost-field'],
                         ])->textInput(['type' => 'number', 'step' => '1', 'min' => '1', 'max' => '999999999', 'maxlength' => true, 'placeholder' => 'Estimated Cost', 'inputmode' => 'numeric', 'pattern' => '[0-9]*']) ?>
@@ -147,10 +197,10 @@ $indexUrl = Url::to(['index']);
                 </div>
                 <?php if ($showFile): ?>
                     <div class="col-12 col-md-5">
-                        <?= $form->field($fileModel, 'file_path')->fileInput([
+                        <?= $form->field($fileModel, 'file_path', ['enableClientValidation' => !$simple, 'enableAjaxValidation' => false])->fileInput([
                             'accept' => 'application/pdf,.pdf',
                             'class' => 'form-control form-control-sm',
-                        ])->label('Quotation File (PDF only)') ?>
+                        ])->label($simple ? 'Attachment (optional PDF — drawings, brochure)' : 'Quotation File (PDF only)') ?>
                     </div>
                 <?php endif; ?>
             </div>

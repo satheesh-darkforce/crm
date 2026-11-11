@@ -6,7 +6,9 @@
 
 use backend\components\LeadFiles;
 use backend\models\Lead;
+use backend\components\FormPickers;
 use kartik\date\DatePicker;
+use kartik\time\TimePicker;
 use kartik\select2\Select2;
 use yii\bootstrap5\ActiveForm;
 use yii\bootstrap5\Html;
@@ -34,7 +36,7 @@ $s2 = fn(string $placeholder, array $extra = []) => [
                         + ($model->isNewRecord ? ['startDate' => date('Y-m-d')] : []),
                 ]) ?>
             </div>
-            <div class="col-lg-3 col-md-6"><?= $form->field($model, 'follow_up_time')->input('time', $in('HH:MM')) ?></div>
+            <div class="col-lg-3 col-md-6"><?= $form->field($model, 'follow_up_time')->widget(TimePicker::class, FormPickers::time()) ?></div>
             <div class="col-lg-4 col-md-6"><?= $form->field($model, 'assigned_to')->widget(Select2::class, ['data' => $users] + $s2('Select employee')) ?></div>
             <div class="col-lg-4 col-md-6">
                 <?= $form->field($model, 'mode')->widget(Select2::class, ['data' => Lead::modeOptions()] + $s2('Select the mode', ['data-other-mode' => '#fu-other-mode-wrap'])) ?>

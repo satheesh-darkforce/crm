@@ -20,7 +20,7 @@ $this->title = 'Add To Client';
     </div>
     <div class="alert alert-info d-flex gap-2 align-items-start">
         <i class="fas fa-info-circle mt-1"></i>
-        <div>Creates a client login for this lead. Details are pre-filled from the lead — complete the remaining fields.</div>
+        <div><?= \backend\models\ClientModel::portalEnabled() ? 'Creates a client and their portal login.' : 'Creates a client from this lead.' ?> Details are pre-filled from the lead — complete the remaining fields.</div>
     </div>
     <?= $this->render('@backend/views/client/_form', ['client' => $client, 'user' => $user, 'cancelUrl' => ['converted']]) ?>
 </div>

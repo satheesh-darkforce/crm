@@ -28,8 +28,9 @@ $can = [
     'create'      => UserAccess::checkAccess('client/create'),
     'view'        => UserAccess::checkAccess('client/view'),
     'update'      => UserAccess::checkAccess('client/update'),
-    'reset'       => UserAccess::checkAccess('client/reset-password'),
-    'permissions' => UserAccess::checkAccess('client/access-permissions'),
+    // Portal actions only while portal logins are on (params 'client.portalLogin').
+    'reset'       => ClientModel::portalEnabled() && UserAccess::checkAccess('client/reset-password'),
+    'permissions' => ClientModel::portalEnabled() && UserAccess::checkAccess('client/access-permissions'),
     'delete'      => UserAccess::checkAccess('client/delete'),
     'invoice'     => UserAccess::checkAccess('invoice/create'),
 ];
@@ -164,16 +165,16 @@ $can = [
                                         <li><?= Html::a('<i class="fas fa-file-alt me-2"></i>Add Tax Invoice', ['/invoice/create', 'client_id' => $row['id'], 'invoice_role' => 1], ['class' => 'dropdown-item', 'encode' => false]) ?></li>
                                         <li><?= Html::a('<i class="fas fa-clipboard me-2"></i>Add Proforma Invoice', ['/invoice/create', 'client_id' => $row['id'], 'invoice_role' => 2], ['class' => 'dropdown-item', 'encode' => false]) ?></li>
                                     <?php endif; ?>
-                                    <?php if ($can['reset'] || $can['permissions']): ?>
+                                    <?php if (($can['reset'] || $can['permissions']) && !empty($row['user_id'])): ?>
                                         <li><hr class="dropdown-divider"></li>
                                         <li><h6 class="dropdown-header">Portal account</h6></li>
                                     <?php endif; ?>
-                                    <?php if ($can['reset']): ?>
+                                    <?php if ($can['reset'] && !empty($row['user_id'])): ?>
                                         <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#resetModal"
                                                data-url="<?= Url::to(['reset-password', 'id' => $row['id']]) ?>" data-name="<?= Html::encode($name) ?>" data-return="index">
                                             <i class="fas fa-key me-2"></i>Reset Password</a></li>
                                     <?php endif; ?>
-                                    <?php if ($can['permissions']): ?>
+                                    <?php if ($can['permissions'] && !empty($row['user_id'])): ?>
                                         <li><?= Html::a('<i class="fas fa-user-shield me-2"></i>Portal Permissions', ['access-permissions', 'id' => $row['id']], ['class' => 'dropdown-item', 'encode' => false]) ?></li>
                                     <?php endif; ?>
                                     <?php if ($can['delete']): ?>

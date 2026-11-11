@@ -3,7 +3,9 @@
 namespace backend\controllers;
 
 use backend\models\ClientModel;
+use backend\components\LineItems;
 use backend\models\ClientQuotation;
+use backend\models\ClientQuotationItem;
 use backend\models\ClientQuotationFile;
 use backend\models\ClientQuotationSearch;
 use backend\models\Developer;
@@ -42,6 +44,7 @@ class ClientQuotationController extends Controller
             'verbs' => ['class' => \yii\filters\VerbFilter::class, 'actions' => [
                 'delete-file' => ['POST'], 'cancel' => ['POST'], 'complete-quote' => ['POST'],
                 'save-developer-official-contact' => ['POST'], 'preview-pdf' => ['POST'],
+                'set-status' => ['POST'], 'duplicate' => ['POST'],
             ]],
         ]);
     }
@@ -57,7 +60,7 @@ class ClientQuotationController extends Controller
             return false;
         }
         $any   = fn(array $r) => (bool)array_filter($r, fn($x) => \common\components\UserAccess::checkAccess($x));
-        $write = ['add-po', 'complete-quote', 'delete-file', 'upload-file', 'save-developer-official-contact'];
+        $write = ['add-po', 'complete-quote', 'delete-file', 'upload-file', 'save-developer-official-contact', 'set-status', 'duplicate'];
         $read  = ['download-file', 'download-po', 'preview-pdf', 'get-client-address', 'quote-by-users', 'additional-quote-by-users',
                   'developer-official-contact', 'current-developer-official-contact', 'get-next-no'];
         if (in_array($action->id, $write, true) && !$any(['client-quotation/create', 'client-quotation/update'])) {
@@ -119,6 +122,19 @@ class ClientQuotationController extends Controller
         if ($clientId = (int) Yii::$app->request->get('id', 0)) {
             $model->client_id = $clientId;
         }
+        // Defaults for a new quote: Green Divine's terms, 15 days validity, GST type from the client.
+        $model->terms       = ClientQuotation::DEFAULT_TERMS;
+        $model->notes       = ClientQuotation::DEFAULT_NOTES;
+        $model->valid_until = date('Y-m-d', strtotime('+15 days'));
+        $model->tax_mode    = LineItems::taxModeFor($model->client_id ? ClientModel::findOne($model->client_id) : null);
+        if (\backend\components\Crm::simple()) {
+            // Green Divine mode: one quote series, no Deployment/Trial choice — number shown straight away.
+            $model->quote_for       = 1;
+            $model->deployment_type = ClientQuotation::DEPLOYMENT;
+            $model->quote_no        = $this->buildTentativeQuoteNumber(1, $nextQuoteSequence);
+        }
+        $lines = [];
+        $lineErrors = [];
 
         // Ajax validation pass for ActiveForm.
         if (Yii::$app->request->isAjax && $model->load(Yii::$app->request->post())) {
@@ -143,9 +159,12 @@ class ClientQuotationController extends Controller
             $model->quoted_by   = (int) Yii::$app->user->id;
             $model->parent_id   = null;
 
+            [$lines, $totals, $lineErrors] = $this->readQuoteItems($model);
             if (empty($model->client_id)) {
                 Yii::$app->session->setFlash('error', 'Selected client is not available. Please choose a valid client.');
-            } elseif ($this->saveQuotationWithGeneratedNumber($model)) {
+            } elseif ($lineErrors) {
+                Yii::$app->session->setFlash('error', 'Please check the items — ' . $lineErrors[0]);
+            } elseif ($this->saveQuoteWithItems($model, $lines, $totals, fn() => $this->saveQuotationWithGeneratedNumber($model))) {
                 if ($file = UploadedFile::getInstance($fileModel, 'file_path')) {
                     $this->saveQuotationFile($model, $file);
                 }
@@ -163,6 +182,8 @@ class ClientQuotationController extends Controller
             'clientOptions' => $this->clientSelectOptions(),
             'userOptions'   => $this->getAdditionalQuoteBySelectedOptions((int) $model->alternate_quote_by),
             'quotenum'      => $nextQuoteSequence,
+            'lines'         => $lines,
+            'lineErrors'    => $lineErrors,
         ]);
     }
 
@@ -173,6 +194,15 @@ class ClientQuotationController extends Controller
         if (!empty($model->quote_date)) {
             $model->quote_date = date('Y-m-d', strtotime($model->quote_date));
         }
+        if ((int)$model->quote_status === ClientQuotation::QS_INVOICED) {
+            Yii::$app->session->setFlash('error', 'This quotation has been invoiced and can no longer be edited. Duplicate it to make a new one.');
+            return $this->redirect(['view', 'id' => $id]);
+        }
+        if (!$model->tax_mode) {
+            $model->tax_mode = LineItems::taxModeFor($model->client);
+        }
+        $lines = array_map(fn(ClientQuotationItem $i) => $i->toLine(), $model->items);
+        $lineErrors = [];
 
         if (Yii::$app->request->isAjax && $model->load(Yii::$app->request->post())) {
             $model->modified_at = date('Y-m-d H:i:s');
@@ -185,7 +215,10 @@ class ClientQuotationController extends Controller
             $model->modified_at = date('Y-m-d H:i:s');
             $model->quoted_by   = (int) Yii::$app->user->id;
 
-            if ($model->save()) {
+            [$lines, $totals, $lineErrors] = $this->readQuoteItems($model);
+            if ($lineErrors) {
+                Yii::$app->session->setFlash('error', 'Please check the items — ' . $lineErrors[0]);
+            } elseif ($this->saveQuoteWithItems($model, $lines, $totals, fn() => $model->save())) {
                 if ($file = UploadedFile::getInstance($fileModel, 'file_path')) {
                     $this->saveQuotationFile($model, $file);
                 }
@@ -201,6 +234,8 @@ class ClientQuotationController extends Controller
             'fileModel'     => $fileModel,
             'clientOptions' => $this->clientSelectOptions(),
             'userOptions'   => $this->getAdditionalQuoteBySelectedOptions((int) $model->alternate_quote_by),
+            'lines'         => $lines,
+            'lineErrors'    => $lineErrors,
         ]);
     }
 
@@ -615,6 +650,14 @@ class ClientQuotationController extends Controller
         $mpdf = $this->createQuotationPdf();
         $this->applyQuotationPdfBranding($mpdf);
         $mpdf->WriteHTML($html);
+        // Item-based quote: add the items page (lines, GST summary, bank, terms).
+        if ($latestQuote && $latestQuote->hasItems()) {
+            $mpdf->AddPage();
+            $mpdf->WriteHTML($this->renderPartial('_pdf_items', [
+                'model' => $latestQuote,
+                'bank'  => \backend\models\BankDetail::find()->where(['status' => 1])->orderBy(['is_default' => SORT_DESC, 'id' => SORT_ASC])->one(),
+            ]));
+        }
 
         $generated = Yii::getAlias('@runtime') . '/quotation_' . time() . '.pdf';
         $mpdf->Output($generated, Destination::FILE);
@@ -822,6 +865,159 @@ class ClientQuotationController extends Controller
 
     // ───────────────────────────────────────────────────────────── helpers ──
 
+    // ── Quote items, status and conversion ────────────────────────────────────
+
+    /** Mark a quote Draft / Sent / Accepted / Rejected (Invoiced is set by the invoice). */
+    public function actionSetStatus(int $id): Response
+    {
+        $model  = $this->findModel($id);
+        $status = (int)Yii::$app->request->post('quote_status');
+        $allowed = [ClientQuotation::QS_DRAFT, ClientQuotation::QS_SENT, ClientQuotation::QS_ACCEPTED, ClientQuotation::QS_REJECTED];
+        if ((int)$model->quote_status === ClientQuotation::QS_INVOICED) {
+            Yii::$app->session->setFlash('error', 'This quotation is already invoiced.');
+        } elseif (!in_array($status, $allowed, true)) {
+            Yii::$app->session->setFlash('error', 'Pick a valid status.');
+        } else {
+            $model->updateAttributes(['quote_status' => $status, 'modified_at' => date('Y-m-d H:i:s')]);
+            Yii::$app->session->setFlash('success', 'Quotation marked ' . ClientQuotation::quoteStatusOptions()[$status] . '.');
+        }
+        return $this->redirect(['view', 'id' => $id]);
+    }
+
+    /** Copy a quote (header, items, terms) into a new Draft with a new number. */
+    public function actionDuplicate(int $id): Response
+    {
+        $src  = $this->findModel($id);
+        $copy = new ClientQuotation();
+        foreach (['client_id', 'project_name', 'address', 'address_id', 'quote_for', 'deployment_type', 'alternate_quote_by', 'estimation_cost',
+                  'tax_mode', 'terms', 'notes'] as $a) {
+            if ($copy->hasAttribute($a)) {
+                $copy->$a = $src->$a;
+            }
+        }
+        $now = date('Y-m-d H:i:s');
+        $copy->quote_date   = date('Y-m-d');
+        $copy->valid_until  = date('Y-m-d', strtotime('+15 days'));
+        $copy->created_at   = $now;
+        $copy->modified_at  = $now;
+        $copy->status       = 1;
+        $copy->quote_status = ClientQuotation::QS_DRAFT;
+        $copy->quoted_by    = (int)Yii::$app->user->id;
+        $copy->parent_id    = null;
+        $lines = array_map(fn(ClientQuotationItem $i) => $i->toLine(), $src->items);
+        $totals = $lines ? LineItems::totals($lines, (int)($copy->tax_mode ?: LineItems::TAX_INTRA)) : null;
+
+        if ($this->saveQuoteWithItems($copy, $lines, $totals, fn() => $this->saveQuotationWithGeneratedNumber($copy))) {
+            Yii::$app->session->setFlash('success', 'Copied to new quotation ' . $copy->quote_no . ' (draft). Make your changes and save.');
+            return $this->redirect(['update', 'id' => $copy->id]);
+        }
+        $errors = $copy->getFirstErrors();
+        Yii::$app->session->setFlash('error', 'Could not duplicate the quotation: ' . (reset($errors) ?: 'please try again.'));
+        return $this->redirect(['view', 'id' => $id]);
+    }
+
+    /** Accepted quote with items → new invoice pre-filled with the same lines. */
+    public function actionCreateInvoice(int $id): Response
+    {
+        $model = $this->findModel($id);
+        if (!\common\components\UserAccess::checkAccess('invoice/create')) {
+            throw new \yii\web\ForbiddenHttpException('You do not have permission to create invoices.');
+        }
+        if ((int)$model->quote_status === ClientQuotation::QS_INVOICED && $model->invoice_id) {
+            Yii::$app->session->setFlash('warning', 'This quotation was already invoiced.');
+            return $this->redirect(['/invoice/view', 'id' => $model->invoice_id]);
+        }
+        if (!$model->hasItems()) {
+            Yii::$app->session->setFlash('error', 'Only quotations with items can be turned into an invoice.');
+            return $this->redirect(['view', 'id' => $id]);
+        }
+        if ((int)$model->quote_status !== ClientQuotation::QS_ACCEPTED) {
+            Yii::$app->session->setFlash('error', 'Mark the quotation Accepted before creating the invoice.');
+            return $this->redirect(['view', 'id' => $id]);
+        }
+        return $this->redirect(['/invoice/create', 'client_id' => $model->client_id, 'quotation_id' => $model->id, 'invoice_role' => 1]);
+    }
+
+    /**
+     * Posted quotation items (QuoteItems[...]). No item rows = a quote without items
+     * (estimate typed by hand, PDF attached) — the old way still works.
+     * @return array{0: array, 1: ?array, 2: string[]} [lines, totals or null, errors]
+     */
+    private function readQuoteItems(ClientQuotation $model): array
+    {
+        $rows = Yii::$app->request->post('QuoteItems', []);
+        $rows = is_array($rows) ? $rows : [];
+        $filled = array_filter($rows, function ($r) {
+            if (!is_array($r)) {
+                return false;
+            }
+            foreach (['product_id', 'description', 'quantity', 'unit_price'] as $k) {
+                if (isset($r[$k]) && is_scalar($r[$k]) && trim((string)$r[$k]) !== '') {
+                    return true;
+                }
+            }
+            return false;
+        });
+        if (!$filled) {
+            // Green Divine quotes are always item-based.
+            return [[], null, \backend\components\Crm::simple() ? ['Add at least one item.'] : []];
+        }
+        if (!in_array((int)$model->tax_mode, [LineItems::TAX_INTRA, LineItems::TAX_INTER, LineItems::TAX_NONE], true)) {
+            $model->tax_mode = LineItems::taxModeFor($model->client);
+        }
+        [$lines, $totals, $errors] = LineItems::read(array_values($filled), (int)$model->tax_mode);
+        return [$lines, $totals, $errors];
+    }
+
+    /**
+     * Save the quote (via $save) and replace its items in one transaction. With items
+     * the totals are stored and the estimation cost becomes the rounded total.
+     */
+    private function saveQuoteWithItems(ClientQuotation $model, array $lines, ?array $totals, callable $save): bool
+    {
+        if ($totals !== null) {
+            $model->sub_total       = $totals['sub_total'];
+            $model->discount_total  = $totals['discount_total'];
+            $model->taxable_total   = $totals['taxable_total'];
+            $model->gst_total       = $totals['gst_total'];
+            $model->grand_total     = $totals['rounded_total'];
+            $model->estimation_cost = (string)(int)$totals['rounded_total'];
+        } elseif (!$model->isNewRecord && Yii::$app->request->post('QuoteItems') !== null) {
+            // All items removed: back to a hand-typed estimate.
+            $model->sub_total = $model->discount_total = $model->taxable_total = $model->gst_total = $model->grand_total = null;
+        }
+        $tx = Yii::$app->db->beginTransaction();
+        try {
+            if (!$save()) {
+                $tx->rollBack();
+                return false;
+            }
+            if ($totals !== null || Yii::$app->request->post('QuoteItems') !== null || $lines) {
+                ClientQuotationItem::deleteAll(['quote_id' => $model->id]);
+                $now = date('Y-m-d H:i:s');
+                foreach (array_values($lines) as $i => $l) {
+                    $item = new ClientQuotationItem();
+                    $item->setAttributes([
+                        'quote_id' => $model->id, 'product_id' => $l['product_id'], 'sort_order' => $i,
+                        'description' => $l['description'], 'hsn_sac' => $l['hsn_sac'], 'unit' => $l['unit'],
+                        'quantity' => $l['quantity'], 'unit_price' => $l['unit_price'], 'discount_percent' => $l['discount_percent'],
+                        'gst_rate' => $l['gst_rate'], 'taxable_amount' => $l['taxable_amount'], 'gst_amount' => $l['gst_amount'],
+                        'line_total' => $l['line_total'], 'created_at' => $now,
+                    ], false);
+                    if (!$item->save(false)) {
+                        throw new \RuntimeException('item');
+                    }
+                }
+            }
+            $tx->commit();
+            return true;
+        } catch (\Throwable $e) {
+            $tx->rollBack();
+            Yii::error('Quotation save failed: ' . $e->getMessage(), __METHOD__);
+            $model->addError('id', 'The quotation could not be saved. Please try again.');
+            return false;
+        }
+    }
     private function findModel(int $id): ClientQuotation
     {
         $m = ClientQuotation::find()->where(['id' => $id])->andWhere(['!=', 'status', 0])->one();
