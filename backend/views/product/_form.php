@@ -74,8 +74,11 @@ $specs    = $model->specList ?: [['name' => '', 'value' => '']];
             ?>
             <div class="row g-2">
                 <div class="col-md-5">
-                    <?= $form->field($model, 'units')->dropDownList(Product::unitDropdown(), [
-                        'class' => 'form-select form-select-sm', 'prompt' => 'How is it sold?', 'options' => $groups,
+                    <?= $form->field($model, 'units')->widget(Select2::class, [
+                        'data'          => Product::unitDropdown(),
+                        'size'          => Select2::SMALL,
+                        'options'       => ['placeholder' => 'How is it sold?', 'options' => $groups],
+                        'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
                     ])->hint('<span id="unit-hint">Measured by area, length, weight, volume, count or as a service.</span>') ?>
                 </div>
                 <div class="col-md-4 col-7">
@@ -85,7 +88,12 @@ $specs    = $model->specList ?: [['name' => '', 'value' => '']];
                         ->hint('Price for one unit, before GST.') ?>
                 </div>
                 <div class="col-md-3 col-5">
-                    <?= $form->field($model, 'gst_rate')->dropDownList(Product::gstOptions(), ['class' => 'form-select form-select-sm', 'prompt' => 'Select GST']) ?>
+                    <?= $form->field($model, 'gst_rate')->widget(Select2::class, [
+                        'data'          => Product::gstOptions(),
+                        'size'          => Select2::SMALL,
+                        'options'       => ['placeholder' => 'Select GST'],
+                        'pluginOptions' => ['allowClear' => true, 'width' => '100%', 'minimumResultsForSearch' => -1],
+                    ]) ?>
                 </div>
                 <div class="col-md-4 col-7">
                     <?= $form->field($model, 'mrp', ['inputTemplate' => '<div class="input-group input-group-sm"><span class="input-group-text">₹</span>{input}<span class="input-group-text p-per">' . $per . '</span></div>'])

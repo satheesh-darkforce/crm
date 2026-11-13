@@ -28,6 +28,7 @@ $quoteForLabels  = [1 => 'IT', 2 => 'IOT', 3 => 'Hardware + Software'];
 $quoteForBadges  = [1 => 'bg-primary', 2 => 'bg-info text-dark', 3 => 'bg-success'];
 $statusOptions   = [1 => 'Active', 2 => 'Cancelled', 3 => 'Completed'];
 $totalCount      = $dataProvider->getTotalCount();
+$simple          = \backend\components\Crm::simple(); // Green Divine: quote status + amount, no IT / IOT, revisions or PO completion
 ?>
 <style>
 .list-table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#6c757d;font-weight:600;border-bottom:2px solid #dee2e6;white-space:nowrap}
@@ -47,6 +48,9 @@ $tabs = [
     '3' => ['label' => 'Completed', 'count' => (int) $completedTotal],
     '2' => ['label' => 'Cancelled', 'count' => (int) $cancelledTotal],
 ];
+if ($simple) {
+    unset($tabs['3']); // PO completion is hidden in Green Divine mode
+}
 $tabHref = static function ($key) {
     $params = ['index'];
     if ($key !== '') {
@@ -70,7 +74,7 @@ $isActiveTab = static function ($key) use ($currentStatus) {
     <div class="ui-head">
         <div>
             <h1>Quotations</h1>
-            <div class="ui-sub"><?= (int) $total ?> total · <?= (int) $completedTotal ?> completed · <?= (int) $cancelledTotal ?> cancelled</div>
+            <div class="ui-sub"><?= (int) $total ?> total<?= $simple ? "" : " · " . (int) $completedTotal . " completed" ?> · <?= (int) $cancelledTotal ?> cancelled</div>
         </div>
         <div class="ui-actions">
             <?php if (UserAccess::checkAccess('client-quotation/create')): ?>
@@ -124,7 +128,7 @@ $isActiveTab = static function ($key) use ($currentStatus) {
                     ])->label('Company') ?>
                 </div>
                 <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                    <?= $form->field($searchModel, 'quote_no')->textInput(['placeholder' => 'e.g. QIT/25-26/001'])->label('Quote No') ?>
+                    <?= $form->field($searchModel, 'quote_no')->textInput(['placeholder' => 'e.g. ' . (\backend\controllers\ClientQuotationController::quotePrefixes()[1]) . '/' . date('y') . '-' . date('y', strtotime('+1 year')) . '/001'])->label('Quote No') ?>
                 </div>
                 <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
                     <?= $form->field($searchModel, 'project_name')->textInput(['placeholder' => 'Project'])->label('Project') ?>
@@ -174,6 +178,7 @@ $isActiveTab = static function ($key) use ($currentStatus) {
             ],
             [
                 'label' => 'Quote No',
+                'contentOptions' => ['class' => 'nowrap', 'style' => 'white-space:nowrap'],
                 'format' => 'raw',
                 'value' => function ($m) {
                     return Html::encode($m->quote_no ?: '-');
@@ -184,9 +189,13 @@ $isActiveTab = static function ($key) use ($currentStatus) {
                 'format' => 'raw',
                 'headerOptions' => ['style' => 'width:100px', 'class' => 'text-center'],
                 'contentOptions' => ['class' => 'text-center'],
-                'value' => function ($m) {
+                'value' => function ($m) use ($simple) {
                     if ((int) $m->status === 2) {
                         return '<span class="badge bg-danger">Cancelled</span>';
+                    }
+                    if ($simple) {
+                        [$label, $tone] = $m->getQuoteStatusPill();
+                        return '<span class="ui-pill tone-' . Html::encode($tone) . '">' . Html::encode($label) . '</span>';
                     }
                     if ((int) $m->completed_status === 1) {
                         return '<span class="badge bg-success">Completed</span>';
@@ -210,6 +219,7 @@ $isActiveTab = static function ($key) use ($currentStatus) {
             ],
             [
                 'label' => 'Quote For',
+                'visible' => !$simple,
                 'format' => 'raw',
                 'value' => function ($m) use ($quoteForLabels, $quoteForBadges) {
                     $label = $quoteForLabels[(int) $m->quote_for] ?? '-';
@@ -218,11 +228,16 @@ $isActiveTab = static function ($key) use ($currentStatus) {
                 },
             ],
             [
-                'label' => 'Estimated Cost<br>(Latest)',
+                'label' => $simple ? 'Amount' : 'Estimated Cost<br>(Latest)',
                 'encodeLabel' => false,
-                'headerOptions' => ['style' => 'width:120px'],
-                'contentOptions' => ['class' => 'small'],
-                'value' => function ($m) {
+                'headerOptions' => ['style' => 'width:120px', 'class' => $simple ? 'text-end' : ''],
+                'contentOptions' => ['class' => $simple ? 'text-end nowrap fw-semibold' : 'small'],
+                'format' => 'raw',
+                'value' => function ($m) use ($simple) {
+                    if ($simple) {
+                        $amt = (float) ($m->grand_total ?: $m->estimation_cost);
+                        return $amt > 0 ? '&#8377;' . number_format($amt, 0) : '-';
+                    }
                     $latest = ClientQuotation::find()
                         ->where(['or', ['parent_id' => $m->id], ['id' => $m->id]])
                         ->orderBy(['id' => SORT_DESC])
@@ -232,6 +247,7 @@ $isActiveTab = static function ($key) use ($currentStatus) {
             ],
             [
                 'label' => 'No of<br>Quote',
+                'visible' => !$simple,
                 'encodeLabel' => false,
                 'headerOptions' => ['style' => 'width:80px', 'class' => 'text-center'],
                 'contentOptions' => ['class' => 'text-center small'],

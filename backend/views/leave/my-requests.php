@@ -54,14 +54,8 @@ $q = Yii::$app->request->get();
         <div class="card-body py-2 px-3">
             <form method="get" class="row g-2 align-items-center">
                 <div class="col-md-3">
-                    <select name="request_status" class="form-select form-select-sm">
-                        <option value="">All Statuses</option>
-                        <?php foreach ($statusLabel as $v => $l): ?>
-                            <option value="<?= $v ?>" <?= ($q['request_status'] ?? '') === (string)$v ? 'selected' : '' ?>>
-                                <?= Html::encode($l) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <?= \kartik\select2\Select2::widget(['name' => 'request_status', 'value' => (string) ($q['request_status'] ?? ''), 'data' => $statusLabel,
+                        'size' => \kartik\select2\Select2::SMALL, 'options' => ['placeholder' => 'All Statuses'], 'pluginOptions' => ['allowClear' => true, 'width' => '100%', 'minimumResultsForSearch' => -1]]) ?>
                 </div>
                 <div class="col-auto">
                     <button class="btn btn-secondary btn-sm">Filter</button>

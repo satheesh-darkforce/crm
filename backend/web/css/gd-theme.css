@@ -905,3 +905,12 @@ body.sidebar-locked { overflow: hidden; }
     .gd-li-side .ui-pill { display: none; }
 }
 .card-header a, .gd-stat, .gd-li-title { text-decoration: none; }
+.ui-page .p-section > h2 { font-size: 1rem; font-weight: 500; text-transform: none; letter-spacing: .2px; color: var(--gd-text-strong); }
+
+/* AJAX list paging (web/js/ajax-pager.js) */
+.is-ajax-loading { opacity: .5; pointer-events: none; transition: opacity .15s ease; position: relative; }
+.is-ajax-loading::after { content: ""; position: absolute; top: 40%; left: 50%; width: 30px; height: 30px; margin-left: -15px; border: 3px solid var(--gd-primary-soft); border-top-color: var(--gd-primary); border-radius: 50%; animation: gd-spin .7s linear infinite; }
+@keyframes gd-spin { to { transform: rotate(360deg); } }
+
+/* sidebar brand: real logo + wordmark */
+#sidebar .brand .brand-logo { height: 36px; width: auto; flex: 0 0 auto; }

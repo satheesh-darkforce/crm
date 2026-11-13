@@ -41,6 +41,12 @@ $statusMeta = [
     'checked_out' => ['label' => 'Checked Out',  'class' => 'st-out',     'row' => 'row-out'],
     'absent'      => ['label' => 'Absent',       'class' => 'st-absent',  'row' => 'row-absent'],
 ];
+// Green Divine mode: no task timers — checked-in people are simply "Present".
+$simple = \backend\components\Crm::simple();
+if ($simple) {
+    $statusMeta['working'] = ['label' => 'Present', 'class' => 'st-working', 'row' => ''];
+    $statusMeta['no_task'] = ['label' => 'Present', 'class' => 'st-working', 'row' => ''];
+}
 ?>
 <style>
 .live-card{border:0;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.06)}
@@ -125,7 +131,7 @@ $statusMeta = [
         <div class="col-6 col-md">
             <div class="live-stat present"><span class="num"><?= $presentEmp ?></span><span class="lbl">Present</span></div>
         </div>
-        <div class="col-6 col-md">
+        <div class="col-6 col-md<?= $simple ? ' d-none' : '' ?>">
             <div class="live-stat working"><span class="num"><?= $workingEmp ?></span><span class="lbl">Working Now</span></div>
         </div>
         <div class="col-6 col-md">
@@ -148,7 +154,7 @@ $statusMeta = [
                         'id'          => 'filter-name',
                     ]) ?>
                 </div>
-                <div class="filter-field">
+                <div class="filter-field<?= $simple ? ' d-none' : '' ?>">
                     <label class="form-label" for="filter-project">Project</label>
                     <?= Select2::widget([
                         'name'          => 'project_id',
@@ -180,9 +186,11 @@ $statusMeta = [
                             <th>Employee</th>
                             <th class="text-nowrap">Check In</th>
                             <th class="text-nowrap">Check Out</th>
+                            <?php if (!$simple): ?>
                             <th>Current Project</th>
                             <th>Current Task</th>
                             <th class="text-center">Task Duration</th>
+                            <?php endif; ?>
                             <th class="text-center">Break Duration</th>
                             <th class="text-center">Late<br><small class="text-muted">(Month)</small></th>
                             <th class="text-center">Late<br><small class="text-muted">(Total)</small></th>
@@ -193,7 +201,7 @@ $statusMeta = [
                     </thead>
                     <tbody>
                     <?php if (empty($rows)): ?>
-                        <tr><td colspan="13" class="text-center text-muted py-4">No employees match the current filters.</td></tr>
+                        <tr><td colspan="<?= $simple ? 10 : 13 ?>" class="text-center text-muted py-4">No employees match the current filters.</td></tr>
                     <?php else: $i = 1; foreach ($rows as $r):
                         $meta = $statusMeta[$r['status']] ?? $statusMeta['no_task'];
                         // Show late/excuse figures only when the viewer may see all,
@@ -210,9 +218,11 @@ $statusMeta = [
                             </td>
                             <td class="text-nowrap"><?= $fmtTime($r['checkIn']) ?></td>
                             <td class="text-nowrap"><?= $fmtTime($r['checkOut']) ?></td>
+                            <?php if (!$simple): ?>
                             <td><?= $r['project'] ? Html::encode($r['project']) : '<span class="text-muted">—</span>' ?></td>
                             <td><?= $r['task'] ? Html::encode($r['task']) : '<span class="text-muted">—</span>' ?></td>
                             <td class="text-center"><?= $fmtDur($r['taskSecs']) ?></td>
+                            <?php endif; ?>
                             <td class="text-center"><?= $fmtDur($r['breakSecs']) ?></td>
                             <td class="text-center">
                                 <?php if (!$showLate): ?>

@@ -2,7 +2,7 @@
 use yii\bootstrap5\Html;
 use yii\grid\GridView;
 $this->title = 'Users';
-$typeLabel = [1 => 'Admin', 2 => 'Developer', 3 => 'Client', 4 => 'Sub-Admin'];
+$typeLabel = [1 => 'Admin', 2 => 'Employee', 3 => 'Client', 4 => 'Sub-Admin'];
 ?>
 <div class="user-index">
     <h4 class="mb-3"><?= Html::encode($this->title) ?></h4>

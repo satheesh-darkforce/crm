@@ -72,7 +72,7 @@ if ($isNew && !$invoice->bank_id) {
                     <tr><th scope="row">Invoice no.</th><td class="mono fw-semibold"><?= Html::encode($nextNo ?: 'Assigned on save') ?></td></tr>
                     <tr><th scope="row">Company</th><td><?= Html::encode($client->company_name) ?><div class="small text-muted"><?= Html::encode($client->client_name) ?></div></td></tr>
                     <tr><th scope="row">Client type</th><td><?= Html::encode($clientTypeLabel) ?></td></tr>
-                    <tr><th scope="row">GSTIN</th><td class="mono"><?= $client->gst_no ? Html::encode($client->gst_no) : '<span class="ui-pill tone-warning plain">Not set</span>' ?></td></tr>
+                    <tr><th scope="row">GSTIN</th><td class="mono"><?= $client->gst_no ? Html::encode($client->gst_no) : (\backend\components\Crm::simple() ? '<span class="ui-pill plain" title="The invoice is issued without a GSTIN (B2C)">Not registered (B2C)</span>' : '<span class="ui-pill tone-warning plain">Not set</span>') ?></td></tr>
                     <tr><th scope="row">Tax exemption</th><td><?= $client->tax_exemption == 1 ? 'Yes — ' . Html::encode($client->tax_exemption_reason) : 'No' ?></td></tr>
                     <tr><th scope="row">Address</th><td><?= nl2br(Html::encode($client->address)) ?></td></tr>
                     <?php if ((int)$client->client_type === 3 && $lutArn): ?>
@@ -336,7 +336,8 @@ if ($isNew && !$invoice->bank_id) {
 
 <?php
 // ─── GST no. warning for domestic clients (matches Yii1) ───
-if ($isNew && $client && in_array((int)$client->client_type, [1, 2]) && empty($client->gst_no)):
+// Green Divine mode: most buyers are homeowners without a GSTIN, so no blocking popup (the Bill-to box says B2C).
+if ($isNew && $client && in_array((int)$client->client_type, [1, 2]) && empty($client->gst_no) && !\backend\components\Crm::simple()):
     $indexUrl = \yii\helpers\Url::to(['invoice/index']);
 ?>
 <script>

@@ -282,6 +282,8 @@ $developerOfficialContactUrl        = Url::to(['developer-official-contact']);
 $currentDeveloperOfficialContactUrl = Url::to(['current-developer-official-contact']);
 $saveDeveloperOfficialContactUrl    = Url::to(['save-developer-official-contact']);
 
+$quotePrefixesJson = \yii\helpers\Json::htmlEncode(\backend\controllers\ClientQuotationController::quotePrefixes()); // quote_for => number prefix
+
 $this->registerJs(<<<JS
 $(function () {
     var quotenum = parseInt($('#quotenum').val(), 10) || 0;
@@ -325,10 +327,8 @@ $(function () {
         var startY = (m >= 4) ? y : y - 1;
         var endY   = (m >= 4) ? y + 1 : y;
         var fy = String(startY).slice(-2) + '-' + String(endY).slice(-2);
-        var qn = '';
-        if (val == 1)      qn = 'QIT/'   + fy + '/' + padded;
-        else if (val == 2) qn = 'QIIOT/' + fy + '/' + padded;
-        else if (val == 3) qn = 'SH/'    + fy + '/' + padded;
+        var prefixes = {$quotePrefixesJson};
+        var qn = prefixes[val] ? prefixes[val] + '/' + fy + '/' + padded : '';
         $('#clientquotation-quote_no').val(qn);
     }
 

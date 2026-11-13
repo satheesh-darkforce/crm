@@ -189,7 +189,7 @@ $displayAdditionalDeveloperMobile = trim((string) ($additionalDeveloper->officia
             </tr>
             <tr>
                 <td class="proposal-label">From</td>
-                <td>Maestro Technology Services Pvt. ltd</td>
+                <td><?= Html::encode(\backend\components\Company::get('legalName')) ?></td>
             </tr>
             <tr>
                 <td class="proposal-label">Quotation No</td>

@@ -25,7 +25,6 @@ foreach (preg_split('/\s+/', trim($companyName)) as $word) {
 $this->title = 'Sign in — ' . $companyName;
 
 // blank layout does not include Font Awesome — register it here for the field icons.
-$this->registerCssFile('@web/css/font-awesome/css/font-awesome.min.css');
 $this->registerCssFile('@web/css/all.min.css');
 ?>
 <style>

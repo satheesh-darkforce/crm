@@ -5,7 +5,7 @@
  * line items table, tax rows by invoice_type, payment bank details block.
  *
  * @var \backend\models\Invoice $model
- * @var string                 $imgBasePath  Base URL/path used to load images/bg.jpg
+ * @var string                 $imgBasePath  Base URL/path used to load the letterhead (params company.letterhead)
  * @var bool                   $isPdf        Optional: render-for-mPDF mode
  * @var string|null            $previewInvoiceNo  Predicted next invoice number for drafts
  */
@@ -18,7 +18,7 @@ $displayInvoiceNo = trim((string)($model->invoice_no ?? '')) !== ''
     : (isset($previewInvoiceNo) ? $previewInvoiceNo : '');
 ?>
 <section id="invoice_div" style="height:1122px">
-<div id="printdiv" style="background:url(<?= $imgBasePath ?>images/bg.jpg) top no-repeat; font-family:arial; width:793px; height:1122px; margin:auto; font-size:16px; margin-top:15px;">
+<div id="printdiv" style="background:url(<?= $imgBasePath ?><?= \backend\components\Company::letterhead() ?>) top / 793px auto no-repeat; font-family:arial; width:793px; height:1122px; margin:auto; font-size:16px; margin-top:15px;">
 
     <div style="margin-bottom:10px;padding-top: 75px;">
 

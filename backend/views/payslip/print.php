@@ -82,7 +82,7 @@ foreach ($model->details as $d) {
 $totalRows   = max(count($allowanceArr), count($deductionsArr), 1);
 $amountWords = ucwords(indianNumberToWords((int)round($netPay))) . ' Rupees Only';
 $time        = strtotime($model->month_year);
-$logoUrl     = $imgBasePath . 'images/maestro_logo.png';
+$logoUrl     = $imgBasePath . ltrim(\backend\components\Company::get('logo'), '/');
 ?>
 
 <table border="0" align="center" cellpadding="0" cellspacing="0" style="width:700px; margin-top:30px;">
@@ -99,22 +99,21 @@ $logoUrl     = $imgBasePath . 'images/maestro_logo.png';
     <!-- Logo -->
     <tr>
         <th colspan="5" style="text-align:center; padding:10px;">
-            <img src="<?= $logoUrl ?>" alt="Maestro" style="height:55px;">
+            <img src="<?= $logoUrl ?>" alt="<?= \yii\helpers\Html::encode(\backend\components\Company::get('name')) ?>" style="height:55px;">
         </th>
     </tr>
 
     <!-- Company name -->
     <tr>
         <th colspan="5" style="text-align:center; font-size:13px;">
-            Maestro Technology Services Pvt.ltd,
+            <?= \yii\helpers\Html::encode(\backend\components\Company::get('legalName')) ?>
         </th>
     </tr>
 
     <!-- Company address -->
     <tr>
         <td colspan="5" style="text-align:center; font-size:12px;">
-            Site No. 4, Maestro Building, Sp Garden, Sathy road, Kaapi Kadai,<br>
-            Vilankurichi, Coimbatore - 641035
+            <?= \yii\helpers\Html::encode(\backend\components\Company::get('address')) ?>
         </td>
     </tr>
 

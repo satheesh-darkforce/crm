@@ -21,7 +21,7 @@ $total      = $dataProvider->getTotalCount();
         </div>
         <div class="ui-actions">
             <?= Html::a('<i class="fas fa-inbox"></i> Export', ['export-ex-employees'], ['class' => 'btn btn-danger btn-sm', 'encode' => false]) ?>
-            <?= Html::a('<i class="fas fa-arrow-left"></i> Active Developers', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
+            <?= Html::a('<i class="fas fa-arrow-left"></i> Active Employees', ['index'], ['class' => 'btn btn-outline-secondary btn-sm', 'encode' => false]) ?>
         </div>
     </div>
 
@@ -66,7 +66,7 @@ $total      = $dataProvider->getTotalCount();
                 <thead class="table-light">
                     <tr>
                         <th style="width:40px">#</th>
-                        <th>Developer</th>
+                        <th>Employee</th>
                         <th>Designation</th>
                         <th>Emp Code</th>
                         <th>Mobile</th>

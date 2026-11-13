@@ -1115,8 +1115,16 @@ class ClientQuotationController extends Controller
 
     private function getQuotePrefix(int $quoteFor): ?string
     {
-        // Matches delivery: 1 = IT (QIT), 2 = IOT (QIIOT). SH kept for legacy quote_for=3.
-        return [1 => 'QIT', 2 => 'QIIOT', 3 => 'SH'][$quoteFor] ?? null;
+        return self::quotePrefixes()[$quoteFor] ?? null;
+    }
+
+    /**
+     * quote_for => number prefix. Defaults match delivery (1 = IT "QIT", 2 = IOT "QIIOT", 3 = legacy "SH");
+     * params['numbering.quote'] overrides them (Green Divine quotes are always quote_for 1).
+     */
+    public static function quotePrefixes(): array
+    {
+        return (Yii::$app->params['numbering.quote'] ?? []) + [1 => 'QIT', 2 => 'QIIOT', 3 => 'SH'];
     }
 
     private function getCurrentFinancialYear(): string
@@ -1374,23 +1382,24 @@ class ClientQuotationController extends Controller
 
     private function applyQuotationPdfBranding(Mpdf $mpdf): void
     {
-        $logoPath       = Yii::getAlias('@webroot/images/maestro-logo.png');
-        $companyGst     = '33AAHCM8302P1Z6';
-        $footerAddress  = 'Site No.4, Maestro Building SP Garden, Sathy Road, Kaapi Kadai, Vilankurichi, Coimbatore - 641035';
-        $footerContact  = '7448417888    |    www.themaestro.in    |    info@themaestro.in';
-        $footerCompany  = 'Maestro Technologies Service Private Limited';
+        // Company details: params['company'] (backend\components\Company).
+        $logoPath       = \backend\components\Company::logoPath();
+        $companyGst     = \backend\components\Company::get('gstin');
+        $footerAddress  = \backend\components\Company::get('address');
+        $footerContact  = \backend\components\Company::contactLine('    |    ');
+        $footerCompany  = \backend\components\Company::get('legalName');
 
         $header = '<table width="100%" style="border-collapse:collapse; font-family:Arial, sans-serif;">'
             . '<tr>'
             . '<td style="width:65%; border:none;">'
-            . (is_file($logoPath) ? '<img src="' . $logoPath . '" style="width:230px;">' : '')
+            . (is_file($logoPath) ? '<img src="' . $logoPath . '" style="height:70px;">' : '')
             . '</td>'
-            . '<td style="width:35%; border:none; text-align:right; color:#1d75bb; font-size:14px; font-weight:700; padding-top:8px;">'
-            . 'GST: ' . Html::encode($companyGst)
+            . '<td style="width:35%; border:none; text-align:right; color:#1f2a44; font-size:13px; font-weight:700; padding-top:8px;">'
+            . ($companyGst !== '' ? 'GSTIN: ' . Html::encode($companyGst) : Html::encode($footerContact))
             . '</td></tr></table>';
 
-        $footer = '<div style="font-family:Arial, sans-serif; text-align:center; color:#447fb8; font-size:12px; line-height:1.5;">'
-            . '<div><h3>' . Html::encode($footerCompany) . '</h3></div>'
+        $footer = '<div style="font-family:Arial, sans-serif; text-align:center; color:#1f2a44; font-size:11px; line-height:1.5; border-top:1px solid #6fb48a; padding-top:4px;">'
+            . '<div style="color:#3f8f5f; font-weight:bold; font-size:13px;">' . Html::encode($footerCompany) . '</div>'
             . '<div><b>' . Html::encode($footerAddress) . '</b></div>'
             . '<div><b>' . Html::encode($footerContact) . '</b></div>'
             . '</div>';

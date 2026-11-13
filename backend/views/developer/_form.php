@@ -44,10 +44,7 @@ $isUpdate = $isUpdate ?? false;
                 ]) ?>
             </div>
             <div class="col-md-3">
-                <?= $form->field($developer, 'branch')->label('Branch <span class="text-danger">*</span>', ['encode' => false])->dropDownList(
-                    Developer::$branches,
-                    ['class' => 'form-select form-select-sm', 'prompt' => 'Select Branch']
-                ) ?>
+                <?= $form->field($developer, 'branch')->label('Branch <span class="text-danger">*</span>', ['encode' => false])->widget(\kartik\select2\Select2::class, ['data' => Developer::$branches, 'size' => \kartik\select2\Select2::SMALL, 'options' => ['placeholder' => 'Select Branch'], 'pluginOptions' => ['allowClear' => true, 'width' => '100%']]) ?>
             </div>
             <div class="col-md-3">
                 <?= $form->field($developer, 'mobile')->label('Mobile <span class="text-danger">*</span>', ['encode' => false])->textInput(['class' => 'form-control form-control-sm', 'maxlength' => 20, 'placeholder' => '10-digit mobile']) ?>
@@ -61,7 +58,7 @@ $isUpdate = $isUpdate ?? false;
                 <?= $form->field($developer, 'email_id')->label('Email')->input('email', ['class' => 'form-control form-control-sm', 'maxlength' => 255, 'placeholder' => 'name@example.com']) ?>
             </div>
             <div class="col-md-3">
-                <?= $form->field($developer, 'official_email_id')->label('Official Email')->input('email', ['class' => 'form-control form-control-sm', 'maxlength' => 50, 'placeholder' => 'name@themaestro.in']) ?>
+                <?= $form->field($developer, 'official_email_id')->label('Official Email')->input('email', ['class' => 'form-control form-control-sm', 'maxlength' => 50, 'placeholder' => 'name@greendivine.in']) ?>
             </div>
             <div class="col-md-3">
                 <?= $form->field($developer, 'qualification')->textInput(['class' => 'form-control form-control-sm', 'maxlength' => 255, 'placeholder' => 'e.g. B.E. Computer Science']) ?>
@@ -106,19 +103,13 @@ $isUpdate = $isUpdate ?? false;
 
             <!-- Employment Type, Department, Designation -->
             <div class="col-md-3">
-                <?= $form->field($developer, 'employment_type')->dropDownList(
-                    Developer::$employmentTypes,
-                    ['class' => 'form-select form-select-sm', 'prompt' => 'Select Employment Type']
-                ) ?>
+                <?= $form->field($developer, 'employment_type')->widget(\kartik\select2\Select2::class, ['data' => Developer::$employmentTypes, 'size' => \kartik\select2\Select2::SMALL, 'options' => ['placeholder' => 'Select Employment Type'], 'pluginOptions' => ['allowClear' => true, 'width' => '100%']]) ?>
             </div>
             <div class="col-md-3">
-                <?= $form->field($developer, 'department')->label('Department <span class="text-danger">*</span>', ['encode' => false])->dropDownList(
-                    Developer::$departments,
-                    ['class' => 'form-select form-select-sm', 'prompt' => 'Select Department']
-                ) ?>
+                <?= $form->field($developer, 'department')->label('Department <span class="text-danger">*</span>', ['encode' => false])->widget(\kartik\select2\Select2::class, ['data' => Developer::$departments, 'size' => \kartik\select2\Select2::SMALL, 'options' => ['placeholder' => 'Select Department'], 'pluginOptions' => ['allowClear' => true, 'width' => '100%']]) ?>
             </div>
             <div class="col-md-3">
-                <?= $form->field($developer, 'designation')->label('Designation <span class="text-danger">*</span>', ['encode' => false])->textInput(['class' => 'form-control form-control-sm', 'maxlength' => 255, 'placeholder' => 'e.g. Senior Developer']) ?>
+                <?= $form->field($developer, 'designation')->label('Designation <span class="text-danger">*</span>', ['encode' => false])->textInput(['class' => 'form-control form-control-sm', 'maxlength' => 255, 'placeholder' => 'e.g. Sales Executive']) ?>
             </div>
 
             <!-- Emp Code, Team, Date of Join -->
@@ -128,7 +119,7 @@ $isUpdate = $isUpdate ?? false;
                         ->textInput([
                             'class'       => 'form-control form-control-sm',
                             'maxlength'   => 20,
-                            'placeholder' => 'e.g. MAE245',
+                            'placeholder' => 'e.g. ' . \backend\models\Developer::formatEmpCode(1),
                         ])
                         ->hint($isUpdate ? false : 'Auto-generated — edit if you need a different code.') ?>
                 <?php if (!$isUpdate): ?>
@@ -139,10 +130,7 @@ $isUpdate = $isUpdate ?? false;
                 <?php endif; ?>
             </div>
             <div class="col-md-3">
-                <?= $form->field($developer, 'team')->label('Team <span class="text-danger">*</span>', ['encode' => false])->dropDownList(
-                    Developer::$teams,
-                    ['class' => 'form-select form-select-sm', 'prompt' => 'Select Team']
-                ) ?>
+                <?= $form->field($developer, 'team')->label('Team <span class="text-danger">*</span>', ['encode' => false])->widget(\kartik\select2\Select2::class, ['data' => Developer::$teams, 'size' => \kartik\select2\Select2::SMALL, 'options' => ['placeholder' => 'Select Team'], 'pluginOptions' => ['allowClear' => true, 'width' => '100%']]) ?>
             </div>
             <div class="col-md-3">
                 <?= $form->field($developer, 'doj')->label('Date of Join')->widget(DatePicker::class, [

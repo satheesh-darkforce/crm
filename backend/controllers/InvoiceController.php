@@ -1503,10 +1503,12 @@ class InvoiceController extends Controller
         // Match Yii1 Utility::get_invoice_number: proforma shares the same
         // numbering pool/prefix as tax invoice — no separate "PRO" prefix.
         // Prefix depends only on invoice_category and clientType.
+        // Configurable per installation: params['numbering.invoice'] (see config/params.php).
+        $p = (Yii::$app->params['numbering.invoice'] ?? []) + ['domestic' => 'MAE', 'international' => 'MAEINT', 'sales' => 'MAEMC'];
         if ($category === Invoice::CATEGORY_PRODUCT) {
-            return 'MAEMC';
+            return $p['sales'];
         }
-        return $clientType === ClientModel::TYPE_INTERNATIONAL ? 'MAEINT' : 'MAE';
+        return $clientType === ClientModel::TYPE_INTERNATIONAL ? $p['international'] : $p['domestic'];
     }
 
     /**

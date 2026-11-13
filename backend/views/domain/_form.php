@@ -92,7 +92,7 @@ $this->title = $isNew ? 'Add Domain' : 'Edit Domain: ' . $model->domain_name;
                 </div>
                 <div class="col-md-4">
                     <?= $form->field($model, 'hosting_server')->dropDownList(
-                        ['Maestro' => 'Maestro', 'Maestro Godaddy' => 'Maestro Godaddy', 'Client' => 'Client'],
+                        ['Company' => 'Company', 'Company Godaddy' => 'Company Godaddy', 'Client' => 'Client'],
                         ['prompt' => 'Select Hosting Server', 'class' => 'form-select form-select-sm']
                     ) ?>
                 </div>

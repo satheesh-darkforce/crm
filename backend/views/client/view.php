@@ -5,6 +5,7 @@
 /** @var array $totals — keys cur, last, all (all in seconds) */
 /** @var \backend\models\Domain[] $domains */
 /** @var \backend\models\Invoice[] $invoices */
+/** @var \backend\models\ClientQuotation[]|null $quotes  Green Divine mode only */
 
 use backend\models\ClientModel;
 use common\components\UserAccess;
@@ -20,7 +21,9 @@ $val = fn($v) => trim((string)$v) === '' ? '<span class="text-muted">—</span>'
 
 $payLabels = [0 => 'Unpaid', 1 => 'Partial', 2 => 'Paid'];
 $payTones  = [0 => 'danger', 1 => 'warning', 2 => 'success'];
-$invTypes  = [1 => ['Tax Invoice', 'accent'], 2 => ['Proforma', 'neutral'], 3 => ['Credit Note', 'warning']];
+// invoice_role: 1 = Tax invoice, 2 = Proforma (invoice_type is the GST place of supply, not the kind).
+$invTypes  = [1 => ['Tax Invoice', 'accent'], 2 => ['Proforma', 'neutral']];
+$simple    = \backend\components\Crm::simple() && isset($quotes); // Green Divine: quotations instead of hours / domains
 
 $can = [
     'update'      => UserAccess::checkAccess('client/update'),
@@ -29,8 +32,15 @@ $can = [
     'permissions' => ClientModel::portalEnabled() && $model->hasLogin() && UserAccess::checkAccess('client/access-permissions'),
     'delete'      => UserAccess::checkAccess('client/delete'),
     'invoice'     => UserAccess::checkAccess('invoice/create'),
+    'quote'       => UserAccess::checkAccess('client-quotation/create'),
 ];
 $granted = array_filter(explode(',', (string)$model->access_permissions));
+// Invoices and quotations: 20 per page, each with its own page parameter (AJAX via ajax-pager.js).
+$invPager = new \yii\data\Pagination(['totalCount' => count($invoices), 'pageSize' => 20, 'pageParam' => 'inv-page', 'pageSizeParam' => false]);
+$invRows  = array_slice($invoices, $invPager->getOffset(), $invPager->getLimit(), true);
+$quoteList = $quotes ?? [];
+$qPager   = new \yii\data\Pagination(['totalCount' => count($quoteList), 'pageSize' => 20, 'pageParam' => 'q-page', 'pageSizeParam' => false]);
+$qRows    = array_slice($quoteList, $qPager->getOffset(), $qPager->getLimit(), true);
 $curLabel  = date('M Y');
 $lastLabel = date('M Y', strtotime(date('Y-m-01') . ' -1 month'));
 ?>
@@ -94,7 +104,7 @@ $lastLabel = date('M Y', strtotime(date('Y-m-01') . ' -1 month'));
         </div>
         <div class="col-lg-6">
             <div class="card border-0 shadow-sm h-100">
-                <div class="card-header ui-section">Tax &amp; portal</div>
+                <div class="card-header ui-section"><?= ClientModel::portalEnabled() ? 'Tax &amp; portal' : 'Tax' ?></div>
                 <table class="table ui-detail">
                     <tr><th scope="row">Client Type</th><td><?= isset(\backend\models\ClientModel::typeOptions()[(int)$model->client_type]) ? Html::encode($model->getTypeName()) : '<span class="text-muted">Not set</span>' ?></td></tr>
                     <tr><th scope="row">GST Registration</th><td><?= $val($model->getRegistrationTypeName() === '—' ? '' : $model->getRegistrationTypeName()) ?></td></tr>
@@ -123,6 +133,51 @@ $lastLabel = date('M Y', strtotime(date('Y-m-01') . ' -1 month'));
         </div>
     </div>
 
+    <?php if ($simple):
+        $tax     = array_filter($invoices, fn($inv) => (int)$inv->invoice_role === 1 && (int)$inv->invoice_status !== 0);
+        $billed  = array_sum(array_map(fn($inv) => (float)$inv->net_total, $tax));
+        $paid    = array_sum(array_map(fn($inv) => (float)$inv->paid_amount, $tax));
+        $due     = array_sum(array_map(fn($inv) => $inv->getBalanceAmount(), $tax));
+        $openQ   = array_filter($quotes, fn($q) => in_array((int)$q->quote_status, [1, 2], true));
+        $openVal = array_sum(array_map(fn($q) => (float)($q->grand_total ?: $q->estimation_cost), $openQ));
+    ?>
+    <div class="gd-stats">
+        <div class="gd-stat"><span class="gd-stat-ic ic-blue"><i class="fas fa-file-signature"></i></span><span class="gd-stat-body"><span class="gd-stat-val"><?= count($quotes) ?> <small><?= count($openQ) ?> open</small></span><span class="gd-stat-lbl">Quotations · &#8377;<?= number_format($openVal, 0) ?> open</span></span></div>
+        <div class="gd-stat"><span class="gd-stat-ic ic-purple"><i class="fas fa-receipt"></i></span><span class="gd-stat-body"><span class="gd-stat-val">&#8377;<?= number_format($billed, 0) ?></span><span class="gd-stat-lbl">Invoiced · <?= count($tax) ?> bill<?= count($tax) === 1 ? '' : 's' ?></span></span></div>
+        <div class="gd-stat"><span class="gd-stat-ic ic-green"><i class="fas fa-circle-check"></i></span><span class="gd-stat-body"><span class="gd-stat-val">&#8377;<?= number_format($paid, 0) ?></span><span class="gd-stat-lbl">Received</span></span></div>
+        <div class="gd-stat"><span class="gd-stat-ic ic-orange"><i class="fas fa-hourglass-half"></i></span><span class="gd-stat-body"><span class="gd-stat-val <?= $due > 0 ? 'text-danger' : '' ?>">&#8377;<?= number_format($due, 0) ?></span><span class="gd-stat-lbl">To collect</span></span></div>
+    </div>
+
+    <!-- Quotations -->
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header ui-section">
+            <span>Quotations<?= $quotes ? ' (' . count($quotes) . ')' : '' ?></span>
+            <?php if ($can['quote']): ?>
+                <?= Html::a('<i class="fas fa-plus me-1"></i>New quotation', ['/client-quotation/create', 'id' => $model->id], ['class' => 'btn btn-primary btn-sm', 'encode' => false]) ?>
+            <?php endif; ?>
+        </div>
+        <div class="table-responsive">
+            <table class="table list-table ui-table stack mb-0">
+                <thead class="table-light"><tr><th style="width:40px">#</th><th>Quotation</th><th>Date</th><th class="text-end">Amount</th><th>Status</th></tr></thead>
+                <tbody>
+                <?php if (!$quotes): ?>
+                    <tr class="ui-empty-row"><td colspan="5" class="ui-empty-cell"><?= $this->render('@backend/views/_ui/_empty', ['icon' => 'file-signature', 'title' => 'No quotations yet', 'small' => true]) ?></td></tr>
+                <?php endif; ?>
+                <?php foreach ($qRows as $i => $q): [$pill, $tone] = $q->getQuoteStatusPill(); ?>
+                    <tr>
+                        <td class="cell-num muted"><?= $i + 1 ?></td>
+                        <td class="cell-title"><?= Html::a(Html::encode($q->project_name ?: $q->quote_no), ['/client-quotation/view', 'id' => $q->id], ['class' => 'text-reset text-decoration-none']) ?><div class="sub"><?= Html::encode($q->quote_no) ?></div></td>
+                        <td class="small nowrap" data-label="Date"><?= $q->quote_date ? date('d M Y', strtotime($q->quote_date)) : '—' ?></td>
+                        <td class="text-end nowrap" data-label="Amount">&#8377;<?= number_format((float)($q->grand_total ?: $q->estimation_cost), 2) ?></td>
+                        <td data-label="Status"><span class="ui-pill tone-<?= Html::encode($tone) ?>"><?= Html::encode($pill) ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?= $this->render('@backend/views/_ui/_pager', ['pagination' => $qPager, 'total' => count($quoteList), 'count' => count($qRows), 'noun' => 'quotations']) ?>
+    </div>
+    <?php else: ?>
     <!-- Working hours -->
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-header ui-section">
@@ -217,6 +272,8 @@ $lastLabel = date('M Y', strtotime(date('Y-m-01') . ' -1 month'));
         </div>
     </div>
 
+    <?php endif; /* simple: quotations | hours + domains */ ?>
+
     <!-- Invoices -->
     <div class="card border-0 shadow-sm">
         <div class="card-header ui-section">
@@ -245,10 +302,10 @@ $lastLabel = date('M Y', strtotime(date('Y-m-01') . ' -1 month'));
                         <?= $this->render('@backend/views/_ui/_empty', ['icon' => 'file-invoice', 'title' => 'No invoices yet', 'small' => true]) ?>
                     </td></tr>
                 <?php endif; ?>
-                <?php foreach ($invoices as $i => $inv): ?>
+                <?php foreach ($invRows as $i => $inv): ?>
                     <?php
                     $ps      = (int)$inv->payment_status;
-                    $type    = $invTypes[(int)$inv->invoice_type] ?? $invTypes[1];
+                    $type    = $invTypes[(int)$inv->invoice_role] ?? $invTypes[1];
                     $balance = $inv->getBalanceAmount();
                     ?>
                     <tr>
@@ -267,6 +324,7 @@ $lastLabel = date('M Y', strtotime(date('Y-m-01') . ' -1 month'));
                 </tbody>
             </table>
         </div>
+        <?= $this->render('@backend/views/_ui/_pager', ['pagination' => $invPager, 'total' => count($invoices), 'count' => count($invRows), 'noun' => 'invoices']) ?>
     </div>
 
     <?php if ($can['reset']): ?>

@@ -76,20 +76,10 @@ $fmtDuration = function(?string $inTime, ?string $outTime): string {
                     <div id="to-date-error" class="text-danger" style="font-size:.75rem;display:none">To date cannot be before From date.</div>
                 </div>
                 <div class="col-md-2">
-                    <select name="team" class="form-select form-select-sm">
-                        <option value="">Select Team</option>
-                        <?php foreach ($teams as $tv => $tl): ?>
-                            <option value="<?= $tv ?>" <?= (string)$teamF === (string)$tv ? 'selected' : '' ?>><?= Html::encode($tl) ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <?= \kartik\select2\Select2::widget(['name' => 'team', 'value' => (string) $teamF, 'data' => $teams, 'size' => \kartik\select2\Select2::SMALL, 'options' => ['placeholder' => 'Select Team'], 'pluginOptions' => ['allowClear' => true, 'width' => '100%']]) ?>
                 </div>
                 <div class="col-md-2">
-                    <select name="branch" class="form-select form-select-sm">
-                        <option value="">Select Branch</option>
-                        <?php foreach ($branches as $bv => $bl): ?>
-                            <option value="<?= $bv ?>" <?= (string)$branchF === (string)$bv ? 'selected' : '' ?>><?= Html::encode($bl) ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <?= \kartik\select2\Select2::widget(['name' => 'branch', 'value' => (string) $branchF, 'data' => $branches, 'size' => \kartik\select2\Select2::SMALL, 'options' => ['placeholder' => 'Select Branch'], 'pluginOptions' => ['allowClear' => true, 'width' => '100%']]) ?>
                 </div>
                 <div class="col-md-2">
                     <input type="text" name="in_ip"  class="form-control form-control-sm" placeholder="Check In IP"  value="<?= Html::encode($inIpF) ?>">
@@ -117,7 +107,7 @@ JS, \yii\web\View::POS_END); ?>
                 <thead class="table-light">
                     <tr>
                         <th style="width:40px">#</th>
-                        <th>Developer</th>
+                        <th>Employee</th>
                         <th>Date</th>
                         <th>In Time</th>
                         <th>Out Time</th>

@@ -10,9 +10,9 @@
 use yii\helpers\Url;
 
 // Absolute path so mpdf can embed the logo.
-$logoPath = Yii::getAlias('@webroot/images/logo.svg');
+$logoPath = \backend\components\Company::logoPath();
 if (!is_file($logoPath)) {
-    $logoPath = Yii::getAlias('@webroot/images/maestro-logo.png');
+    $logoPath = \backend\components\Company::logoPath();
 }
 // For inline browser preview, use a web URL (browsers can't load absolute filesystem paths).
 $logoSrc = $logoPath;
@@ -101,9 +101,9 @@ JS, \yii\web\View::POS_READY);
                 <?php if (is_file($logoPath)): ?>
                     <img src="<?= $logoSrc ?>" style="width: 150px; margin-bottom: 10px;"><br>
                 <?php endif; ?>
-                <b style="color: #1a3a5a; font-size: 12pt;">Maestro Technology Services Private Limited</b><br>
+                <b style="color: #1a3a5a; font-size: 12pt;"><?= \yii\helpers\Html::encode(\backend\components\Company::get('legalName')) ?></b><br>
                 <div style="margin-top: 5px; font-size: 9pt; line-height: 1.4; color: #555;">
-                    Site No. 4, Maestro Building Garden, Sathy Road, Kaapi Kadai, Vilankurichi, Coimbatore – 641035<br>
+                    <?= \yii\helpers\Html::encode(\backend\components\Company::get('address')) ?><br>
                     <b>GST:</b> 33AAHCM8302P1Z6 | <b>Ph:</b> 7448517888
                 </div>
             </td>
@@ -279,7 +279,7 @@ JS, \yii\web\View::POS_READY);
         <tr>
             <th style="width:28%">Received By</th>
             <th style="width:28%">Delivered By</th>
-            <th style="width:44%">For, Maestro Technology Services Pvt Ltd</th>
+            <th style="width:44%">For, <?= \yii\helpers\Html::encode(\backend\components\Company::get('legalName')) ?></th>
         </tr>
         <tr>
             <td>

@@ -56,9 +56,7 @@ $durationOptions = [
             </div>
 
             <div class="col-md-6">
-                <?= $form->field($model, 'duration')->label('Duration Per Permission (in hours) <span class="text-danger">*</span>', ['encode' => false])->dropDownList($durationOptions, [
-                    'class' => 'form-select form-select-sm',
-                ]) ?>
+                <?= $form->field($model, 'duration')->label('Duration Per Permission (in hours) <span class="text-danger">*</span>', ['encode' => false])->widget(\kartik\select2\Select2::class, ['data' => $durationOptions, 'size' => \kartik\select2\Select2::SMALL, 'pluginOptions' => ['width' => '100%']]) ?>
             </div>
 
             <div class="col-md-6">

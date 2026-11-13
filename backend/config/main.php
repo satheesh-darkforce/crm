@@ -14,6 +14,8 @@ return [
     'bootstrap' => ['log'],
     'modules' => [],
     'components' => [
+        // ?v=<mtime> on every asset URL so browsers pick up CSS / JS changes straight away.
+        'assetManager' => ['appendTimestamp' => true],
         'request' => [
             'csrfParam' => '_csrf-backend',
             'baseUrl'   => '/erp/maestro_erp_yii2',

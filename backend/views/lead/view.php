@@ -45,10 +45,9 @@ $row = function (string $label, $value, bool $raw = false) {
                 <?= Html::a('<i class="fab fa-whatsapp me-1"></i>WhatsApp', 'https://wa.me/' . $dial, ['class' => 'btn btn-outline-success btn-sm', 'encode' => false, 'target' => '_blank', 'rel' => 'noopener']) ?>
             <?php endif; ?>
             <?php if (count($options) > 1): ?>
-                <?= Html::dropDownList('lead_status', $ls, $options, [
-                    'class' => 'form-select form-select-sm js-lead-status', 'style' => 'width:auto;min-width:180px',
-                    'data-id' => $lead->id, 'data-prev' => $ls, 'aria-label' => 'Lead status',
-                ]) ?>
+                <div style="min-width:200px"><?= \kartik\select2\Select2::widget(['name' => 'lead_status', 'value' => $ls, 'data' => $options, 'size' => \kartik\select2\Select2::SMALL,
+                    'options' => ['class' => 'js-lead-status', 'id' => 'lead-status-select', 'data-id' => $lead->id, 'data-prev' => $ls, 'aria-label' => 'Lead status'],
+                    'pluginOptions' => ['width' => '100%', 'minimumResultsForSearch' => -1]]) ?></div>
             <?php else: ?>
                 <span class="ui-pill lg tone-<?= Lead::leadStatusTone($ls) ?>"><?= Html::encode($lead->getLeadStatusLabel()) ?></span>
             <?php endif; ?>

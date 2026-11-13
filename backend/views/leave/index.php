@@ -53,18 +53,14 @@ $canDecide = UserAccess::checkAccess('leave/decide');
                     <?= Select2::widget([
                         'name'          => 'developer_id',
                         'value'         => Yii::$app->request->get('developer_id'),
-                        'data'          => ['' => 'All Developers'] + ArrayHelper::map($developers, 'id', 'developer_name'),
-                        'options'       => ['placeholder' => 'All Developers'],
+                        'data'          => ['' => 'All Employees'] + ArrayHelper::map($developers, 'id', 'developer_name'),
+                        'options'       => ['placeholder' => 'All Employees'],
                         'pluginOptions' => ['allowClear' => true, 'width' => '100%'],
                     ]) ?>
                 </div>
                 <div class="col-md-2">
-                    <select name="request_status" class="form-select form-select-sm">
-                        <option value="">All Statuses</option>
-                        <?php foreach ($statusLabel as $v => $l): ?>
-                            <option value="<?= $v ?>" <?= Yii::$app->request->get('request_status') === (string)$v ? 'selected' : '' ?>><?= $l ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <?= \kartik\select2\Select2::widget(['name' => 'request_status', 'value' => (string) Yii::$app->request->get('request_status'), 'data' => $statusLabel,
+                        'size' => \kartik\select2\Select2::SMALL, 'options' => ['placeholder' => 'All Statuses'], 'pluginOptions' => ['allowClear' => true, 'width' => '100%', 'minimumResultsForSearch' => -1]]) ?>
                 </div>
                 <div class="col-md-2">
                     <?= DatePicker::widget([
@@ -104,7 +100,7 @@ $canDecide = UserAccess::checkAccess('leave/decide');
                 <thead class="table-light">
                     <tr>
                         <th style="width:40px">#</th>
-                        <th>Developer</th>
+                        <th>Employee</th>
                         <th>Leave Type</th>
                         <th>From</th>
                         <th>To</th>

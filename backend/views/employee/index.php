@@ -93,7 +93,7 @@ $hasFilter = $req->get('name') || $req->get('designation') || $req->get('email')
                     <td class="text-muted small"><?= Html::encode($person['email'] ?: '—') ?></td>
                     <td>
                         <?php if ($isDev): ?>
-                            <span class="badge bg-success-subtle text-success border" style="font-size:.72rem">Developer</span>
+                            <span class="badge bg-success-subtle text-success border" style="font-size:.72rem">Employee</span>
                         <?php else: ?>
                             <span class="badge bg-primary-subtle text-primary border" style="font-size:.72rem">Employee</span>
                         <?php endif; ?>

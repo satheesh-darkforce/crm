@@ -79,7 +79,7 @@ $tile = fn(string $name, float $v) => '<div class="ui-tile' . ($name === 'Total'
         <div class="ui-actions">
             <form method="get" action="<?= Url::to(['monthly-report']) ?>" class="d-flex gap-1 js-month-form">
                 <label class="visually-hidden" for="gst-month">Month</label>
-                <?= Html::dropDownList('ym', $year . '-' . $month, $monthOptions, ['id' => 'gst-month', 'class' => 'form-select form-select-sm', 'style' => 'min-width:160px']) ?>
+                <div style="min-width:180px"><?= \kartik\select2\Select2::widget(['name' => 'ym', 'value' => $year . '-' . $month, 'data' => $monthOptions, 'size' => \kartik\select2\Select2::SMALL, 'options' => ['id' => 'gst-month'], 'pluginOptions' => ['width' => '100%']]) ?></div>
                 <input type="hidden" name="year" value="<?= $year ?>"><input type="hidden" name="month" value="<?= $month ?>">
             </form>
             <div class="btn-group btn-group-sm" role="group" aria-label="Change month">

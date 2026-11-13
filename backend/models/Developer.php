@@ -83,12 +83,13 @@ class Developer extends ActiveRecord
     }
 
     // Branch, Department, Team lookup maps — matches Yii1 hard-coded values
-    public static array $branches   = [1 => 'Coimbatore', 2 => 'Chennai'];
+    // Green Divine (Bengaluru). Keys are stored on developer rows — add new keys, do not renumber.
+    public static array $branches   = [1 => 'Bengaluru (Koramangala)'];
     public static array $departments = [
-        1 => 'Designing', 2 => 'Development', 3 => 'Admin', 4 => 'Accounts',
-        5 => 'HR', 6 => 'Sales', 7 => 'IOT', 8 => 'Testing',
+        1 => 'Sales', 2 => 'Site Survey & Design', 3 => 'Admin', 4 => 'Accounts',
+        5 => 'HR', 6 => 'Installation', 7 => 'Operations & Stores', 8 => 'Customer Support',
     ];
-    public static array $teams       = [1 => 'Team A', 2 => 'Team B'];
+    public static array $teams       = [1 => 'Office', 2 => 'Field / Installation'];
     public static array $employmentTypes = [1 => 'Trainee', 2 => 'Employed'];
 
     // Emp code series — codes look like MAE001 … MAE244 (prefix + zero-padded number).
@@ -105,9 +106,16 @@ class Developer extends ActiveRecord
      * duplicate can't hand back a used code. Uniqueness is enforced here and by
      * the `unique` rule on emp_code — the column has no DB unique index.
      */
+    /** Employee code prefix: params['numbering.employee'], else EMP_CODE_PREFIX. */
+    public static function empCodePrefix(): string
+    {
+        $p = \Yii::$app->params['numbering.employee'] ?? '';
+        return is_string($p) && preg_match('/^[A-Za-z]{1,10}$/', $p) ? $p : self::EMP_CODE_PREFIX;
+    }
+
     public static function nextEmpCode(): string
     {
-        $prefix = self::EMP_CODE_PREFIX;
+        $prefix = self::empCodePrefix();
         $start  = strlen($prefix) + 1;
 
         $max = static::find()
@@ -126,7 +134,7 @@ class Developer extends ActiveRecord
     /** Format a series number as a code: 245 → "MAE245", 7 → "MAE007". */
     public static function formatEmpCode(int $n): string
     {
-        return self::EMP_CODE_PREFIX . str_pad((string)$n, self::EMP_CODE_DIGITS, '0', STR_PAD_LEFT);
+        return self::empCodePrefix() . str_pad((string)$n, self::EMP_CODE_DIGITS, '0', STR_PAD_LEFT);
     }
 
     public function rules(): array

@@ -191,7 +191,7 @@ class AccountingUtility
         $clientLedgerId = $clientLedger->id;
         $staticLedgers  = self::getStaticLedgerIds();
 
-        $itSale  = $staticLedgers['IT Sale'] ?? null;
+        $itSale  = $staticLedgers['Sales'] ?? $staticLedgers['IT Sale'] ?? null; // sales ledger (older databases call it "IT Sale")
         $outIgst = $staticLedgers['OUT IGST'] ?? null;
         $outCgst = $staticLedgers['OUT CGST'] ?? null;
         $outSgst = $staticLedgers['OUT SGST'] ?? null;

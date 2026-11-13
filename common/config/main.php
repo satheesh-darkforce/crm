@@ -13,6 +13,11 @@ return [
     ],
     'vendorPath' => dirname(dirname(__DIR__)) . '/vendor',
     'components' => [
+        // Connection charset (merged with the dsn / credentials in main-local.php).
+        // utf8mb4 keeps ₹, Kannada / Tamil / Hindi names and emoji intact.
+        'db' => [
+            'charset' => 'utf8mb4',
+        ],
         'cache' => [
             'class' => \yii\caching\FileCache::class,
         ],

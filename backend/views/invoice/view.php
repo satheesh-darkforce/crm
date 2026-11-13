@@ -45,7 +45,7 @@ body { margin: 0; background: #f7f7f7; }
     gap: 6px;
     flex-wrap: wrap;
 }
-/* Force browsers to keep background images (the bg.jpg letterhead) when printing.
+/* Force browsers to keep background images (the letterhead) when printing.
    Chrome/Edge still respect the user's "Background graphics" toggle, but with this
    hint it defaults to ON for our document. */
 html, body, #invoice_div, #printdiv {

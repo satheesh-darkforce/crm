@@ -26,7 +26,7 @@ $isPending = in_array($model->request_status, [
     <div class="row">
         <div class="col-md-6">
             <?= DetailView::widget(['model' => $model, 'attributes' => [
-                ['label' => 'Developer', 'value' => $model->developer->developer_name ?? '-'],
+                ['label' => 'Employee', 'value' => $model->developer->developer_name ?? '-'],
                 ['attribute' => 'leave_type', 'value' => $model->getLeaveTypeName()],
                 'from_date', 'to_date',
                 ['attribute' => 'no_of_days', 'value' => $model->getDaysLabel()],

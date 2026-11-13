@@ -70,7 +70,7 @@
 
     function revert($select) {
         if ($select && $select.length) {
-            $select.val($select.data('prev')).removeClass('is-busy').prop('disabled', false);
+            $select.val($select.data('prev')).trigger('change.select2').removeClass('is-busy').prop('disabled', false);
         }
     }
 

@@ -14,7 +14,7 @@ $this->title = 'Attendance #' . $model->id;
     </div>
     <?= DetailView::widget(['model' => $model, 'attributes' => [
         'id',
-        ['label' => 'Developer', 'value' => $model->developer->developer_name ?? '-'],
+        ['label' => 'Employee', 'value' => $model->developer->developer_name ?? '-'],
         'in_time', 'in_ip', 'out_time', 'out_ip',
         'in_latitude', 'in_longitude', 'out_latitude', 'out_longitude',
     ]]) ?>

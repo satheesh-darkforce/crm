@@ -281,3 +281,27 @@ The look follows the old Green Divine admin (`__admin/greendivine/template`): wh
 * **Layout:** brand from `params['app.name']`; sidebar sections from `params['sidebar.sections']`; breadcrumbs from `$this->params['breadcrumbs']` or Home / module / page title. A page `<h1>` in `.ui-head` with the same text as the page title moves into the title strip.
 * **Dashboard:** in Green Divine mode `site/index` shows sales figures (`backend\components\GdDashboard`, `views/site/index-gd.php`) for Today / 1 Week / 1 Month / 3 Months / 6 Months / All Time: new leads, follow-ups due (+ overdue), hot leads, conversions, open and won quotation value, invoiced, money to collect; follow-ups due with call buttons, leads by source, recent quotations, newest leads. Lead figures follow lead access; quotation / invoice blocks show only with access. The IT dashboard (domains, AMC, tasks) returns when `crm.simple` is off.
 * Login page: `login.companyName` Green Divine, accent #7366FF.
+
+### 9.1 Audit (2026-11-12)
+
+Automated sweep of all 66 pages reachable from the menu (desktop + phone) plus an interactive check that opened every Select2 (69), date picker (29) and time picker (4) on 41 form / filter pages. Result: no PHP or JS errors, no sideways scroll on phones, no native date/time inputs, no plain dropdowns over 5 options.
+
+* Converted to Select2: line-item **unit** (searchable) and **GST** (quotes + invoices), product unit and GST, employee branch / employment type / department / team, leave status filters, attendance team / branch / year / month, leave-settings duration, GST month report, lead page status.
+* Green Divine mode: client list and client page show sales (section above in `HIDDEN_MODULES.md`), quotation list shows quote status and ₹ amount, live attendance and employee page drop task / timesheet parts, no GST popup for B2C buyers. "Developer" labels read "Employee".
+* Fixed: client page invoice *Type* read the GST place-of-supply field (always showed Tax Invoice); removed a Font Awesome 4 link that 404'd on every page; asset URLs now carry `?v=<mtime>` (`assetManager.appendTimestamp`) so browsers load updated CSS / JS.
+* **Document prefixes are configurable** in `backend/config/params.php`: `numbering.quote`, `numbering.invoice`, `numbering.employee`. They still hold the previous company's values (QIT, MAE, MAEINT, MAEMC) — set Green Divine's before the first real quotation / invoice.
+
+
+### 9.2 Pagination (2026-11-12)
+
+* **AJAX paging for every list:** `backend/web/js/ajax-pager.js` (loaded by the layout) handles pager and column-sort links inside `#main-content`: it fetches the page and swaps only that list's box (`[data-ajax-list]`, else the `.card` / `.grid-view` holding the table), updates the address (`pushState`, so refresh, bookmarks and Back / Forward work) and falls back to a normal load on any error. Lists inside a Pjax container (quotations, attendance) keep their own Pjax. Add `data-no-ajax` to a link to opt out.
+* Client page: invoices and quotations are paged (20 each, `inv-page` / `q-page`); the tiles above still total everything.
+* Tested on all 28 list pages: page 2 over AJAX with new rows, URL + active page update, Back, row menus after the swap, `page=99999`, filters kept in pager links, sorting.
+
+### 9.3 Green Divine data reset (2026-11-12)
+
+* All data of the previous company was removed (128 tables; backup outside the repo in `../db_backup_before_greendivine_wipe/`, one gzip file per table + `schema_only.sql`, plus the old images and uploads). Kept: migrations, currencies, shift time, RBAC items, payroll allowance types, ledger categories and the 15 system ledgers (balances zeroed; the sales ledger is now "Sales", `AccountingUtility` also accepts the old "IT Sale").
+* Branding: `backend/web/images/logo.png` (Green Divine logo from greendivine.in), `letterhead.png` (invoice background), `favicon.png`; company details in `params['company']` read through `backend\components\Company` by the quotation PDF, invoice, payslip and challan templates. GSTIN and e-mail are empty until filled in.
+* Numbering: invoices `GD/26-27/001` (export `GDEX`), quotations `GDQ/26-27/001`, employee codes `GD001`.
+* All tables converted to **utf8mb4** (`m261112_000001_tables_utf8mb4`; ₹ and Indian-language text were being lost in latin1) and the connection charset is set in `common/config/main.php`.
+* Demo data: 24 catalogue items, 8 clients, 14 leads with follow-ups, 8 quotations (draft / sent / accepted / invoiced), 3 invoices (paid, 70% advance, unpaid), 6 employees, fixed-date Karnataka holidays 2026–27, bank placeholder. People and contacts are fictitious (`@example.com`). GST rates / HSN codes on the catalogue are samples — check them.

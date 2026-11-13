@@ -35,7 +35,7 @@ body {
 }
 .no-print { text-align: right; max-width: 793px; margin: 8px auto; }
 .no-print button { padding: 6px 18px; margin-left: 6px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
-/* Force browsers to keep the bg.jpg letterhead when printing. */
+/* Force browsers to keep the letterhead when printing. */
 html, body, #invoice_div, #printdiv {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;

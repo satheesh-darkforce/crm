@@ -590,9 +590,9 @@ class PayslipUploadController extends Controller
 
         // Logo path: absolute file path for PDF, relative URL for browser view
         if ($isPdf) {
-            $logoPath = Yii::getAlias('@backend/web/images/logo.svg');
+            $logoPath = \backend\components\Company::logoPath();
         } else {
-            $logoPath = Yii::$app->request->baseUrl . '/images/logo.svg';
+            $logoPath = \backend\components\Company::logoUrl();
         }
 
         $netPayWords = ucfirst(Utility::convertNumberToWords($netPay));
@@ -615,13 +615,13 @@ class PayslipUploadController extends Controller
         <table border="0" align="center" cellpadding="0" cellspacing="0" style="width:700px;">
             <tr>
                 <th colspan="5">
-                    <center><img src="' . $logoPath . '" style="width: 180px; padding: 7px 0px;"></center>
+                    <center><img src="' . $logoPath . '" style="height: 60px; padding: 7px 0px;"></center>
                 </th>
             </tr>
             <tr>
                 <th colspan="5">
-                    <center>Maestro Technology Services Pvt.ltd,</center>
-                    <center>Site No. 4, Maestro Building, Sp Garden, Sathy road, Kaapi Kadai,<br>Vilankurichi, Coimbatore - 641035</center>
+                    <center>' . \yii\helpers\Html::encode(\backend\components\Company::get('legalName')) . '</center>
+                    <center>' . \yii\helpers\Html::encode(\backend\components\Company::get('address')) . '</center>
                 </th>
             </tr>
             <tr><th colspan="5"><center>Pay Slip - ' . $monthData . '</center></th></tr>

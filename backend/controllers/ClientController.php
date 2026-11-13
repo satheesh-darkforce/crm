@@ -3,6 +3,7 @@
 namespace backend\controllers;
 
 use backend\assets\ClientAsset;
+use backend\components\Crm;
 use backend\models\AccLedger;
 use backend\models\ClientModel;
 use backend\models\Invoice;
@@ -57,6 +58,34 @@ class ClientController extends Controller
             $params[':ctype'] = (int)$filters['client_type'];
         }
 
+        // Green Divine mode: sales figures per client (quotations, invoiced, to collect),
+        // most recent quotation / invoice first — no timesheet columns.
+        if (Crm::simple()) {
+            $rows = Yii::$app->db->createCommand("
+                SELECT c.id, c.user_id, c.client_name, c.company_name,
+                       c.phone, c.email_id, c.gst_no, c.logo, c.client_type, c.status,
+                       COALESCE(q.n, 0) AS quote_count, COALESCE(q.open_n, 0) AS open_quotes,
+                       COALESCE(i.billed, 0) AS billed, COALESCE(i.pending, 0) AS pending,
+                       NULLIF(GREATEST(COALESCE(q.last_q, '1000-01-01'), COALESCE(i.last_i, '1000-01-01')), '1000-01-01') AS last_activity
+                FROM client c
+                LEFT JOIN (
+                    SELECT client_id, COUNT(*) AS n, SUM(quote_status IN (1, 2)) AS open_n, MAX(DATE(quote_date)) AS last_q
+                    FROM client_quotation WHERE status = 1 GROUP BY client_id
+                ) q ON q.client_id = c.id
+                LEFT JOIN (
+                    SELECT client_id, SUM(net_total) AS billed,
+                           SUM(GREATEST(COALESCE(net_total, 0) - COALESCE(tds_amount, 0) - COALESCE(paid_amount, 0), 0)) AS pending,
+                           MAX(DATE(invoice_date)) AS last_i
+                    FROM invoice WHERE status = 1 AND invoice_role = 1 AND invoice_status <> 0 GROUP BY client_id
+                ) i ON i.client_id = c.id
+                WHERE $where
+                ORDER BY last_activity IS NULL, last_activity DESC, c.id DESC
+            ", $params)->queryAll();
+
+            $dataProvider = new ArrayDataProvider(['allModels' => $rows, 'pagination' => ['pageSize' => 20]]);
+            return $this->render('index', compact('dataProvider', 'filters'));
+        }
+
         // Yii1 parity: work_report joined on wr.client_id (NOT via project), clients
         // with the most recent work first. total_time is stored in SECONDS.
         // Aggregating work_report once per client in a derived table (with date
@@ -97,6 +126,17 @@ class ClientController extends Controller
     public function actionView(int $id): string
     {
         $model     = $this->findModel($id);
+
+        // Green Divine mode: quotations + invoices instead of timesheets and domains.
+        if (Crm::simple()) {
+            $invoices = Invoice::find()->where(['client_id' => $id, 'status' => 1])->orderBy(['id' => SORT_DESC])->all();
+            $quotes   = \backend\models\ClientQuotation::find()->where(['client_id' => $id, 'status' => 1])->orderBy(['id' => SORT_DESC])->all();
+            $workProvider = new ArrayDataProvider(['allModels' => []]);
+            $totals  = ['cur' => 0, 'last' => 0, 'all' => 0];
+            $domains = [];
+            return $this->render('view', compact('model', 'workProvider', 'totals', 'domains', 'invoices', 'quotes'));
+        }
+
         $curMonth  = date('Y-m');
         $lastMonth = date('Y-m', strtotime('-1 month'));
 

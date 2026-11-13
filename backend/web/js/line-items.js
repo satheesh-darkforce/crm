@@ -57,14 +57,31 @@
             if (!p) { return; }
             $row.find('.js-li-desc').val(p.name);
             $row.find('.js-li-hsn').val(p.hsn || '');
-            if (p.unit) { $row.find('.js-li-unit').val(p.unit); }
+            if (p.unit) { $row.find('.js-li-unit').val(p.unit).trigger('change.select2'); }
             $row.find('.js-li-price').val(p.price === null ? '' : p.price);
-            if (p.gst_rate !== null) { $row.find('.js-li-gst').val(String(p.gst_rate)); }
+            if (p.gst_rate !== null) { $row.find('.js-li-gst').val(String(p.gst_rate)).trigger('change.select2'); }
             var $qty = $row.find('.js-li-qty');
             if (!$qty.val()) { $qty.val(1); }
             stepFor($row, $ed);
             recalc($ed);
             (p.price === null ? $row.find('.js-li-price') : $qty).trigger('focus').trigger('select');
+        });
+    }
+
+    // Unit (searchable, 28 units) and GST rate as Select2, same look as every other dropdown.
+    function initPickers($row) {
+        if (!$.fn.select2) { return; }
+        $row.find('.js-li-unit, .js-li-gst').each(function () {
+            var $s = $(this);
+            if ($s.data('select2')) { return; }
+            var isUnit = $s.hasClass('js-li-unit');
+            $s.select2({
+                theme: 'krajee-bs5',
+                width: '100%',
+                dropdownAutoWidth: true,
+                placeholder: isUnit ? 'Unit' : 'GST',
+                minimumResultsForSearch: isUnit ? 6 : Infinity
+            });
         });
     }
 
@@ -125,6 +142,7 @@
         var html = $ed.find('template[data-line-template]').html().replace(/\[999999\]/g, '[' + idx + ']');
         var $row = $(html).appendTo($ed.find('[data-lines]'));
         initProduct($row, $ed);
+        initPickers($row);
         recalc($ed);
         if (focus && $.fn.select2) { $row.find('.js-li-product').select2('open'); }
         return $row;
@@ -134,7 +152,7 @@
         if ($ed.data('li-ready')) { return; }
         $ed.data('li-ready', true);
         $ed.attr('data-next', $ed.find('[data-line]').length);
-        $ed.find('[data-line]').each(function () { initProduct($(this), $ed); stepFor($(this), $ed); });
+        $ed.find('[data-line]').each(function () { initProduct($(this), $ed); initPickers($(this)); stepFor($(this), $ed); });
         $ed.on('input change', '.js-li-qty, .js-li-price, .js-li-disc, .js-li-gst', function () { recalc($ed); });
         $ed.on('change', '.js-li-unit', function () { stepFor($(this).closest('[data-line]'), $ed); recalc($ed); });
         $ed.on('click', '.js-li-add', function () { addRow($ed, true); });

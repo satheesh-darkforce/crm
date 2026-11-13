@@ -83,7 +83,7 @@ $total      = $dataProvider->getTotalCount();
                 <thead class="table-light">
                     <tr>
                         <th style="width:40px">#</th>
-                        <th>Developer</th>
+                        <th>Employee</th>
                         <th>Designation</th>
                         <th>Department</th>
                         <th>Emp Code</th>
@@ -210,7 +210,7 @@ $total      = $dataProvider->getTotalCount();
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-2">Developer: <strong id="resetName"></strong></p>
+                    <p class="text-muted small mb-2">Employee: <strong id="resetName"></strong></p>
                     <input type="password" name="new_password" class="form-control form-control-sm"
                            placeholder="New password" required minlength="6" autocomplete="new-password">
                 </div>
@@ -243,7 +243,7 @@ document.getElementById('resetModal')?.addEventListener('show.bs.modal', functio
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-2">Developer: <strong id="empCodeName"></strong></p>
+                    <p class="text-muted small mb-2">Employee: <strong id="empCodeName"></strong></p>
                     <label class="form-label small">Emp Code <span class="text-danger">*</span></label>
                     <input type="text" name="emp_code" id="empCodeInput"
                            class="form-control form-control-sm" maxlength="20" required

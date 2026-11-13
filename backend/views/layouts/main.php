@@ -137,7 +137,6 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
     <link rel="shortcut icon" href="<?= Yii::$app->request->baseUrl ?>/images/favicon.png">
     <?php $this->head() ?>
     <link rel="stylesheet" href="<?= Yii::$app->request->baseUrl ?>/css/sweetalert2/sweetalert2.min.css">
-    <link rel="stylesheet" href="<?= Yii::$app->request->baseUrl ?>/css/font-awesome/css/font-awesome.min.css">
     <!-- Font Awesome 6 (for modules ported from delivery: fas/fa-solid classes, fa-magnifying-glass, etc.) -->
     <link rel="stylesheet" href="<?= Yii::$app->request->baseUrl ?>/css/all.min.css">
     <script src="<?= Yii::$app->request->baseUrl ?>/js/sweetalert2/sweetalert2.all.min.js"></script>
@@ -179,7 +178,7 @@ $navAria   = fn(string $id): string => $id === $activeNav ? 'true' : 'false';
 <nav id="sidebar">
     <div class="brand">
         <a href="<?= \yii\helpers\Url::to(['/site/index']) ?>" class="d-flex align-items-center gap-2 text-decoration-none">
-            <span class="brand-mark"><i class="fas fa-leaf"></i></span>
+            <img class="brand-logo" src="<?= Html::encode(\backend\components\Company::logoUrl()) ?>" alt="" width="42" height="33">
             <span class="brand-name"><?= Html::encode($appName) ?></span>
         </a>
         <button type="button" class="sidebar-close" id="sidebar-close" aria-label="Close menu">&times;</button>
@@ -1299,7 +1298,7 @@ $this->registerJs(<<<'JS'
         Swal.fire({
             icon: 'question',
             title: 'Log out?',
-            text: 'You will be signed out of Maestro ERP.',
+            text: 'You will be signed out.',
             showCancelButton: true,
             confirmButtonColor: '#d33',
             confirmButtonText: 'Yes, log out',
@@ -1505,6 +1504,9 @@ JS, \yii\web\View::POS_READY);
 ?>
 
 <?php $this->endBody() ?>
+<?php $ajaxPager = Yii::getAlias("@webroot/js/ajax-pager.js"); ?>
+<!-- AJAX pagination + sorting for every list (web/js/ajax-pager.js) -->
+<script src="<?= Yii::$app->request->baseUrl ?>/js/ajax-pager.js?v=<?= is_file($ajaxPager) ? filemtime($ajaxPager) : 1 ?>"></script>
 </body>
 </html>
 <?php $this->endPage();

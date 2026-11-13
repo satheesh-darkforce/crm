@@ -14,6 +14,8 @@ $this->title = 'Clients';
 // work_report.total_time is stored in SECONDS — render as HH:MM (Yii1 Utility::convertSecondsToHours()).
 $fmt = fn(int $secs): string => $secs > 0 ? sprintf('%02d:%02d', intdiv($secs, 3600), intdiv($secs % 3600, 60)) : '—';
 
+$simple     = \backend\components\Crm::simple(); // Green Divine: sales columns instead of timesheet hours
+$inr        = fn($v): string => (float)$v > 0 ? '&#8377;' . number_format((float)$v, 0) : '<span class="muted">—</span>';
 $typeLabels = ClientModel::typeOptions();
 $typeTones  = [ClientModel::TYPE_INTERSTATE => 'accent', ClientModel::TYPE_INTRASTATE => 'success', ClientModel::TYPE_INTERNATIONAL => 'warning'];
 
@@ -39,7 +41,7 @@ $can = [
     <div class="ui-head">
         <div>
             <h1>Clients</h1>
-            <div class="ui-sub"><?= number_format($total) ?> active client<?= $total == 1 ? '' : 's' ?><?= $hasFilters ? ' matching your search' : '' ?> · most recent work first</div>
+            <div class="ui-sub"><?= number_format($total) ?> active client<?= $total == 1 ? '' : 's' ?><?= $hasFilters ? ' matching your search' : '' ?><?= $simple ? ' · latest quotation or invoice first' : ' · most recent work first' ?></div>
         </div>
         <div class="ui-actions">
             <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#client-search"
@@ -90,9 +92,16 @@ $can = [
                     <th>Client</th>
                     <th>Contact</th>
                     <th>Type</th>
+                    <?php if ($simple): ?>
+                    <th class="text-center">Quotations</th>
+                    <th class="text-end">Invoiced</th>
+                    <th class="text-end">To collect</th>
+                    <th class="text-center">Last activity</th>
+                    <?php else: ?>
                     <th class="text-center">Last Work</th>
                     <th class="text-center" title="Hours logged this month"><?= date('M') ?> Hrs</th>
                     <th class="text-center" title="Hours logged last month"><?= date('M', strtotime(date('Y-m-01') . ' -1 month')) ?> Hrs</th>
+                    <?php endif; ?>
                     <th class="text-end" style="width:56px"><span class="visually-hidden">Actions</span></th>
                 </tr>
                 </thead>
@@ -106,7 +115,7 @@ $can = [
                             ]) ?>
                         <?php else: ?>
                             <?= $this->render('@backend/views/_ui/_empty', [
-                                'icon' => 'building', 'title' => 'No clients yet', 'text' => 'Clients you add get a portal login and appear here.',
+                                'icon' => 'building', 'title' => 'No clients yet', 'text' => $simple ? 'Add a client, or convert a lead into a client.' : 'Clients you add get a portal login and appear here.',
                                 'action' => $can['create'] ? Html::a('<i class="fas fa-plus me-1"></i>Add Client', ['create'], ['class' => 'btn btn-primary btn-sm', 'encode' => false]) : null,
                             ]) ?>
                         <?php endif; ?>
@@ -116,8 +125,8 @@ $can = [
                     <?php
                     $type     = (int)($row['client_type'] ?? 0);
                     $name     = (string)($row['client_name'] ?? '');
-                    $curSecs  = (int)$row['cur_month_secs'];
-                    $lastSecs = (int)$row['last_month_secs'];
+                    $curSecs  = (int)($row['cur_month_secs'] ?? 0);
+                    $lastSecs = (int)($row['last_month_secs'] ?? 0);
                     ?>
                     <tr>
                         <td class="cell-num muted"><?= $offset + $i + 1 ?></td>
@@ -142,11 +151,22 @@ $can = [
                                 <span class="ui-pill plain" title="Not set — edit the client to choose a type">Not set</span>
                             <?php endif; ?>
                         </td>
+                        <?php if ($simple): ?>
+                        <td class="text-center nowrap" data-label="Quotations">
+                            <?php if ((int)$row['quote_count'] > 0): ?>
+                                <?= (int)$row['quote_count'] ?><?php if ((int)$row['open_quotes'] > 0): ?> <span class="ui-pill plain tone-accent ms-1" title="Draft or sent"><?= (int)$row['open_quotes'] ?> open</span><?php endif; ?>
+                            <?php else: ?><span class="muted">—</span><?php endif; ?>
+                        </td>
+                        <td class="text-end nowrap" data-label="Invoiced"><?= $inr($row['billed']) ?></td>
+                        <td class="text-end nowrap <?= (float)$row['pending'] > 0 ? 'text-danger fw-semibold' : '' ?>" data-label="To collect"><?= $inr($row['pending']) ?></td>
+                        <td class="text-center small nowrap" data-label="Last activity"><?= $row['last_activity'] ? date('d M Y', strtotime($row['last_activity'])) : '<span class="muted">—</span>' ?></td>
+                        <?php else: ?>
                         <td class="text-center small nowrap" data-label="Last Work">
                             <?= $row['last_work_date'] ? date('d M Y', strtotime($row['last_work_date'])) : '<span class="muted">—</span>' ?>
                         </td>
                         <td class="text-center nowrap <?= $curSecs > 0 ? 'fw-semibold text-success' : 'muted' ?>" data-label="<?= date('M') ?> Hrs"><?= $fmt($curSecs) ?></td>
                         <td class="text-center nowrap muted" data-label="<?= date('M', strtotime(date('Y-m-01') . ' -1 month')) ?> Hrs"><?= $fmt($lastSecs) ?></td>
+                        <?php endif; ?>
                         <td class="cell-actions text-end">
                             <div class="dropdown">
                                 <button class="btn btn-outline-secondary act-btn dropdown-toggle" type="button"

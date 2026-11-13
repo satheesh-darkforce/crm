@@ -393,6 +393,7 @@ $isExEmployee = (int)$model->status === 0;
         </div>
     </div>
 
+    <?php if (!\backend\components\Crm::simple()): /* Work reports are IT timesheets — hidden in Green Divine mode */ ?>
     <!-- ── Work Reports ───────────────────────────────────────────────── -->
     <hr class="my-4">
     <h5 class="fw-semibold mb-3">Work Reports</h5>
@@ -566,6 +567,7 @@ $isExEmployee = (int)$model->status === 0;
         <?php endif; ?>
         <?php Pjax::end() ?>
     </div>
+    <?php endif; /* work reports */ ?>
 </div>
 
 <!-- ── Update PIN Modal ───────────────────────────────────────────────── -->

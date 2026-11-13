@@ -250,35 +250,17 @@ $leaveLabel = [
                     ]) ?>
                 </div>
                 <div class="col-md-2">
-                    <select name="team" class="form-select form-select-sm">
-                        <option value="">All Teams</option>
-                        <?php foreach (\backend\models\Developer::$teams as $tv => $tl): ?>
-                            <option value="<?= $tv ?>" <?= Yii::$app->request->get('team') == $tv ? 'selected' : '' ?>><?= $tl ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <?= \kartik\select2\Select2::widget(['name' => 'team', 'value' => (string) Yii::$app->request->get('team', ''), 'data' => \backend\models\Developer::$teams, 'size' => \kartik\select2\Select2::SMALL, 'options' => ['placeholder' => 'All Teams'], 'pluginOptions' => ['allowClear' => true, 'width' => '100%']]) ?>
                 </div>
                 <div class="col-md-2">
-                    <select name="branch" class="form-select form-select-sm">
-                        <option value="">All Branches</option>
-                        <?php foreach (\backend\models\Developer::$branches as $bv => $bl): ?>
-                            <option value="<?= $bv ?>" <?= Yii::$app->request->get('branch') == $bv ? 'selected' : '' ?>><?= $bl ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <?= \kartik\select2\Select2::widget(['name' => 'branch', 'value' => (string) Yii::$app->request->get('branch', ''), 'data' => \backend\models\Developer::$branches, 'size' => \kartik\select2\Select2::SMALL, 'options' => ['placeholder' => 'All Branches'], 'pluginOptions' => ['allowClear' => true, 'width' => '100%']]) ?>
                 </div>
                 <?php endif; ?>
                 <div class="col-md-2">
-                    <select name="year" class="form-select form-select-sm">
-                        <?php for ($y = (int)date('Y'); $y >= 2010; $y--): ?>
-                            <option value="<?= $y ?>" <?= $year === $y ? 'selected' : '' ?>><?= $y ?></option>
-                        <?php endfor; ?>
-                    </select>
+                    <?= \kartik\select2\Select2::widget(['name' => 'year', 'value' => (string) $year, 'data' => array_combine(range((int) date('Y'), 2010), range((int) date('Y'), 2010)), 'size' => \kartik\select2\Select2::SMALL, 'pluginOptions' => ['width' => '100%']]) ?>
                 </div>
                 <div class="col-md-2">
-                    <select name="month" class="form-select form-select-sm">
-                        <?php for ($m = 1; $m <= 12; $m++): ?>
-                            <option value="<?= $m ?>" <?= $month === $m ? 'selected' : '' ?>><?= date('F', mktime(0, 0, 0, $m, 1)) ?></option>
-                        <?php endfor; ?>
-                    </select>
+                    <?= \kartik\select2\Select2::widget(['name' => 'month', 'value' => (string) $month, 'data' => array_combine(range(1, 12), array_map(fn($m) => date('F', mktime(0, 0, 0, $m, 1)), range(1, 12))), 'size' => \kartik\select2\Select2::SMALL, 'pluginOptions' => ['width' => '100%']]) ?>
                 </div>
                 <div class="col-auto">
                     <button class="btn btn-secondary btn-sm">Search</button>

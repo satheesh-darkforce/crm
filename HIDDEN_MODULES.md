@@ -101,3 +101,11 @@ Switch: `'crm.simple' => true` in `backend/config/params.php` (helper `backend\c
 | Invoices — Add Invoice popup | Invoice category (Service is used), Company (same list as Client), Project, Phase, Milestone | Only the client is asked; project is no longer required |
 | Invoices — form (domestic clients) | Currency, Exchange rate, Transaction charge % | INR, rate 1, no charge. International clients still see them |
 | Dashboard | Domain expiry, AMC due, ongoing tasks, project hours (IT dashboard) | Sales dashboard: leads, follow-ups, quotations, invoices (`views/site/index-gd.php`) |
+| Clients — list | Last Work / monthly hours columns (timesheets) | Quotations (with open count), Invoiced, To collect, Last activity; sorted by latest quotation or invoice |
+| Clients — client page | Working hours, Domains | Quotation / invoiced / received / to-collect tiles and the client's quotations with **New quotation** |
+| Quotations — list | Quote For (IT / IOT), No of Quote (revisions), Completed tab | Quote status (Draft / Sent / Accepted / Rejected / Invoiced / Expired), amount in ₹ |
+| Employees — employee page | Work Reports (timesheets) | — |
+| HR — Live attendance | Project filter, Current project / task, Task duration, Working now | Checked-in people show as Present |
+| Invoices — form | "No GST Number" popup for clients without a GSTIN | Bill-to shows *Not registered (B2C)* — homeowners have no GSTIN |
+| Menu | Invoices → Add Bank Detail | Same as **Add account** on Payment Bank Details (`sidebar.hiddenRoutes`) |
+
